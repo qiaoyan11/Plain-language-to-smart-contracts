@@ -52,7 +52,7 @@ interface IMilestoneEscrow {
 - 范围：保留 TwoStageEscrow、后端、前端不动；未修改 validation/ 和 REVIEW.md；npm test 已包含新测试。
 - 怎么验证：npm test 24/24 通过（原有 7 项、新增 17 项）；npm run test:api 1/1 通过。
 - 测试覆盖：1/2/3/5 阶段流程、非法构造参数、越权、金额错误、跳阶段、重复存付和拒收回滚；失败交易核对真实 status=0 回执。
-- 提交与推送：审查意见及协作日志已先提交；GitHub 推送因本机未登录暂未完成，gh 已安装，等待老板完成登录。
+- 提交与推送：审查意见及协作日志已先提交；老板完成 GitHub 登录后，全部本地提交已推送到 origin main，合约提交为 5628888。
 - 下一步建议：Claude 审查新合约并开展 validation/；本轮不继续接前后端或做 Agent。
 - 需要老板决定：无。
 
