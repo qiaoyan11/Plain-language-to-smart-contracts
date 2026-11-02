@@ -21,7 +21,7 @@ npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. Click **Use local demo accounts**, enter a project name, review, create, deploy, deposit, then approve both milestones. Each completed action displays a receipt transaction hash and block number. Reloading reads the latest contract state from the backend.
+Open http://127.0.0.1:5173. Click **Use local demo accounts**, enter a project name and 1–5 milestone titles and ETH amounts, then review, create, deploy, deposit, and approve each milestone in order. Each completed action displays a receipt transaction hash and block number. Reloading reads the latest contract state from the backend.
 
 The backend runs a real local EVM inside its process, automatically signing with disposable test accounts. It is not connected to Ethereum mainnet or Sepolia. Only the designated client/provider demo accounts are accepted; arbitrary addresses from the earlier mock example will be rejected. Project records and the chain are in memory and reset together on backend restart.
 
@@ -30,13 +30,13 @@ The backend runs a real local EVM inside its process, automatically signing with
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/local-accounts` | Get usable local client and provider addresses |
-| POST | `/api/projects` | Create a confirmed project with name and addresses |
+| POST | `/api/projects` | Create a confirmed project with name, addresses and 1–5 milestones |
 | GET | `/api/projects/:id` | Get project metadata and freshly read chain state |
-| POST | `/api/projects/:id/actions` | Execute `{ "action": "deploy\|deposit\|stage1\|stage2" }` |
+| POST | `/api/projects/:id/actions` | Execute deploy, deposit, or acceptMilestone with a milestoneId |
 
-The action value is one of the four individual strings, not the pipe-separated display above. Successful actions return the updated Project and confirmed transaction records. Failures return an HTTP error and `{ "error": "..." }`. No fallback to mock success occurs if the backend fails.
+See [Project API v2](../shared/PROJECT_API_V2.md) for request and response fields. Amounts are integer wei strings throughout the API and converted to decimal ETH text only for display. Successful actions return the updated Project and confirmed transactions. Errors never fall back to mock success.
 
-Vite proxies `/api` to `127.0.0.1:3001`. No public tunnel is needed. Do not expose this auto-signing backend publicly: it deliberately has no user authentication and controls test accounts. In the public-testnet stage, replace action execution with transaction preparation and wallet signing.
+Vite proxies `/api` to `127.0.0.1:3001`. No public tunnel is needed. Do not expose this auto-signing backend publicly: it deliberately has no user authentication and controls test accounts. Public-testnet signing is outside this step; follow the decisions in WORKLOG before changing it.
 
 For the original frontend-only behavior set `VITE_API_MODE=mock`. In local mode the failure-simulation toggle is hidden and the banner identifies the local chain. Never connect the hosted Lovable preview directly to this local auto-signing service.
 
@@ -52,4 +52,4 @@ npm run build
 
 The contract suite covers access, order, amounts, duplicates and transfer rollback. The HTTP test checks full lifecycle, incorrect addresses, a foreign origin, invalid actions and repeated operations.
 
-Verified in the browser: create → deploy → deposit 0.01 ETH → first payment (balance 0.007 ETH) → second payment (balance 0 ETH). Reload preserved both paid statuses and all four confirmed transaction records. Frontend tests: 4 passed; HTTP lifecycle test: 1 passed; production build passed.
+Verified in the browser: create a three-stage project totaling 0.012000000000000001 test ETH → deploy → deposit → three sequential payments → zero balance. Refresh preserves the completed status and five transaction records. Contract tests: 26 passed; HTTP tests: 5 passed (1/2/3/5-stage flows and invalid requests); frontend tests: 7 passed.

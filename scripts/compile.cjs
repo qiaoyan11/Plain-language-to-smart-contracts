@@ -28,10 +28,18 @@ function artifact() {
     abi: c.abi, bytecode: '0x' + c.evm.bytecode.object };
 }
 
+function milestoneArtifact() {
+  const sources = Object.fromEntries(['IMilestoneEscrow.sol', 'MilestoneEscrow.sol'].map(name =>
+    [name, { content: fs.readFileSync(path.join(root, 'contracts', name), 'utf8') }]));
+  const c = compile(sources)['MilestoneEscrow.sol'].MilestoneEscrow;
+  return { contractName: 'MilestoneEscrow', compilerVersion: solc.version(),
+    abi: c.abi, bytecode: '0x' + c.evm.bytecode.object };
+}
+
 if (require.main === module) {
   const out = path.join(root, 'artifacts');
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, 'TwoStageEscrow.json'), JSON.stringify(artifact(), null, 2));
   console.log('Compiled TwoStageEscrow; ABI and bytecode saved in artifacts/TwoStageEscrow.json');
 }
-module.exports = { compile, artifact };
+module.exports = { compile, artifact, milestoneArtifact };

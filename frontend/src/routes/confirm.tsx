@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Row, Shell } from "@/components/Shell";
-import { api, STAGES, TOTAL_ETH, type ProjectDraft } from "@/api/client";
+import { api, formatWei, totalWei, type ProjectDraft } from "@/api/client";
 
 export const Route = createFileRoute("/confirm")({
   head: () => ({
@@ -53,14 +53,15 @@ function ConfirmPage() {
           <Row label="Project name" value={draft.name} />
           <Row label="Client wallet" value={draft.clientWallet} mono />
           <Row label="Developer wallet" value={draft.developerWallet} mono />
-          <Row label="Total" value={`${TOTAL_ETH} test ETH`} />
-          {STAGES.map((s, i) => (
-            <Row key={s.key} label={`Stage ${i + 1} · ${s.name}`} value={`${s.amount} ETH`} />
+          <Row label="Total" value={`${formatWei(totalWei(draft.milestones))} test ETH`} />
+          {draft.milestones.map((s, i) => (
+            <Row key={i} label={`Stage ${i + 1} · ${s.title}`} value={`${formatWei(s.amountWei)} ETH`} />
           ))}
           <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
             <li>The client must deposit the full amount before any payment can be approved.</li>
-            <li>Stage 2 can only be approved after Stage 1 is paid.</li>
+            <li>Stages must be approved in the order shown above.</li>
             <li>Each stage can only be paid once.</li>
+            <li>The client confirms delivery. This version has no cancellation or refund.</li>
           </ul>
           {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
           <div className="mt-6 flex gap-3">
