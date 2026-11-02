@@ -5,9 +5,13 @@
   "scripts": {
     "compile": "node scripts/compile.cjs",
     "test": "node --test tests/escrow.test.cjs",
-    "demo": "node scripts/demo.cjs"
+    "demo": "node scripts/demo.cjs",
+    "backend": "node backend/server.cjs",
+    "test:api": "node --test tests/api.test.cjs"
   },
-  "engines": { "node": ">=20 <23" },
+  "engines": {
+    "node": ">=20 <23"
+  },
   "devDependencies": {
     "ethers": "6.15.0",
     "hardhat": "2.26.3",

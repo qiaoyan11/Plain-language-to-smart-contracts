@@ -1,7 +1,7 @@
-# Frontend
+# Escrow frontend
 
-Shared ownership: A builds agreement input, clarification and confirmation screens. D builds deployment and operation screens. B and C expose generation progress and verification results.
+React and TanStack Start interface exported from Lovable, with a local-chain API adapter.
 
-Display real states: waiting for confirmation, generating, checking, awaiting wallet approval, transaction pending, succeeded or failed. Do not label mocked data as live chain results.
+The three screens create a project, confirm payment rules, and display the escrow contract and its transactions. Data access is centralized in `src/api/client.ts`.
 
-Status: not implemented. UI stack is not selected yet.
+See [Frontend integration](../docs/FRONTEND_INTEGRATION.md) for local setup, API routes, and the distinction between mock and local-chain modes.
