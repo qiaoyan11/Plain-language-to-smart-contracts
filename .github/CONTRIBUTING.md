@@ -1,5 +1,7 @@
 # Contributing
 
+Start with [team handoff](../docs/TEAM_HANDOFF.md) and [module assignments](../docs/TASKS.md).
+
 ## Team workflow
 
 Collaborators clone the repository. External contributors fork it first.
@@ -42,7 +44,7 @@ git switch -c feature/agent1-next-task
 - Each contributor connects and documents their own module.
 - Submit small PRs and include actual verification results.
 - Never commit secrets, private agreements or model checkpoints.
-- Langflow contributions include flow JSON plus custom component source.
+- Python agents follow shared/INTERFACES.md; LangGraph owns the generation/validation/repair workflow.
 - Credit reused upstream code and preserve applicable licenses.
 
 Branch protection and CODEOWNERS are not configured. These review rules are not yet technically enforced. Real contributor usernames are needed before configuring ownership.
