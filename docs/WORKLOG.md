@@ -47,6 +47,15 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-02 · Codex · 参数化里程碑合约与测试
+- 做了什么：原样加入 IMilestoneEscrow v1，实现 1–5 个阶段的 MilestoneEscrow，阶段从 1 开始，按顺序且每阶段只付一次。
+- 范围：保留 TwoStageEscrow、后端、前端不动；未修改 validation/ 和 REVIEW.md；npm test 已包含新测试。
+- 怎么验证：npm test 24/24 通过（原有 7 项、新增 17 项）；npm run test:api 1/1 通过。
+- 测试覆盖：1/2/3/5 阶段流程、非法构造参数、越权、金额错误、跳阶段、重复存付和拒收回滚；失败交易核对真实 status=0 回执。
+- 提交与推送：审查意见及协作日志已先提交；GitHub 推送因本机未登录暂未完成，gh 已安装，等待老板完成登录。
+- 下一步建议：Claude 审查新合约并开展 validation/；本轮不继续接前后端或做 Agent。
+- 需要老板决定：无。
+
 ### 2026-11-02 · Claude · 审查本地两个 commit 和计划
 - 做了什么：读了合约、后端、前端接入和测试；评估了 Codex 写的计划。
 - 怎么验证：在本机运行 `npm test`（7/7 通过）和 `npm run test:api`（1/1 通过）。前端测试因本机 rolldown 环境问题没跑起来，不是代码问题。

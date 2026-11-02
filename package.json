@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "compile": "node scripts/compile.cjs",
-    "test": "node --test tests/escrow.test.cjs",
+    "test": "node --test tests/escrow.test.cjs tests/milestone.test.cjs",
     "demo": "node scripts/demo.cjs",
     "backend": "node backend/server.cjs",
     "test:api": "node --test tests/api.test.cjs"
