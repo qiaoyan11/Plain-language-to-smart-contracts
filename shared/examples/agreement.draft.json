@@ -1,0 +1,26 @@
+{
+  "project_id": "demo-001",
+  "spec_version": 1,
+  "status": "draft",
+  "network_mode": "test_only",
+  "client_address": null,
+  "provider_address": null,
+  "total_amount_wei": "10000000000000000",
+  "milestones": [
+    {
+      "id": 1,
+      "description": "Homepage accepted",
+      "amount_wei": "3000000000000000"
+    },
+    {
+      "id": 2,
+      "description": "Completed website accepted",
+      "amount_wei": "7000000000000000"
+    }
+  ],
+  "approval_role": "client",
+  "refund_policy": null,
+  "deadline": null,
+  "confirmation": null,
+  "errors": []
+}
