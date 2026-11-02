@@ -1,0 +1,27 @@
+{
+  "reportId": "fixture-not-real-validation",
+  "projectId": "demo-001",
+  "specVersion": 1,
+  "sourceHash": "sha256:fa3ec3a769fd388ffe687348ac2eac578e2f0857cc7e69a58df11d624c909429",
+  "suiteVersion": "fixture-only-v1",
+  "mode": "development",
+  "status": "toolError",
+  "checks": [
+    {
+      "name": "compilation",
+      "status": "skipped",
+      "findings": []
+    },
+    {
+      "name": "staticAnalysis",
+      "status": "skipped",
+      "findings": []
+    },
+    {
+      "name": "clauseTests",
+      "status": "skipped",
+      "findings": []
+    }
+  ],
+  "artifact": null
+}

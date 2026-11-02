@@ -1,6 +1,6 @@
 # 四人协作与第一批任务
 
-当前共同起点：网页、Node 后端和 1–5 阶段参考合约已跑通。Python Agent 和 LangGraph 尚未实现。本轮先把模块接起来，不重写前后端，不加入钱包、退款、RAG 或数据库。
+当前共同起点：网页、Node 后端和 1–5 阶段参考合约已跑通。Python 模拟模块和 Node 连接已实现；真实 Agent、LangGraph 和独立验证尚未接入。先读 [接手说明](TEAM_HANDOFF.md)。本轮先把模块接起来，不重写前后端，不加入钱包、退款、RAG 或数据库。
 
 每人先按 [运行说明](FRONTEND_INTEGRATION.md) 完成创建、部署、存款、付款。之后读 [模块交接 v1](../shared/INTERFACES.md)。A/B/C 是待认领岗位，不是已确认的成员姓名。
 
@@ -8,7 +8,7 @@
 
 - 目录：frontend/、backend/、agent3/；协调 shared/，与 B 协调 flows/。
 - 分支：feature/python-bridge；后续 feature/agent3。
-- 第一项任务：Node 将一份确认规则转换成约定 JSON，调用固定 Python 入口，读取结果；处理超时、无效输出和版本不匹配。
+- 第一项任务：复用已有 python-bridge.cjs，把网页确认和版本管理接到入口；连接层已有超时、大小限制和版本检查，不另写一套。
 - 交付：能发送样例并显示生成结果或明确错误；原有手写合约演示仍能运行。第一轮不部署 AI 生成代码。
 - 后续任务：Agent 3 仅提出操作意图，Node 核对并在用户确认后执行。不是重做一套交易系统。
 
@@ -25,7 +25,7 @@
 - 第一项任务：按生成请求样例产出 SourceBundle；明确未验证状态。再实现 LangGraph 的生成、开发验证、修复和停止路径。
 - 交付：Python 依赖及版本、固定入口、独立运行样例、失败处理测试。先 maxRepairs=0，接好 C 的开发验证报告后再测试有限修复。
 - 边界：不覆盖参考合约，不修改独立验证工具和测试，不读取 hidden 结果调提示词；不提交 API key。
-- 与 Jiahao 配合：B 实现 flows.worker，Jiahao 实现 Node 侧调用。两人不各自设计另一套入口。
+- 与 Jiahao 配合：B 把现有 flows.worker 分发替换为 LangGraph，Jiahao 复用已有 Node 侧调用。两人不各自设计另一套入口。
 
 ## 组员 C — 独立验证与实验
 

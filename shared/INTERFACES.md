@@ -1,6 +1,6 @@
 # Module handoff v1 — Python and LangGraph
 
-This is the agreed contract for the next implementation, not an implemented API. Python agents and LangGraph have not been installed or connected yet. The working Node backend, frontend and Solidity contracts remain unchanged.
+This v1 contract now has executable JSON schemas, Python fixture modules and a standalone Node bridge. Real AI, LangGraph, independent validation and UI integration are not implemented. The working Node server, frontend and Solidity contracts remain unchanged. See [team setup](../docs/TEAM_HANDOFF.md).
 
 The existing [Project API v2](PROJECT_API_V2.md) continues to serve the current UI. `IMilestoneEscrow v1` in [WORKLOG](../docs/WORKLOG.md) is unchanged. This document replaces the earlier draft v0.1 and its snake_case example fields; no existing HTTP endpoint is renamed.
 
@@ -16,11 +16,11 @@ Existing Node backend -> existing contract tools -> local chain
 
 Node owns project records, user confirmations, deployment records and transaction execution. Python owns AI work within a run; it does not maintain a second authoritative project database or hold signing keys. Agent 2 returns code and a report, not a deployed contract. Reference-contract deployment continues to work independently.
 
-Use LangGraph first for the generation/check/repair loop. No Langflow service is required. Agent modules expose Python callables taking/returning JSON-compatible objects; they must be testable without starting the UI. LangChain is optional, not a required second orchestration layer. Dependency versions will be pinned when implementation starts.
+Use LangGraph first for the generation/check/repair loop. No Langflow service is required. Agent modules expose Python callables taking/returning JSON-compatible objects; they must be testable without starting the UI. LangChain is optional, not a required second orchestration layer. The schema validator is pinned in requirements.lock.txt; model and LangGraph dependencies will be pinned when those implementations start.
 
 ## 2. One bridge, before adding services
 
-Initial transport: Node launches a configured Python interpreter with a fixed module entry point (planned `flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The entry point is a future deliverable, not a command available today.
+Initial transport: Node launches a configured Python interpreter with a fixed module entry point (`flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The entry point is runnable today in fixture mode only. The bridge is not called by server.cjs yet; immutable confirmations and live version checks remain integration work. Defaults: 10-second timeout, 1 MiB input, 1 MiB combined stdout/stderr, one active process per project per Node process.
 
 Envelope:
 
@@ -120,3 +120,5 @@ Before a state-changing action, Node checks the trusted deployment and latest st
 See [draft](examples/agreement.draft.json), [generation request](examples/generate.request.json) and [tool-error response](examples/generate.tool-error.response.json). They are synthetic handoff fixtures, not actual model or validation results. The tool-error example intentionally cannot be deployed.
 
 Each owner adds a module-local runner and tests when implementing. Initial integration milestone: Node sends one confirmed fixture to Python, receives a well-formed generated bundle or a clear tool error, and leaves the existing reference demo intact. Then connect development validation and bounded repair. Do not add a second HTTP backend, wallet service or database for this milestone.
+
+Executable definitions live in `schemas/handoff.schema.json` under `$defs`; Python entry and exit checks use `shared.handoff`. Cross-field checks supplement the schema (totals, IDs, versions, source hashes). All fixtures are synthetic. `npm run e2e` checks wiring only; it does not exercise an AI model, independent validator, LangGraph repair, or generated-code deployment.

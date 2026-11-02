@@ -1,0 +1,10 @@
+{
+  "interfaceVersion": 1,
+  "requestId": "fixture-clarify",
+  "operation": "clarify",
+  "payload": {
+    "message": "Build a company website with milestone payments.",
+    "history": [],
+    "draftSpec": null
+  }
+}

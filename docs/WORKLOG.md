@@ -31,6 +31,7 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
+| 2026-11-02 | 落实 v1 格式校验、Python 模拟入口和 Node 独立连接测试；不接网页、不部署模拟结果 | 老板授权准备无聊天上下文也能接手的模块底座；validation/ 仍由 Claude 实现 |
 | 2026-11-02 | 更新技术栈决定：Agent 1/2/3 使用 Python；LangGraph 管理 AI 工作流；Node 保留后端、Hardhat、solc-js 和 ethers | 老板已确认；覆盖此前 Agent 留在 Node 的方向，不重写能运行的功能 |
 | 2026-11-02 | 模块交接采用 shared/INTERFACES.md v1，JSON 字段沿用现有网页的 camelCase；先用一个 Node→Python JSON 子进程入口 | 减少多人联调歧义；本轮只定格式，不实现服务或安装框架 |
 | 2026-11-02 | 合约统一实现 `IMilestoneEscrow` 接口（见下），支持 1–5 个阶段 | Agent 2 生成的合约要能用同一套测试检查 |
@@ -61,6 +62,15 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-02 · Codex · 模块交接底座与新组员说明
+- 做了什么：补 JSON Schema、跨字段校验、三个 Python 模拟模块、固定 worker 入口和独立 Node 连接；添加接手文档与 AI 阅读规则。
+- 怎么接：JSON 输入输出共用格式；核对金额、阶段、版本和源码指纹，连接有超时、大小上限和同项目并发保护。
+- 怎么验证：交接 24/24（Python 16、Node 8）、原合约 26/26、原接口 5/5 通过；接口测试在允许本机监听后重跑通过。
+- 限制：仅模拟连接；未装 LangGraph、未接真实模型、独立验证或网页；development 返回 toolError，模拟结果不能部署。
+- 保留：现有网页、server、合约均未改；validation/ 与 REVIEW.md 未修改。
+- 下一步：A 替换需求模拟；B 接真实生成和 LangGraph；C/Claude 提供开发验证；Jiahao 接用户确认和版本管理。
+- 需要老板决定：无。
 
 ### 2026-11-02 · Codex · 确定 Python 和 LangGraph 的模块交接
 - 做了什么：更新技术栈决定、四人岗位、各 Agent 说明及统一 JSON 接口；明确 Node 保留执行能力，Python 负责 AI 流程。

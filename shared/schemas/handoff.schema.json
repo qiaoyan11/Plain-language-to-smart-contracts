@@ -1,0 +1,1152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "ConfirmedSpec": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "\\S"
+        },
+        "clientWallet": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "developerWallet": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "milestones": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120,
+                "pattern": "\\S"
+              },
+              "amountWei": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]*$"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "amountWei"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 5
+        },
+        "totalAmountWei": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "approvalRole": {
+          "const": "client"
+        },
+        "refundPolicy": {
+          "const": "none"
+        },
+        "deadline": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "projectId",
+        "specVersion",
+        "name",
+        "clientWallet",
+        "developerWallet",
+        "milestones",
+        "totalAmountWei",
+        "approvalRole",
+        "refundPolicy",
+        "deadline"
+      ],
+      "additionalProperties": false
+    },
+    "DraftSpec": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "\\S"
+        },
+        "clientWallet": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "developerWallet": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "milestones": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120,
+                "pattern": "\\S"
+              },
+              "amountWei": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]*$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "amountWei"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 5
+        },
+        "totalAmountWei": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approvalRole": {
+          "const": "client"
+        },
+        "refundPolicy": {
+          "const": "none"
+        },
+        "deadline": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "projectId",
+        "specVersion",
+        "name",
+        "clientWallet",
+        "developerWallet",
+        "milestones",
+        "totalAmountWei",
+        "approvalRole",
+        "refundPolicy",
+        "deadline"
+      ],
+      "additionalProperties": false
+    },
+    "ConfirmationRecord": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confirmationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confirmedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "projectId",
+        "specVersion",
+        "confirmationId",
+        "confirmedAt"
+      ],
+      "additionalProperties": false
+    },
+    "BuildSettings": {
+      "type": "object",
+      "properties": {
+        "evmVersion": {
+          "const": "paris"
+        },
+        "optimizer": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "const": true
+            },
+            "runs": {
+              "const": 200
+            }
+          },
+          "required": [
+            "enabled",
+            "runs"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "evmVersion",
+        "optimizer"
+      ],
+      "additionalProperties": false
+    },
+    "SourceBundle": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sources": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\\.sol$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "entryFile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entryContract": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "compilerVersion": {
+          "const": "0.8.28"
+        },
+        "buildSettings": {
+          "$ref": "#/$defs/BuildSettings"
+        },
+        "dependencies": {
+          "const": []
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "specVersion",
+        "sources",
+        "entryFile",
+        "entryContract",
+        "compilerVersion",
+        "buildSettings",
+        "dependencies",
+        "sourceHash"
+      ],
+      "additionalProperties": false
+    },
+    "Artifact": {
+      "type": "object",
+      "properties": {
+        "abi": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "bytecode": {
+          "type": "string",
+          "pattern": "^0x(?:[0-9a-fA-F]{2})+$"
+        },
+        "compilerVersion": {
+          "const": "0.8.28"
+        },
+        "buildSettings": {
+          "$ref": "#/$defs/BuildSettings"
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "constructorTypes": {
+          "const": [
+            "address",
+            "address",
+            "uint256[]"
+          ]
+        }
+      },
+      "required": [
+        "abi",
+        "bytecode",
+        "compilerVersion",
+        "buildSettings",
+        "sourceHash",
+        "constructorTypes"
+      ],
+      "additionalProperties": false
+    },
+    "ValidationReport": {
+      "type": "object",
+      "properties": {
+        "reportId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "specVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "suiteVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "const": "development"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "toolError"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "enum": [
+                  "compilation",
+                  "staticAnalysis",
+                  "clauseTests"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "passed",
+                  "failed",
+                  "skipped",
+                  "toolError"
+                ]
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "severity": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "file": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "line": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "severity",
+                    "message",
+                    "file",
+                    "line"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "name",
+              "status",
+              "findings"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "reportId",
+        "projectId",
+        "specVersion",
+        "sourceHash",
+        "suiteVersion",
+        "mode",
+        "status",
+        "checks",
+        "artifact"
+      ],
+      "additionalProperties": false
+    },
+    "ClarifyInput": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "enum": [
+                  "user",
+                  "assistant"
+                ]
+              },
+              "content": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "role",
+              "content"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "draftSpec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DraftSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "message",
+        "history",
+        "draftSpec"
+      ],
+      "additionalProperties": false
+    },
+    "ClarifyResult": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "needsClarification",
+            "readyForConfirmation",
+            "unsupported"
+          ]
+        },
+        "draftSpec": {
+          "$ref": "#/$defs/DraftSpec"
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "minLength": 1
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "field",
+              "question"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "unsupportedTerms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "status",
+        "draftSpec",
+        "questions",
+        "unsupportedTerms"
+      ],
+      "additionalProperties": false
+    },
+    "GenerateInput": {
+      "type": "object",
+      "properties": {
+        "spec": {
+          "$ref": "#/$defs/ConfirmedSpec"
+        },
+        "confirmation": {
+          "$ref": "#/$defs/ConfirmationRecord"
+        },
+        "runConfig": {
+          "type": "object",
+          "properties": {
+            "validationMode": {
+              "enum": [
+                "none",
+                "development"
+              ]
+            },
+            "maxRepairs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "feedbackSetting": {
+              "enum": [
+                "baseline",
+                "A",
+                "B",
+                "C"
+              ]
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "validationMode",
+            "maxRepairs",
+            "feedbackSetting",
+            "model"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "spec",
+        "confirmation",
+        "runConfig"
+      ],
+      "additionalProperties": false
+    },
+    "GenerateResult": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "generated",
+            "validated",
+            "failed",
+            "toolError"
+          ]
+        },
+        "sourceBundle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceBundle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validationReport": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValidationReport"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "attempt": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sourceHash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "reportId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "feedbackUsed": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "attempt",
+              "sourceHash",
+              "reportId",
+              "feedbackUsed"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "status",
+        "sourceBundle",
+        "validationReport",
+        "attempts"
+      ],
+      "additionalProperties": false
+    },
+    "DeploymentRecord": {
+      "type": "object",
+      "properties": {
+        "chainId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "contractAddress": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "abi": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "specVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "chainId",
+        "contractAddress",
+        "abi",
+        "sourceHash",
+        "specVersion"
+      ],
+      "additionalProperties": false
+    },
+    "PlanInput": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deployment": {
+          "$ref": "#/$defs/DeploymentRecord"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/ProjectSnapshot"
+        }
+      },
+      "required": [
+        "message",
+        "projectId",
+        "deployment",
+        "snapshot"
+      ],
+      "additionalProperties": false
+    },
+    "PlanResult": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "needsClarification",
+            "readyForConfirmation",
+            "blocked"
+          ]
+        },
+        "question": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "chainId": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "contractAddress": {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-fA-F]{40}$"
+                },
+                "action": {
+                  "enum": [
+                    "query",
+                    "deposit",
+                    "acceptMilestone"
+                  ]
+                },
+                "milestoneId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 5
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "projectId",
+                "chainId",
+                "contractAddress",
+                "action",
+                "milestoneId"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "status",
+        "question",
+        "intent",
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "Request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "interfaceVersion": {
+              "const": 1
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "operation": {
+              "const": "clarify"
+            },
+            "payload": {
+              "$ref": "#/$defs/ClarifyInput"
+            }
+          },
+          "required": [
+            "interfaceVersion",
+            "requestId",
+            "operation",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "interfaceVersion": {
+              "const": 1
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "operation": {
+              "const": "generate"
+            },
+            "payload": {
+              "$ref": "#/$defs/GenerateInput"
+            }
+          },
+          "required": [
+            "interfaceVersion",
+            "requestId",
+            "operation",
+            "payload"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "interfaceVersion": {
+              "const": 1
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "operation": {
+              "const": "planAction"
+            },
+            "payload": {
+              "$ref": "#/$defs/PlanInput"
+            }
+          },
+          "required": [
+            "interfaceVersion",
+            "requestId",
+            "operation",
+            "payload"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Response": {
+      "type": "object",
+      "properties": {
+        "interfaceVersion": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "error"
+          ]
+        },
+        "result": {},
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "field": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "field"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "interfaceVersion",
+        "requestId",
+        "status",
+        "result",
+        "errors"
+      ],
+      "additionalProperties": false
+    },
+    "ProjectSnapshot": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 2
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "clientWallet": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "developerWallet": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "contractAddress": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalAmountWei": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "escrowBalanceWei": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "funded": {
+          "type": "boolean"
+        },
+        "milestones": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "amountWei": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]*$"
+              },
+              "paid": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "amountWei",
+              "paid"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 5
+        },
+        "transactions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "enum": [
+                  "deploy",
+                  "deposit",
+                  "acceptMilestone"
+                ]
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{64}$"
+              },
+              "blockNumber": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status": {
+                "enum": [
+                  0,
+                  1
+                ]
+              },
+              "milestoneId": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "action",
+              "hash",
+              "blockNumber",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "name",
+        "clientWallet",
+        "developerWallet",
+        "createdAt",
+        "contractAddress",
+        "totalAmountWei",
+        "escrowBalanceWei",
+        "funded",
+        "milestones",
+        "transactions"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

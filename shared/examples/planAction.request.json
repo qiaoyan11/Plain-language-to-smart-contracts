@@ -1,0 +1,43 @@
+{
+  "interfaceVersion": 1,
+  "requestId": "fixture-plan",
+  "operation": "planAction",
+  "payload": {
+    "message": "Approve first milestone",
+    "projectId": "demo-001",
+    "deployment": {
+      "chainId": 31337,
+      "contractAddress": "0x1111111111111111111111111111111111111111",
+      "abi": [],
+      "sourceHash": "sha256:fa3ec3a769fd388ffe687348ac2eac578e2f0857cc7e69a58df11d624c909429",
+      "specVersion": 1
+    },
+    "snapshot": {
+      "schemaVersion": 2,
+      "id": "demo-001",
+      "name": "Company website",
+      "clientWallet": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "developerWallet": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "createdAt": "2026-11-02T20:00:00Z",
+      "contractAddress": "0x1111111111111111111111111111111111111111",
+      "totalAmountWei": "10000000000000000",
+      "escrowBalanceWei": "0",
+      "funded": false,
+      "milestones": [
+        {
+          "id": 1,
+          "title": "Homepage accepted",
+          "amountWei": "3000000000000000",
+          "paid": false
+        },
+        {
+          "id": 2,
+          "title": "Completed website accepted",
+          "amountWei": "7000000000000000",
+          "paid": false
+        }
+      ],
+      "transactions": []
+    }
+  }
+}
