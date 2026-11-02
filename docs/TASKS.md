@@ -1,23 +1,45 @@
-# Initial work assignments
+# 四人协作与第一批任务
 
-## Together first
-Agree on one refund policy, deadline behavior and module interfaces. Walk through a hand-written local contract: deposit, approve payment and inspect state. Contributor names remain unassigned.
+当前共同起点：网页、Node 后端和 1–5 阶段参考合约已跑通。Python Agent 和 LangGraph 尚未实现。本轮先把模块接起来，不重写前后端，不加入钱包、退款、RAG 或数据库。
 
-## A — Agent 1
-Extract rules, ask missing-field questions and implement explicit confirmation. Add cited RAG after clarification works. Deliver sample conversations and input/confirmation UI.
+每人先按 [运行说明](FRONTEND_INTEGRATION.md) 完成创建、部署、存款、付款。之后读 [模块交接 v1](../shared/INTERFACES.md)。A/B/C 是待认领岗位，不是已确认的成员姓名。
 
-## B — Agent 2
-Inspect and reproduce relevant upstream work before reuse. Generate source bundles and consume verification feedback in a bounded repair loop. Support exact-artifact deployment.
+## Jiahao — 集成及后续 Agent 3
 
-## C — Verification
-Connect compiler and Slither. Test permissions, duplicate payments, amounts and agreed refunds. Return structured findings and artifacts. Maintain fixed independent evaluation cases and baseline comparisons.
+- 目录：frontend/、backend/、agent3/；协调 shared/，与 B 协调 flows/。
+- 分支：feature/python-bridge；后续 feature/agent3。
+- 第一项任务：Node 将一份确认规则转换成约定 JSON，调用固定 Python 入口，读取结果；处理超时、无效输出和版本不匹配。
+- 交付：能发送样例并显示生成结果或明确错误；原有手写合约演示仍能运行。第一轮不部署 AI 生成代码。
+- 后续任务：Agent 3 仅提出操作意图，Node 核对并在用户确认后执行。不是重做一套交易系统。
 
-## D — Agent 3 and integration
-Implement deployment registry, chain queries, unsigned transaction preparation, wallet integration and receipt checks. Coordinate integration with all module owners.
+## 组员 A — Agent 1
 
-## Milestones
-1. Shared interfaces and examples approved.
-2. Reference-contract workflow on a local chain.
-3. Generated contracts pass development checks.
-4. Public-testnet deployment and authorized operations.
-5. Reproducible evaluation, failure analysis and documentation.
+- 目录：agent1/；分支 feature/agent1-python。
+- 第一项任务：Python 的 clarify 输入描述，输出 draftSpec、问题和不支持的条款。
+- 交付：独立运行方式、至少三个样例（完整描述、缺少金额、不支持退款）及模块测试。
+- 边界：不猜缺失规则，不替用户确认，不改网页或合约。需要页面变化时交给 Jiahao 集成。
+
+## 组员 B — Agent 2 与生成修复图
+
+- 目录：agent2/、flows/；分支 feature/agent2-python。
+- 第一项任务：按生成请求样例产出 SourceBundle；明确未验证状态。再实现 LangGraph 的生成、开发验证、修复和停止路径。
+- 交付：Python 依赖及版本、固定入口、独立运行样例、失败处理测试。先 maxRepairs=0，接好 C 的开发验证报告后再测试有限修复。
+- 边界：不覆盖参考合约，不修改独立验证工具和测试，不读取 hidden 结果调提示词；不提交 API key。
+- 与 Jiahao 配合：B 实现 flows.worker，Jiahao 实现 Node 侧调用。两人不各自设计另一套入口。
+
+## 组员 C — 独立验证与实验
+
+- 目录：validation/；分支 feature/validation，由 C 与 Claude 协调，避免同时修改同一文件。
+- 第一项任务：按 validate_development 约定返回报告，接编译、静态检查、条款测试；工具缺失返回 toolError。
+- 交付：报告样例、独立运行方式、版本化通过标准，给 B 的开发反馈格式。
+- 后续任务：对照 proposal 落实 A/B/C 反馈定义、统一修复预算和 visible/hidden 拆分。三种条件使用相同模型及测试条件，保留失败案例。
+- 隔离：hidden 由 C/Claude 独立维护，不发给 B，也不通过生成图的工具或日志泄露。
+
+## 合并顺序
+
+1. 所有人先复现共同版本；确认认领岗位。
+2. A 用样例开发，B 做一次生成，C 做开发验证适配；Jiahao 对接唯一入口。
+3. 合并“规则 → 单次生成 → 检查”，再合并有限修复；生成结果暂不自动部署。
+4. 后续再接自然语言页面与 Agent 3。上线另立任务，不混进这批。
+
+每项 PR 包含输入、输出、运行命令、测试结果和限制。main 保持可演示；个人分支提交，不等所有模块写完才集成。contracts/ 和 tests/ 是共同基线，修改需单独说明。shared/ 变动先记 WORKLOG 决策；REVIEW.md 和 validation/ 仍按 AI 工具分工由 Claude 负责，Codex 不修改。

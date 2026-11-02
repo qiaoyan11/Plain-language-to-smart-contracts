@@ -1,26 +1,24 @@
 {
-  "project_id": "demo-001",
-  "spec_version": 1,
-  "status": "draft",
-  "network_mode": "test_only",
-  "client_address": null,
-  "provider_address": null,
-  "total_amount_wei": "10000000000000000",
+  "schemaVersion": 1,
+  "projectId": "demo-001",
+  "specVersion": 1,
+  "name": "Company website",
+  "clientWallet": null,
+  "developerWallet": null,
   "milestones": [
     {
       "id": 1,
-      "description": "Homepage accepted",
-      "amount_wei": "3000000000000000"
+      "title": "Homepage accepted",
+      "amountWei": "3000000000000000"
     },
     {
       "id": 2,
-      "description": "Completed website accepted",
-      "amount_wei": "7000000000000000"
+      "title": "Completed website accepted",
+      "amountWei": "7000000000000000"
     }
   ],
-  "approval_role": "client",
-  "refund_policy": null,
-  "deadline": null,
-  "confirmation": null,
-  "errors": []
+  "totalAmountWei": "10000000000000000",
+  "approvalRole": "client",
+  "refundPolicy": "none",
+  "deadline": null
 }

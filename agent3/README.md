@@ -1,9 +1,9 @@
-# Agent 3 — Contract interaction
+# Agent 3 — 操作理解
 
-Owner: Member D, with B supporting deployment. Branch: feature/agent3.
+计划采用 Python，安排在生成和验证接通后；尚未实现。负责人 Jiahao，分支 feature/agent3。
 
-Read current chain state, prepare allowed calls, obtain user wallet approval and verify receipts. Keep project IDs mapped to network, address and ABI.
+把“查余额”“支付第一阶段”变成明确的操作意图，按 [模块接口 v1](../shared/INTERFACES.md) 输出。项目、网络、地址和状态来自 Node 提供的可信记录，不能让模型猜。
 
-Deploy only the artifact verified by C, using actual confirmed constructor arguments. Never handle mainnet private keys or sign for users. A transaction hash does not prove success.
+Python 不持有私钥、不签名、不另做交易系统。查询只读；付款意图交给 Node 再次核对，用户显式确认后复用已有执行能力。第一阶段继续用本地演示账户；个人钱包和公共测试网签名另行实现。
 
-Status: not implemented. See ../shared/INTERFACES.md.
+生成合约的部署入口也由 Node 管理，须核对验证报告和实际部署产物；当前自动部署手写参考合约的功能不能冒充这个检查入口。详见 [任务分配](../docs/TASKS.md)。

@@ -1,12 +1,9 @@
-# Agent 1 — Agreement understanding
+# Agent 1 — 需求理解
 
-Owner: Member A. Branch: feature/agent1.
+计划采用 Python；尚未实现。负责人为组员 A（姓名待认领），分支 feature/agent1-python。
 
-- Extract parties, amounts, milestones, approval conditions, deadlines and refund rules.
-- Ask about missing or conflicting terms.
-- Optionally retrieve cited template guidance; never silently add rules.
-- Present the draft for explicit user confirmation.
+输入用户的合作描述，输出可编辑规则、缺失信息的问题和不支持条款。先覆盖当前 1–5 阶段客户验收付款；不要把退款或期限请求默默改写为已支持。
 
-Input: message, history and current specification. Output: questions or a draft specification. Only the backend records user confirmation.
+实现 `clarify(payload)`，遵循 [模块接口 v1](../shared/INTERFACES.md)。只有 Node 在用户确认后才能生成确认记录。第一项交付是完整、缺失、超范围三类样例与独立运行说明，不需要改网页或先建 RAG。
 
-Status: not implemented. See ../shared/INTERFACES.md. Add setup instructions and examples with implementation.
+参见 [任务分配](../docs/TASKS.md)。模型依赖和版本在实现时固定；不在仓库提交密钥。

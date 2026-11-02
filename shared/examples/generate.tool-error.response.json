@@ -1,0 +1,13 @@
+{
+  "interfaceVersion": 1,
+  "requestId": "fixture-generate-001",
+  "status": "error",
+  "result": null,
+  "errors": [
+    {
+      "code": "MODEL_NOT_CONFIGURED",
+      "message": "Synthetic fixture: configure a model before generation.",
+      "field": "payload.runConfig.model"
+    }
+  ]
+}

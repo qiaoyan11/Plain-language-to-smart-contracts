@@ -14,11 +14,25 @@
 
 不改对方负责的目录；需要对方改，就写进 `REVIEW.md` 或这里。共享接口（`shared/`、合约接口）改动前要在这里记一条决策。
 
+### 四人团队分工
+
+以下是岗位分配，A/B/C 的实际姓名由组员认领，不代表已确认到人。AI 工具分工与人的岗位分工分别记录；Claude 对 validation/ 和 REVIEW.md 的负责范围不变。
+
+| 人 | 主要目录 | 第一项交付 |
+| --- | --- | --- |
+| Jiahao | frontend/、backend/、agent3/；协调 flows/、shared/ | 维护现有演示，负责 Node 与 Python 的单一连接入口及最终集成；Agent 3 后做 |
+| 组员 A | agent1/ | Python：描述变规则、缺信息时追问；先输出 JSON，不重写网页 |
+| 组员 B | agent2/；负责 flows/ 的生成修复图 | Python：按确认规则生成合约；LangGraph 调用验证并有限修复 |
+| 组员 C | validation/，与 Claude 协作 | 独立检查、开发反馈和 A/B/C 实验；隐藏评测结果不进入修复流程 |
+
+每人先复现当前演示；每个模块先交一个可独立运行的样例。flows/ 的 AI 图由 B 实现，Node 入口由 Jiahao 实现；共享字段由双方协调后修改。详细交付和分支见 docs/TASKS.md。
+
 ## 已定决策
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
-| 2026-11-02 | 技术栈留在 Node：Hardhat + solc-js + ethers；Slither 以命令行子进程调用 | 现有代码已能跑，不重写 |
+| 2026-11-02 | 更新技术栈决定：Agent 1/2/3 使用 Python；LangGraph 管理 AI 工作流；Node 保留后端、Hardhat、solc-js 和 ethers | 老板已确认；覆盖此前 Agent 留在 Node 的方向，不重写能运行的功能 |
+| 2026-11-02 | 模块交接采用 shared/INTERFACES.md v1，JSON 字段沿用现有网页的 camelCase；先用一个 Node→Python JSON 子进程入口 | 减少多人联调歧义；本轮只定格式，不实现服务或安装框架 |
 | 2026-11-02 | 合约统一实现 `IMilestoneEscrow` 接口（见下），支持 1–5 个阶段 | Agent 2 生成的合约要能用同一套测试检查 |
 | 2026-11-02 | 钱包签名、数据库、RAG 暂不做；先做评测需要的部分 | 课程按评测和可复现性打分 |
 | 2026-11-02 | `TwoStageEscrow` 保留，作为固定对照 | 生成结果要有基线比较 |
@@ -47,6 +61,14 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-02 · Codex · 确定 Python 和 LangGraph 的模块交接
+- 做了什么：更新技术栈决定、四人岗位、各 Agent 说明及统一 JSON 接口；明确 Node 保留执行能力，Python 负责 AI 流程。
+- 接入方式：先约定一个 Node 调用 Python 的 JSON 入口；先做 Agent 2 单次生成，再接独立验证和有限修复。
+- 保留内容：前端、Node 后端、Solidity 合约、已有测试和项目 API v2 均未修改；未安装框架、未实现新 Agent。
+- 怎么验证：检查 JSON 样例、字段一致性、文档链接及 Git 差异；本轮纯文档更新，不重跑业务测试。
+- 下一步：组员认领 A/B/C，先本地复现；B 与 C 按交接格式制作生成和开发验证样例，Jiahao 负责连接入口。
+- 需要老板决定：无；A/B/C 具体含义和正式修复次数沿用 proposal，实验实现前由评测负责人明确配置，不能自行猜测。
 
 ### 2026-11-02 · Codex · 改写组员版 README
 - 做了什么：用白话说明项目目标、已跑通的功能、三阶段案例、本地测试限制和后续 AI 模块的接入方式。
