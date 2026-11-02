@@ -1,33 +1,92 @@
 # Plain Language to Smart Contracts
 
-An open-source project for turning plain-language service agreements into tested Solidity contracts and enabling wallet-authorized interactions.
+我们想做一个应用：用户用日常语言描述一份服务合作计划，系统把它整理成明确的付款规则，生成并检查智能合约，再帮助用户执行和查询。
 
-## Workflow
+例如：“我请开发者制作网站，分三阶段付款，每阶段由我验收。”系统最终需要理解这句话，确认细节，再把付款条件变成能执行的程序。
 
-Agreement → Agent 1 clarification → user confirmation → Agent 2 generation → verification and bounded repair → wallet-approved deployment → Agent 3 interaction and receipt checks.
+**目前已经完成的是这套应用的基础流程：用户手动填写规则，网页调用我们手写并测试过的合约，完成分阶段付款。AI 部分还没有接入。**
 
-## Modules
+## 现在可以做什么
 
-| Directory | Responsibility | Development branch |
+打开应用后，用户可以：
+
+1. 创建一个项目，填入客户和开发者的测试账户。
+2. 设置 **1–5 个阶段**，填写每个阶段的名称和金额。
+3. 核对付款规则，确认后创建项目。
+4. 点击 **Deploy contract**，把合约放到本地测试链上运行。
+5. 点击 **Deposit funds**，把全部测试资金存进合约。
+6. 按顺序批准每个阶段的付款，查看余额、付款状态和交易记录。
+
+网页、后端和合约已经接通。付款按钮会触发合约执行，再读取执行结果；刷新页面后也会重新读取合约状态。
+
+## 一个具体例子
+
+客户请开发者制作公司网站，总价为 **0.01 测试 ETH**：
+
+| 阶段 | 交付内容 | 金额 |
 | --- | --- | --- |
-| agent1/ | Requirements, clarification, optional RAG | feature/agent1 |
-| agent2/ | Solidity generation and repair | feature/agent2 |
-| validation/ | Compilation, static analysis and clause tests | feature/validation |
-| agent3/ | Deployment, queries and wallet-authorized operations | feature/agent3 |
-| shared/ | Versioned interfaces and examples | Cross-module review |
-| backend/ | Workflow and persistence | Shared |
-| frontend/ | Input, confirmation and operation screens | Shared |
+| 1 | 完成设计稿 | 0.002 ETH |
+| 2 | 完成首页 | 0.003 ETH |
+| 3 | 完成整站 | 0.005 ETH |
 
-Module ownership is a collaboration convention, not folder-level access control. Each contributor integrates their own module.
+客户先存入 0.01 测试 ETH。第一阶段验收后，客户点击批准，合约支付 0.002 ETH，剩余 0.008 ETH。后面的阶段也按这个顺序完成。
 
-## Roadmap
+**交付是否合格由客户判断。**程序检查的是：是否由客户操作、是否已经存款、前面的阶段是否已支付，以及有没有重复付款。
 
-1. Agree on interfaces and refund rules.
-2. Implement local reference-contract workflow.
-3. Add generation, verification and repair.
-4. Add public-testnet deployment and wallet interaction.
-5. Publish reproducible evaluation and failure analysis.
+## 合约是真的 资金是测试用的
+
+智能合约代码会实际执行，但目前运行在电脑里的本地模拟区块链上，没有部署到以太坊公共网络。
+
+- 测试资金没有实际价值，不需要从 Coinbase 买币。
+- 本地演示由程序使用测试账户自动签名，不需要连接个人钱包。
+- 当前项目和链上记录是临时的；重启后端会重置。刷新网页不会重置。
+- 当前没有退款、取消或争议处理功能，不应用于真实资金。
+
+## 哪些部分已经做好
+
+| 部分 | 用容易理解的话说 | 已完成的内容 |
+| --- | --- | --- |
+| 网页 | 用户填写和操作的地方 | 创建项目、确认规则、部署、存款、逐阶段付款、查看结果 |
+| 后端 | 把网页操作交给合约，再把结果带回来的程序 | 接收项目规则、部署合约、提交操作、读取余额和状态 |
+| 智能合约 | 按约定规则管理资金的程序 | 支持 1–5 个阶段，检查权限、金额、付款顺序和重复操作 |
+| 基础测试 | 检查正确操作能成功，错误操作会被拒绝 | 合约测试、前后端接口测试和页面相关测试 |
+
+最近一次完整验证：合约测试 **26/26**、接口测试 **5/5**、前端测试 **7/7** 通过；前端类型检查和构建通过。浏览器中也已完成三阶段的部署、存款、付款和刷新检查。
+
+这些是当前基础版本的测试，不代表后续 AI 生成合约的评测已经完成，也不等于完整安全审计。
+
+## 接下来怎么加入 AI
+
+大家继续使用现有页面、后端和合约接口，在这个基础上增加能力。
+
+| 后续模块 | 要增加的能力 | 怎么接到当前版本 |
+| --- | --- | --- |
+| Agent 1 | 理解用户写的合作计划，追问缺失的信息 | 把结果填入规则确认页，交给用户核对 |
+| Agent 2 | 根据确认后的规则生成合约，并根据检查结果修复问题 | 现有手写合约保留作对照；生成的合约需要先通过验证 |
+| 验证与评测 | 检查生成合约是否符合规则，比较不同修复方式的效果 | 输出检查报告，供 Agent 2 修复和实验分析使用 |
+| Agent 3 | 理解“查询余额”“支付第一阶段”等操作请求 | 复用现有的合约查询和执行能力，再逐步补上确认流程 |
+
+最近的下一步是确定模块之间传递的规则和检查报告格式，然后接入 Agent 2 的生成与验证流程。钱包、数据库、RAG 和 Langflow 暂时不加入。
+
+## 组员从哪里接手
+
+建议每个人先在本地跑通一次现有流程，确认自己的环境正常，并理解项目如何工作，再开发自己的模块。运行方法见 [本地演示说明](docs/FRONTEND_INTEGRATION.md)。
+
+各模块在自己的分支开发，通过 Pull Request 合并；主分支保留能演示的版本。共享数据格式改动前先沟通，避免各模块接不上。
+
+| 目录 | 存放什么 |
+| --- | --- |
+| `frontend/` | 网页 |
+| `backend/` | 网页与合约之间的调用逻辑 |
+| `contracts/` | 智能合约，包括当前可配置版本和保留的两阶段对照版本 |
+| `tests/` | 当前基础版本的自动测试 |
+| `agent1/`、`agent2/`、`agent3/` | 后续 AI 模块的预留位置，不代表已经实现 |
+| `validation/` | 独立验证与评测模块的工作位置 |
+| `shared/` | 各模块共同遵守的数据格式和接口说明 |
+| `docs/` | 运行说明、已定决策和工作日志 |
+
+想知道最近完成了什么，读 [工作日志](docs/WORKLOG.md)。开发时需要了解前后端具体传什么数据，读 [项目接口说明](shared/PROJECT_API_V2.md)。
 
 ## License
 
-MIT; see LICENSE.
+MIT，见 [LICENSE](LICENSE)。
