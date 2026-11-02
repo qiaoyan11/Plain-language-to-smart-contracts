@@ -1,0 +1,16 @@
+{
+  "name": "plain-language-to-smart-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "compile": "node scripts/compile.cjs",
+    "test": "node --test tests/escrow.test.cjs",
+    "demo": "node scripts/demo.cjs"
+  },
+  "engines": { "node": ">=20 <23" },
+  "devDependencies": {
+    "ethers": "6.15.0",
+    "hardhat": "2.26.3",
+    "solc": "0.8.28"
+  }
+}
