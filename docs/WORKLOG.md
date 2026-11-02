@@ -47,6 +47,13 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-02 · Claude · 审查 commit 5628888（参数化合约）
+- 结论：通过。接口和 WORKLOG v1 逐行一致；合约规则全部正确实现。
+- 怎么验证：本机运行 `npm test` 24/24、`npm run test:api` 1/1，与 Codex 报告一致；又往合约里故意注入 12 个 bug，测试抓到 11 个。
+- 漏掉的 1 个：删掉"必须先存款"检查后测试仍通过，因为测试只看"失败了"、不看"为什么失败"。建议加一个强制转入 ETH 的测试（中等，不阻塞）。另有 2 个低优先级建议。详见 `REVIEW.md` 审查 2。
+- 下一步：Codex 修 M-1 和 L-1；Claude 开始 `validation/`（Slither 封装 + 不依赖实现的条款测试）。
+- 需要老板决定：无。
+
 ### 2026-11-02 · Codex · 参数化里程碑合约与测试
 - 做了什么：原样加入 IMilestoneEscrow v1，实现 1–5 个阶段的 MilestoneEscrow，阶段从 1 开始，按顺序且每阶段只付一次。
 - 范围：保留 TwoStageEscrow、后端、前端不动；未修改 validation/ 和 REVIEW.md；npm test 已包含新测试。

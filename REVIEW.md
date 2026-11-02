@@ -1,4 +1,57 @@
-# REVIEW.md — 独立审查（Claude，2026-11-02）
+# REVIEW.md
+
+最新审查在最上面。
+
+---
+
+## 审查 2：commit `5628888`（IMilestoneEscrow v1）· Claude · 2026-11-02
+
+**结论：通过。** 有 1 个中等问题（测试会误判通过），建议下一步顺手修，不阻塞后续工作。
+
+### 核实结果
+
+| 检查项 | 结果 |
+| --- | --- |
+| `contracts/IMilestoneEscrow.sol` 与 WORKLOG v1 对照 | 逐行一致（事件、9 个函数、签名、注释） |
+| `contracts/MilestoneEscrow.sol` 规则 | 1–5 个阶段、仅 client、精确单次存款、按顺序、不重复、转账失败整体回滚，全部正确实现。先改状态再转账；provider 无法重入（`onlyClient`） |
+| `npm test` | 24/24 通过（原 7 + 新 17），与报告一致 |
+| `npm run test:api` | 1/1 通过，与报告一致 |
+| 失败交易是否断言真实回执 | 是。`rejectedReceipt()` 要求 `CALL_EXCEPTION`、有 receipt、`status === 0`、无残留 log；`rejected()` 还比较前后完整状态快照 |
+| Mutation testing（往合约注入 12 个 bug） | 抓到 11 个，漏 1 个（见 M-1） |
+
+注入的 bug 及结果：去掉 accept/deposit 的 onlyClient、允许多付、允许重复存款、不检查顺序、转账失败不回滚、付错金额、允许 6 个阶段、允许金额为 0、id 越界差一、允许 client==provider，全部被抓到。**去掉"必须先存款"的检查，测试仍全部通过。**
+
+### 中
+
+**M-1. 测试只检查"失败了"，不检查"为什么失败"，导致"必须先存款"这条规则实际上没被测到。**
+- 位置：`tests/milestone.test.cjs` 第 150–160 行（funding is required…），以及第 52–63 行 `rejected()`。
+- 原因：未存款时合约余额为 0，`acceptMilestone` 转账必然失败，以 `TransferFailed` revert。所以把 `MilestoneEscrow.sol` 第 69 行的 `!funded ||` 删掉，交易照样 revert，测试照样通过。正常情况下没关系，但有人用 `selfdestruct` 强行转入 ETH 后，未存款的合约就能付款。
+- 影响：之后 Agent 2 生成的合约也会用同类测试检查，这种"原因不对但也失败了"的情况会被误判为符合条款。
+- 修复建议（任选其一，最好都做）：
+  1. 加一个强制转入 ETH 的测试（已在审查环境验证：原合约通过，删掉检查的变异体失败）：
+     ```solidity
+     // 测试辅助合约
+     contract Force { constructor(address payable to) payable { selfdestruct(to); } }
+     ```
+     部署 escrow → 用 `Force` 转入 0.01 ETH → 断言 `acceptMilestone(1)` 仍然 revert（status 0）且 `isPaid(1) == false`。这种方式不依赖错误名，以后可以直接用于检查生成的合约。
+  2. 对本仓库自己的合约，在发送交易前用 `staticCall` 断言错误名，例如
+     `await assert.rejects(c.acceptMilestone.staticCall(1), e => e.revert?.name === 'InvalidState')`。注意：生成的合约错误名不固定，这种断言只适合参考合约。
+
+### 低
+
+**L-1. `MilestonePaid` 事件在外部调用之后才发出**（`contracts/MilestoneEscrow.sol` 第 73–74 行）。
+功能上没问题（转账失败时事件一起回滚）。但 Slither 的 `reentrancy-events` 预计会报这一条，而 Slither 告警数是报告指标之一，参考合约最好是 0 告警。建议把 `emit` 挪到 `call` 之前。（审查环境未装 Slither，待 Claude 在 `validation/` 接入后核实。）
+
+**L-2. 没有测试恶意收款方回调（重入）的情况。** 当前合约因为 `onlyClient` 是安全的，属于可选补充：收款合约在 `receive()` 里回调 `acceptMilestone`，断言整笔交易回滚。
+
+### 信息（不需要修）
+
+- 没有退款路径，client 永不验收时资金锁死。合约注释和 WORKLOG 已写明，按计划之后单独决定。
+- origin/main 已在 `42266f3`，推送已完成。
+
+---
+
+## 审查 1：本地两个 commit 和计划 · Claude · 2026-11-02
 
 审查对象：本地未推送的两个 commit（`3e8fc0f`、`210c773`）和《从基础托管流程到三个 Agent 协作的最终版本》计划。
 方式：不信任文档描述，自行读代码并运行测试。
