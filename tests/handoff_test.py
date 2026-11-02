@@ -82,6 +82,27 @@ class HandoffTests(unittest.TestCase):
         response=dispatch(self.request); response['result']['sourceBundle']['specVersion']=2
         with self.assertRaises(ValueError): validate_response(self.request,response)
 
+    def test_repair_budget_is_enforced(self):
+        response = dispatch(self.request)
+        response['result']['attempts'].append({**response['result']['attempts'][0], 'attempt': 1})
+        with self.assertRaisesRegex(ValueError, 'Repair budget'):
+            validate_response(self.request, response)
+        self.request['payload']['runConfig']['maxRepairs'] = 1
+        validate_response(self.request, response)
+
+    def test_final_report_id_is_bound_to_attempt(self):
+        response = dispatch(self.request)
+        response['result']['attempts'][0]['reportId'] = 'unrelated'
+        with self.assertRaisesRegex(ValueError, 'Last attempt report'):
+            validate_response(self.request, response)
+        report = json.loads((ROOT/'shared/examples/validation-report.json').read_text())
+        self.request['payload']['runConfig']['validationMode'] = 'development'
+        response['result'].update(status='toolError', validationReport=report)
+        with self.assertRaisesRegex(ValueError, 'Last attempt report'):
+            validate_response(self.request, response)
+        response['result']['attempts'][0]['reportId'] = report['reportId']
+        validate_response(self.request, response)
+
     def test_no_invented_experiment(self):
         self.request['payload']['runConfig']['feedbackSetting']='A'
         with self.assertRaises(ValueError): dispatch(self.request)

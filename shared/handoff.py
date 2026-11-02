@@ -77,6 +77,7 @@ def validate(kind, data):
         require([a['attempt'] for a in data['attempts']] == list(range(len(data['attempts']))), 'Attempt order invalid')
         if bundle is not None:
             require(bool(data['attempts']) and data['attempts'][-1]['sourceHash'] == bundle['sourceHash'], 'Last attempt hash mismatch')
+            require(data['attempts'][-1]['reportId'] == (report['reportId'] if report else None), 'Last attempt report mismatch')
     elif kind == 'PlanInput':
         require(data['snapshot']['id'] == data['projectId'], 'Snapshot project mismatch')
         require(data['snapshot']['contractAddress'] is not None and
@@ -103,6 +104,7 @@ def validate_response(request, response):
     require(not response['errors'], 'Successful envelope cannot contain errors')
     validate(OPS[request['operation']] + 'Result', response['result'])
     if request['operation'] == 'generate':
+        require(len(response['result']['attempts']) <= request['payload']['runConfig']['maxRepairs'] + 1, 'Repair budget exceeded')
         bundle = response['result']['sourceBundle']
         if bundle:
             for key in ('projectId', 'specVersion'):

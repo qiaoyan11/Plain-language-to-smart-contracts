@@ -43,3 +43,58 @@ test('oversize request is rejected before launch', async () => {
   const r=clone();r.payload.spec.name='x'.repeat(1024*1024);
   await assert.rejects(runPython(r), /INPUT_LIMIT/);
 });
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { validateResponse } = require('../shared/handoff.cjs');
+const fakeWorker = path.join(__dirname, 'fixtures/bridge-worker.cjs');
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+test('replacement worker cannot return an incomplete validated result', {skip:process.platform === 'win32'}, async () => {
+  const previous = process.env.PYTHON_BIN;
+  process.env.PYTHON_BIN = fakeWorker;
+  try { await assert.rejects(runPython(clone()), /INVALID_GenerateResult/); }
+  finally { previous === undefined ? delete process.env.PYTHON_BIN : process.env.PYTHON_BIN = previous; }
+});
+
+test('repair budget and final report association are checked at Node boundary', async () => {
+  const response = await runPython(clone());
+  const over = structuredClone(response);
+  over.result.attempts.push({...over.result.attempts[0],attempt:1});
+  assert.throws(()=>validateResponse(clone(),over), /REPAIR_BUDGET_EXCEEDED/);
+  const mismatch = structuredClone(response);
+  mismatch.result.attempts[0].reportId = 'unrelated-report';
+  assert.throws(()=>validateResponse(clone(),mismatch), /ATTEMPT_REPORT_MISMATCH/);
+  const accepted = structuredClone(response);
+  accepted.result.attempts.push({...accepted.result.attempts[0],attempt:1});
+  const withBudget = clone(); withBudget.payload.runConfig.maxRepairs = 1;
+  validateResponse(withBudget,accepted);
+});
+
+test('timeout kills stubborn worker and its child before releasing project lock', {skip:process.platform === 'win32'}, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(),'bridge-cleanup-'));
+  const marker = path.join(dir,'pids');
+  const previous = {PYTHON_BIN:process.env.PYTHON_BIN,BRIDGE_PROBE:process.env.BRIDGE_PROBE,PROBE_FILE:process.env.PROBE_FILE};
+  Object.assign(process.env,{PYTHON_BIN:fakeWorker,BRIDGE_PROBE:'stubborn',PROBE_FILE:marker});
+  let pids = [];
+  try {
+    const pending = assert.rejects(runPython(clone(),{timeoutMs:1000}), /PYTHON_TIMEOUT/);
+    const deadline = Date.now()+5000;
+    while (!fs.existsSync(marker+'.term') && Date.now()<deadline) await pause(10);
+    assert.ok(fs.existsSync(marker+'.term'), 'worker received TERM');
+    pids = JSON.parse(fs.readFileSync(marker,'utf8'));
+    await assert.rejects(runPython(clone()), /PROJECT_BUSY/);
+    await pending;
+    for (const pid of pids) {
+      const gone = () => { try { process.kill(pid, 0); return false; } catch (e) { return e.code === 'ESRCH'; } };
+      for (let n = 0; n < 100 && !gone(); n++) await pause(10);
+      assert.ok(gone(), `process ${pid} is still alive`);
+    }
+  } finally {
+    for (const pid of pids) { try {process.kill(pid,'SIGKILL');} catch {} }
+    for (const [key,value] of Object.entries(previous)) value === undefined ? delete process.env[key] : process.env[key]=value;
+    fs.rmSync(dir,{recursive:true,force:true});
+  }
+  assert.equal((await runPython(clone())).status,'ok');
+});

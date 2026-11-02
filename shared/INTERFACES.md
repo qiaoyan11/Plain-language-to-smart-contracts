@@ -122,3 +122,11 @@ See [draft](examples/agreement.draft.json), [generation request](examples/genera
 Each owner adds a module-local runner and tests when implementing. Initial integration milestone: Node sends one confirmed fixture to Python, receives a well-formed generated bundle or a clear tool error, and leaves the existing reference demo intact. Then connect development validation and bounded repair. Do not add a second HTTP backend, wallet service or database for this milestone.
 
 Executable definitions live in `schemas/handoff.schema.json` under `$defs`; Python entry and exit checks use `shared.handoff`. Cross-field checks supplement the schema (totals, IDs, versions, source hashes). All fixtures are synthetic. `npm run e2e` checks wiring only; it does not exercise an AI model, independent validator, LangGraph repair, or generated-code deployment.
+
+## Integration checks added after adversarial review
+
+Both the Python worker and Node receiver validate operation-specific result shapes against the same JSON Schema. Node uses shared/handoff.cjs; Python uses shared/handoff.py. Both enforce the repair budget (initial attempt plus at most maxRepairs), final attempt/source/report association, and matching source/version. This does not authenticate a report.
+
+On cancellation, the bridge keeps the project lock until the worker closes. On macOS/Linux it sends TERM to the process group, waits 200 ms, then KILLs the group including ordinary compiler children. On Windows it uses taskkill /T /F; this branch has not been exercised on the current Mac. Tools must not detach themselves from the managed process group.
+
+When connecting validation, the trusted workflow must call C's validate_development directly and attach that returned report and artifact. Model output may supply only source/repair content, never validation evidence. A self-consistent JSON report is not proof that tests ran. No deployment path may trust model-authored passed reports. This provenance boundary is a required integration task, not a signature system or a feature claimed complete today.
