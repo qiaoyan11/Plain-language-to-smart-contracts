@@ -71,9 +71,9 @@ contract MilestoneEscrow is IMilestoneEscrow {
         uint256 amount = amounts[id - 1];
         // Commit effects before calling the recipient; failure reverts both.
         ++nextMilestone;
+        emit MilestonePaid(id, provider, amount);
         (bool sent, ) = payable(provider).call{value: amount}("");
         if (!sent) revert TransferFailed();
-        emit MilestonePaid(id, provider, amount);
     }
 
     function checkId(uint256 id) private view {

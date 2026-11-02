@@ -62,6 +62,15 @@ async function rejected(send, c, provider, { recipientPaysGas = false } = {}) {
   assert.deepEqual(after, before, 'Failed transactions must preserve all escrow state and funds');
 }
 
+
+// Error names belong to this reference implementation, not generated-contract validation.
+async function rejectedCall(method, args, c, provider, errorName, options) {
+  await assert.rejects(() => method.staticCall(...args),
+    e => e.code === 'CALL_EXCEPTION' && e.revert?.name === errorName,
+    `Expected ${errorName} before submitting the transaction`);
+  await rejected(() => method(...args), c, provider, options);
+}
+
 for (const count of [1, 2, 3, 5]) {
   test(`${count} milestones: exact payments, one-based getters and events through completion`, async () => {
     const { contract: c, provider: p, client, payee, amounts } = await setup(values.slice(0, count));
@@ -124,13 +133,13 @@ for (const [label, amounts, kind] of invalidConfigurations) {
 test('only client may deposit and accept every milestone', async () => {
   const { contract: c, provider: p, outsider, payee, amounts } = await setup();
   for (const actor of [outsider, payee]) {
-    await rejected(() => c.connect(actor).deposit({ ...gas, value: sum(amounts) }), c, p,
+    await rejectedCall(c.connect(actor).deposit, [{ ...gas, value: sum(amounts) }], c, p, 'Unauthorized',
       { recipientPaysGas: actor === payee });
   }
   await mined(c.deposit({ value: sum(amounts) }));
   for (let id = 1; id <= amounts.length; id++) {
     for (const actor of [outsider, payee]) {
-      await rejected(() => c.connect(actor).acceptMilestone(id, gas), c, p,
+      await rejectedCall(c.connect(actor).acceptMilestone, [id, gas], c, p, 'Unauthorized',
         { recipientPaysGas: actor === payee });
     }
     await mined(c.acceptMilestone(id));
@@ -140,7 +149,7 @@ test('only client may deposit and accept every milestone', async () => {
 test('zero, under and over deposits revert; exact deposit works afterward', async () => {
   const { contract: c, provider: p, amounts } = await setup();
   for (const value of [0n, sum(amounts) - 1n, sum(amounts) + 1n]) {
-    await rejected(() => c.deposit({ ...gas, value }), c, p);
+    await rejectedCall(c.deposit, [{ ...gas, value }], c, p, 'IncorrectDeposit');
   }
   await mined(c.deposit({ value: sum(amounts) }));
   assert.equal(await c.funded(), true);
@@ -149,12 +158,12 @@ test('zero, under and over deposits revert; exact deposit works afterward', asyn
 
 test('funding is required and later milestones cannot skip ahead', async () => {
   const { contract: c, provider: p, amounts } = await setup();
-  for (let id = 1; id <= amounts.length; id++) await rejected(() => c.acceptMilestone(id, gas), c, p);
+  for (let id = 1; id <= amounts.length; id++) await rejectedCall(c.acceptMilestone, [id, gas], c, p, 'InvalidState');
   await mined(c.deposit({ value: sum(amounts) }));
-  await rejected(() => c.acceptMilestone(2, gas), c, p);
-  await rejected(() => c.acceptMilestone(3, gas), c, p);
+  await rejectedCall(c.acceptMilestone, [2, gas], c, p, 'InvalidState');
+  await rejectedCall(c.acceptMilestone, [3, gas], c, p, 'InvalidState');
   await mined(c.acceptMilestone(1));
-  await rejected(() => c.acceptMilestone(3, gas), c, p);
+  await rejectedCall(c.acceptMilestone, [3, gas], c, p, 'InvalidState');
   await mined(c.acceptMilestone(2));
   await mined(c.acceptMilestone(3));
 });
@@ -163,12 +172,12 @@ test('no repeated deposit or payment, including after completion', async () => {
   const { contract: c, provider: p, amounts } = await setup();
   await mined(c.deposit({ value: sum(amounts) }));
   for (let id = 1; id <= amounts.length; id++) {
-    await rejected(() => c.deposit({ ...gas, value: sum(amounts) }), c, p);
+    await rejectedCall(c.deposit, [{ ...gas, value: sum(amounts) }], c, p, 'InvalidState');
     await mined(c.acceptMilestone(id));
-    await rejected(() => c.acceptMilestone(id, gas), c, p);
+    await rejectedCall(c.acceptMilestone, [id, gas], c, p, 'InvalidState');
   }
-  await rejected(() => c.deposit({ ...gas, value: sum(amounts) }), c, p);
-  for (let id = 1; id <= amounts.length; id++) await rejected(() => c.acceptMilestone(id, gas), c, p);
+  await rejectedCall(c.deposit, [{ ...gas, value: sum(amounts) }], c, p, 'InvalidState');
+  for (let id = 1; id <= amounts.length; id++) await rejectedCall(c.acceptMilestone, [id, gas], c, p, 'InvalidState');
 });
 
 test('out-of-range IDs reject reads and mined writes', async () => {
@@ -211,4 +220,61 @@ test('recipient rejection rolls back payment and sequence at every milestone; re
     assert.equal(await balance(p, await receiver.getAddress()), paid);
     assert.equal(await balance(p, await c.getAddress()), sum(amounts) - paid);
   }
+});
+
+test('forced ETH cannot replace an authorized deposit', async () => {
+  const { contract: c, provider: p, client } = await setup(values.slice(0, 2));
+  const output = compile({ 'Force.sol': { content: `
+    // SPDX-License-Identifier: MIT
+    pragma solidity 0.8.28;
+    contract Force {
+      constructor(address payable to) payable { selfdestruct(to); }
+    }` } });
+  const a = output['Force.sol'].Force;
+  const force = await new ContractFactory(a.abi, '0x' + a.evm.bytecode.object, client)
+    .deploy(await c.getAddress(), { value: parseEther('0.01') });
+  assert.equal((await force.deploymentTransaction().wait()).status, 1);
+  assert.equal(await balance(p, await c.getAddress()), parseEther('0.01'));
+  assert.equal(await c.funded(), false);
+  assert.equal(await c.isPaid(1), false);
+  await rejectedCall(c.acceptMilestone, [1, gas], c, p, 'InvalidState');
+  assert.equal(await c.funded(), false);
+  assert.equal(await c.isPaid(1), false);
+  assert.equal(await balance(p, await c.getAddress()), parseEther('0.01'));
+});
+
+test('malicious recipient callback reverts the entire payment and its event', async () => {
+  const { client, provider: p, factory } = await context();
+  const output = compile({ 'ReentrantReceiver.sol': { content: `
+    // SPDX-License-Identifier: MIT
+    pragma solidity 0.8.28;
+    interface Target { function acceptMilestone(uint256 id) external; }
+    contract ReentrantReceiver {
+      Target public target;
+      bool public entered;
+      function setTarget(address escrow) external { target = Target(escrow); }
+      receive() external payable {
+        if (!entered) {
+          entered = true;
+          target.acceptMilestone(2);
+        }
+      }
+    }` } });
+  const a = output['ReentrantReceiver.sol'].ReentrantReceiver;
+  const receiver = await new ContractFactory(a.abi, '0x' + a.evm.bytecode.object, client).deploy();
+  await receiver.waitForDeployment();
+  const amounts = values.slice(0, 2);
+  const c = await factory.deploy(await client.getAddress(), await receiver.getAddress(), amounts);
+  await c.waitForDeployment();
+  await mined(receiver.setTarget(await c.getAddress()));
+  await mined(c.deposit({ value: sum(amounts) }));
+  // The callback targets the next valid ID, so onlyClient must reject the receiver.
+  // Its uncaught rejection makes the outer transfer fail and rolls back both contracts.
+  await rejectedCall(c.acceptMilestone, [1, gas], c, p, 'TransferFailed');
+  assert.equal(await receiver.entered(), false);
+  assert.equal(await c.funded(), true);
+  assert.equal(await c.isPaid(1), false);
+  assert.equal(await c.isPaid(2), false);
+  assert.equal(await balance(p, await receiver.getAddress()), 0n);
+  assert.equal(await balance(p, await c.getAddress()), sum(amounts));
 });
