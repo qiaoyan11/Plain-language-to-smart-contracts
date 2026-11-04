@@ -34,6 +34,8 @@ The backend runs a real local EVM inside its process, automatically signing with
 | GET | `/api/projects/:id` | Get project metadata and freshly read chain state |
 | POST | `/api/projects/:id/actions` | Execute deploy, deposit, or acceptMilestone with a milestoneId |
 
+Agent 2 now has a separate [generation HTTP API](../shared/GENERATION_API_V1.md) for rule revisions, explicit confirmation, asynchronous generation and polling. The existing UI is unchanged and does not call it yet. Creating a project through the table above does not create that AI confirmation. The existing deploy action always uses the handwritten reference contract.
+
 See [Project API v2](../shared/PROJECT_API_V2.md) for request and response fields. Amounts are integer wei strings throughout the API and converted to decimal ETH text only for display. Successful actions return the updated Project and confirmed transactions. Errors never fall back to mock success.
 
 Vite proxies `/api` to `127.0.0.1:3001`. No public tunnel is needed. Do not expose this auto-signing backend publicly: it deliberately has no user authentication and controls test accounts. Public-testnet signing is outside this step; follow the decisions in WORKLOG before changing it.

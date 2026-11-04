@@ -1,6 +1,6 @@
 # Module handoff v1 — Python and LangGraph
 
-This v1 contract now has executable JSON schemas, Python fixture modules and a standalone Node bridge. Agent 2 now has live LangGraph generation, trusted development validation and bounded repair; UI integration and formal evaluation remain pending. The working Node server, frontend and Solidity contracts remain unchanged. See [team setup](../docs/TEAM_HANDOFF.md).
+This v1 contract has executable JSON schemas, Python fixture modules and a Node bridge. Agent 2 has live LangGraph generation, trusted development validation and bounded repair. Node now exposes confirmation, versioning and asynchronous generation through [Generation HTTP API v1](GENERATION_API_V1.md); frontend integration and formal evaluation remain pending. The existing reference-demo endpoints, frontend and Solidity contracts are preserved. See [team setup](../docs/TEAM_HANDOFF.md).
 
 The existing [Project API v2](PROJECT_API_V2.md) continues to serve the current UI. `IMilestoneEscrow v1` in [WORKLOG](../docs/WORKLOG.md) is unchanged. This document replaces the earlier draft v0.1 and its snake_case example fields; no existing HTTP endpoint is renamed.
 
@@ -20,7 +20,7 @@ Use LangGraph first for the generation/check/repair loop. No Langflow service is
 
 ## 2. One bridge, before adding services
 
-Initial transport: Node launches a configured Python interpreter with a fixed module entry point (`flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The entry point defaults to fixture mode. Explicit AGENT2_MODE=live enables Agent 2 generation/validation/repair; Agent 1/3 remain fixtures. The bridge is not called by server.cjs yet; immutable confirmations and live version checks remain integration work. Defaults: 10-second fixture timeout or 210-second smoke timeout or 900 seconds per development attempt (up to 6 attempts), 1 MiB input, 1 MiB combined stdout/stderr, one active process per project per Node process.
+Initial transport: Node launches a configured Python interpreter with a fixed module entry point (`flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The worker defaults to fixture mode. Explicit AGENT2_MODE=live enables Agent 2 generation/validation/repair; Agent 1/3 remain fixtures. server.cjs now calls the bridge through generation.cjs, which binds immutable confirmed rules to each request and checks the current version before accepting results. The HTTP generation endpoint is disabled unless live mode is explicitly enabled; it does not silently return fixture success. Defaults: 10-second fixture timeout or 210-second smoke timeout or 900 seconds per development attempt (up to 6 attempts), 1 MiB input, 1 MiB combined stdout/stderr, one active process per project per Node process.
 
 Envelope:
 
@@ -53,7 +53,7 @@ IDs are consecutive integers starting at 1. Titles are nonblank, at most 120 cha
 
 `DraftSpec` has the same keys but allows missing addresses, total, or milestone values to be null, and an empty milestones array while clarifying. It cannot be sent to generation. Unsupported refund/deadline requests must be disclosed, not silently converted to `none`/null and presented as equivalent.
 
-Node converts a confirmed UI project into ConfirmedSpec: add projectId/specVersion and fixed supported policy values; remove deployed state, transaction history and milestone `paid` flags. The existing API does not yet implement this adapter or confirmation versions.
+Node converts a UI project into ConfirmedSpec: add projectId/specVersion and fixed supported policy values; remove deployed state, transaction history and milestone `paid` flags. generation.cjs implements this adapter and versioned confirmations. The complete shape alone does not imply user approval: a matching server-created ConfirmationRecord is also required. These records currently live in memory, not a persistent database.
 
 `ConfirmationRecord`: `{projectId, specVersion, confirmationId, confirmedAt}`. Only Node creates this after an explicit user action and retains the corresponding immutable spec. An agent-supplied record alone is not evidence of approval. Changing any rule increments specVersion and invalidates earlier confirmation/validation.
 
@@ -129,6 +129,6 @@ Both the Python worker and Node receiver validate operation-specific result shap
 
 On cancellation, the bridge keeps the project lock until the worker closes. On macOS/Linux it sends TERM to the process group, waits 200 ms, then KILLs the group including ordinary compiler children. On Windows it uses taskkill /T /F; this branch has not been exercised on the current Mac. Tools must not detach themselves from the managed process group.
 
-When connecting validation, the trusted workflow must call C's validate_development directly and attach that returned report and artifact. Model output may supply only source/repair content, never validation evidence. A self-consistent JSON report is not proof that tests ran. No deployment path may trust model-authored passed reports. This provenance boundary is a required integration task, not a signature system or a feature claimed complete today.
+The trusted workflow calls C's validate_development directly and attaches that returned report and artifact. Model output may supply only source/repair content, never validation evidence. A self-consistent JSON report is not proof that tests ran. No deployment path may trust model-authored passed reports. This provenance boundary is implemented in flows/generation.py; generated-artifact deployment remains a separate integration task.
 
-Agent 2 live progress and usage are documented in ../agent2/README.md and ../docs/AGENT2_FIRST_RUN.md. Its compilation.json is a smoke-check record, never a ValidationReport. No passed independent report or deployment authority is created. Full proposal features (refunds, cancellation, deadlines, OpenZeppelin) are still outside this v1 subset, not removed from the project goal.
+Agent 2 live progress and usage are documented in ../agent2/README.md and ../docs/AGENT2_VALIDATION_RUN.md. Its compilation.json is a smoke-check record, never a ValidationReport. Development mode separately obtains the independent report; neither mode grants deployment authority. Full proposal features (refunds, cancellation, deadlines, OpenZeppelin) are still outside this v1 subset, not removed from the project goal.

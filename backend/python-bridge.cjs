@@ -1,4 +1,4 @@
-// Standalone adapter only: server.cjs does not expose this to the UI yet.
+// Fixed Node -> Python bridge, used by the local generation HTTP controller.
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');

@@ -2,6 +2,8 @@
 
 The HTTP/UI representation of a project is version 2. The Solidity interface remains `IMilestoneEscrow v1`. This is a breaking replacement of the fixed two-stage local-demo API; create new projects after restarting the backend. The fixed `TwoStageEscrow` and its tests remain unchanged as the baseline.
 
+For versioned rules, explicit Agent 2 confirmation and asynchronous generation, use the separate [Generation HTTP API v1](GENERATION_API_V1.md). It does not change the Project response below. Creating a Project alone does not authorize AI generation.
+
 ## Create project
 
 `POST /api/projects`
@@ -38,6 +40,6 @@ Each milestone contains `id`, `title`, `amountWei`, `paid`. Transactions contain
 { "action": "acceptMilestone", "milestoneId": 1 }
 ```
 
-Deploy passes the confirmed amount array to `MilestoneEscrow`. Deposit sends the computed total. Acceptance invokes `acceptMilestone(id)`; funding, authorization, ordering and duplication are ultimately enforced by the contract. IDs must be integer numbers in range. `stage1` and `stage2` actions are no longer supported. A shared local signer permits only one transaction at a time; another operation receives 409 and may be retried after completion.
+Deploy passes the project's amount array to the handwritten `MilestoneEscrow`. This reference-demo action never deploys an AI-generated artifact. Deposit sends the computed total. Acceptance invokes `acceptMilestone(id)`; funding, authorization, ordering and duplication are ultimately enforced by the contract. IDs must be integer numbers in range. `stage1` and `stage2` actions are no longer supported. A shared local signer permits only one transaction at a time; another operation receives 409 and may be retried after completion.
 
 HTTP errors contain `{ "error": "..." }`: 400 for invalid input, 403 for foreign host/origin, 404 for missing project, 409 for busy or contract-rejected actions. No error falls back to a simulated success. This is a local-only auto-signing demo, not a public production API.

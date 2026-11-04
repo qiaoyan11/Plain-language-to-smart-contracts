@@ -4,6 +4,7 @@ const { randomUUID } = require('node:crypto');
 const hre = require('hardhat');
 const { BrowserProvider, ContractFactory, Contract, getAddress, MaxUint256 } = require('ethers');
 const { milestoneArtifact } = require('../scripts/compile.cjs');
+const { createGeneration, fields } = require('./generation.cjs');
 
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
 function readMilestones(value) {
@@ -18,12 +19,20 @@ function readMilestones(value) {
   });
   return { milestones, totalAmountWei: total.toString() };
 }
-async function createServer() {
+async function createServer({ generation: generationOptions } = {}) {
   const provider = new BrowserProvider(hre.network.provider, undefined, { cacheTimeout: -1 });
   const client = await provider.getSigner(0), developer = await provider.getSigner(1);
   const accounts = { clientWallet: await client.getAddress(), developerWallet: await developer.getAddress() };
   const compiled = milestoneArtifact();
   const projects = new Map();
+  const generation = createGeneration(generationOptions);
+  function readTerms(b) {
+    if (typeof b.name !== 'string' || !b.name.trim() || b.name.length > 120) fail(400, 'Project name must contain 1–120 characters');
+    let a, d;
+    try { a = getAddress(b.clientWallet); d = getAddress(b.developerWallet); } catch { fail(400, 'Invalid wallet address'); }
+    if (a !== accounts.clientWallet || d !== accounts.developerWallet) fail(400, 'Use the local demo accounts. External wallets are not supported in this mode.');
+    return { name: b.name.trim(), clientWallet: a, developerWallet: d, ...readMilestones(b.milestones) };
+  }
   // All projects use the same disposable signer, so serialize its transactions.
   let busy = false;
   const hostnames = new Set(['127.0.0.1', 'localhost']);
@@ -58,15 +67,34 @@ async function createServer() {
       if (req.method === 'GET' && path === '/api/local-accounts') return send(200, { ...accounts, chainId: 31337, mode: 'local-chain' });
       if (req.method === 'POST' && path === '/api/projects') {
         const b = await body(req);
-        if (typeof b.name !== 'string' || !b.name.trim() || b.name.length > 120) fail(400, 'Project name must contain 1–120 characters');
-        let a, d;
-        try { a = getAddress(b.clientWallet); d = getAddress(b.developerWallet); } catch { fail(400, 'Invalid wallet address'); }
-        if (a !== accounts.clientWallet || d !== accounts.developerWallet) fail(400, 'Use the local demo accounts. External wallets are not supported in this mode.');
-        const terms = readMilestones(b.milestones);
-        const p = { schemaVersion: 2, id: randomUUID(), name: b.name.trim(), clientWallet: a, developerWallet: d,
-          ...terms, contractAddress: null, escrowBalanceWei: '0', funded: false,
+        const terms = readTerms(b);
+        const p = { schemaVersion: 2, id: randomUUID(), ...terms, contractAddress: null, escrowBalanceWei: '0', funded: false,
           createdAt: new Date().toISOString(), transactions: [] };
         projects.set(p.id, p); return send(201, p);
+      }
+      const ai = path.match(/^\/api\/projects\/([^/]+)\/(agreement|confirmation|terms|generation-runs)(?:\/([^/]+))?$/);
+      if (ai) {
+        const p = projects.get(ai[1]);
+        if (!p) fail(404, 'Project not found. Local projects reset when the backend restarts.');
+        const [, , resource, runId] = ai;
+        if (runId) {
+          if (resource === 'generation-runs' && req.method === 'GET') return send(200, generation.getRun(p, runId));
+          fail(404, 'Endpoint not found');
+        }
+        if (resource === 'agreement' && req.method === 'GET') return send(200, generation.context(p));
+        if (resource === 'confirmation' && req.method === 'POST') return send(200, generation.confirm(p, await body(req)));
+        if (resource === 'terms' && req.method === 'PUT') {
+          const b = await body(req); fields(b, ['expectedSpecVersion', 'draft']);
+          fields(b.draft, ['name', 'clientWallet', 'developerWallet', 'milestones']);
+          if (busy) fail(409, 'A transaction is in progress; wait before editing rules');
+          return send(200, generation.replaceTerms(p, readTerms(b.draft), b.expectedSpecVersion));
+        }
+        if (resource === 'generation-runs' && req.method === 'POST') {
+          if (busy) fail(409, 'A transaction is in progress; retry after it completes');
+          const started = generation.start(p, await body(req));
+          return send(started.replay ? 200 : 202, started.run);
+        }
+        fail(405, 'Method not allowed');
       }
       const m = path.match(/^\/api\/projects\/([^/]+)(?:\/actions)?$/);
       if (!m) fail(404, 'Endpoint not found');

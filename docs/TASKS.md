@@ -8,7 +8,8 @@
 
 - 目录：frontend/、backend/、agent3/；协调 shared/，与 B 协调 flows/。
 - 分支：feature/python-bridge；后续 feature/agent3。
-- 第一项任务：复用已有 python-bridge.cjs，把网页确认和版本管理接到入口；连接层已有超时、大小限制和版本检查，不另写一套。
+- 当前已完成：generation.cjs 提供确认、版本管理、异步运行和查询接口，复用 python-bridge.cjs；详见 [生成 HTTP 接口](../shared/GENERATION_API_V1.md)。
+- 下一项任务：接回 Replit 页面，让它调用这些接口并显示真实结果；刷新只查原任务，不重复启动模型。Agent 1/3 页面仍需区分模拟与真实能力。
 - 交付：能发送样例并显示生成结果或明确错误；原有手写合约演示仍能运行。第一轮不部署 AI 生成代码。
 - 后续任务：Agent 3 仅提出操作意图，Node 核对并在用户确认后执行。不是重做一套交易系统。
 

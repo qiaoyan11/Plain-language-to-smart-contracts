@@ -6,6 +6,8 @@
 
 **AI 进度：** Agent 2 已接通 GPT-5.4 mini＋LangGraph、独立验证和有限修复；已有一个真实生成版本经过反馈修复，通过编译、静态检查和 clause-v2 全部 24 条开发条款测试（含记账收款合约），尚未部署。此前失败记录保留，这不是正式 A/B/C 评测结果。[运行方法](agent2/README.md) · [实际结果](docs/AGENT2_VALIDATION_RUN.md)。Agent 1/3 仍为模拟模块，网页 AI 入口和正式 A/B/C 评测尚未接通。
 
+**给新网页的连接已备好：** 后端可以保存已确认的规则版本、启动 Agent 2、查询检查结果；重复点击不会重复启动同一任务，改规则后旧结果失效。新页面回来后接这些接口即可，当前网页暂未改动。默认不开启收费调用，AI 合约部署也尚未开放。见 [前端接入接口](shared/GENERATION_API_V1.md)。
+
 安装 Python 模块请用 **Python 3.11 或以上（排除 3.12.0）**；锁定依赖不支持 Python 3.10。目前在 Mac 上实测的是 Python 3.14.3。建议组员统一版本，并按 `requirements.lock.txt` 安装，避免各自解析出不同依赖。
 
 ## 新组员先看这三个入口
@@ -28,14 +30,14 @@
 | AI 流程 | [flows/](flows/) | 用 LangGraph 管理生成、独立验证和有限修复 |
 | 独立检查 | [validation/](validation/) | Claude 和评测负责人维护，检查生成的代码 |
 | 现有应用 | [frontend/](frontend/) | 用户看到的网页 |
-| 现有应用 | [backend/](backend/) | 接收网页请求、调用 Python、执行合约操作；Python 入口尚未接网页 |
+| 现有应用 | [backend/](backend/) | 提供确认规则、AI 生成查询及参考合约操作接口，等待新网页接入 AI 流程 |
 | 现有应用 | [contracts/](contracts/) | 已能运行的手写参考合约 |
 | 公共约定 | [shared/](shared/) | 模块输入输出格式、校验和样例，大家按同一种格式交接 |
 | 开发辅助 | [tests/](tests/) · [scripts/](scripts/) | 自动测试和运行工具，通常不用改 |
 | 项目说明 | [docs/](docs/) | 运行步骤、分工和工作日志 |
 | GitHub 协作 | [.github/](.github/) | PR 模板和贡献说明 |
 
-模块的详细交接格式见 [INTERFACES.md](shared/INTERFACES.md)，现有网页接口见 [PROJECT_API_V2.md](shared/PROJECT_API_V2.md)。
+模块交接格式见 [INTERFACES.md](shared/INTERFACES.md)，现有项目接口见 [PROJECT_API_V2.md](shared/PROJECT_API_V2.md)，新增生成接口见 [GENERATION_API_V1.md](shared/GENERATION_API_V1.md)。
 
 ## 根目录这些文件是干什么的
 
@@ -59,6 +61,6 @@
 
 合约会真实执行，但运行在电脑里的模拟区块链上，测试资金没有实际价值。无需购买 ETH 或连接个人钱包。重启后端会清空项目和链上记录；刷新网页不会清空。当前不支持退款、取消或争议处理，不用于真实资金。
 
-最近验证：合约 **26/26**、接口 **5/5**、模块交接 **30/30** 通过。模块交接测试使用模拟模块；Agent 2 测试另有 **24/24**，独立验证器自测 **14/14**。前端上次验证为 **7/7**，类型检查和构建通过。
+最近验证：合约 **26/26**、接口 **15/15**（原流程 5、新生成接口 10）、模块交接 **30/30** 通过。接口和模块交接测试不调用收费模型；生成接口使用受控输出检查连接和失败处理。Agent 2 上次测试为 **24/24**，独立验证器自测 **14/14**。前端上次验证为 **7/7**，类型检查和构建通过。
 
 各人在自己的分支开发，提交 PR，由 Jiahao 集成。修改公共格式前先协调；不直接替换别人的模块。具体流程见 [协作说明](.github/CONTRIBUTING.md)。

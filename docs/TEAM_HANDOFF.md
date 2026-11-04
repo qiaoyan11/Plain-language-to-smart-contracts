@@ -26,7 +26,7 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 | A | agent1/ | stub.py 的 clarify(payload) | 接模型，完整、缺信息、超范围三种描述返回合法输出，不替用户确认 |
 | B | agent2/、flows/ | service.py 的 generate(payload)、flows/generation.py | 生成、可信验证、有限修复已接通；继续完善规则与实验配置 |
 | C + Claude | validation/ | 自己实现 validate_development(spec, sourceBundle) | 编译、静态检查、条款测试组成可信报告；工具没准备好不能报通过 |
-| Jiahao | backend/、frontend/、agent3/ | python-bridge.cjs 后续网页接入；agent3/stub.py | 管用户确认、版本、集成；Agent 3 先输出意图，再由后端执行 |
+| Jiahao | backend/、frontend/、agent3/ | 接 generation.cjs 的 HTTP 接口；agent3/stub.py | 后端确认、版本和运行查询已完成；下一步接网页，Agent 3 后做 |
 
 模拟函数的文件名以后可改为 service.py，届时只调整 flows/worker.py 中对应 import。
 业务模块不互相 import；flows 统一调用它们。shared 仅放格式和共用校验。
@@ -43,13 +43,13 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 默认模拟模式下：Agent 1 返回待核对样例；Agent 2 返回手写参考源码；Agent 3 返回 blocked。
 Agent 2 另有显式 --live 的真实生成命令，见 [Agent 2 说明](../agent2/README.md)。
 输出 stderr 的 STUB 提示不能删除，直到真实实现替换完成且文档同步。
-LangGraph 已接通 Agent 2 生成、独立开发验证和有限修复；网页入口与正式评测尚未接通。
+LangGraph 已接通 Agent 2 生成、独立开发验证和有限修复；后端 HTTP 入口已接通，网页和正式评测尚未接通。
 默认 stub 模式的 development 请求仍返回 toolError；显式 live 模式已接 C 的真实验证器，按当前 clause-v2 返回报告，不自动部署。
 
 ## 3. 接口究竟如何连接
 
 ```text
-独立连接测试 / 未来 Node 页面入口
+Node HTTP 入口（server.cjs → generation.cjs）/ 独立连接测试
   → backend/python-bridge.cjs
   → 固定 Python 入口 flows.worker（stdin JSON）
   → shared.handoff 检查输入
@@ -62,7 +62,8 @@ LangGraph 已接通 Agent 2 生成、独立开发验证和有限修复；网页�
 - `shared/handoff.py`：补充跨字段检查，例如金额之和、连续阶段编号、确认版本、源码指纹。
 - `shared/examples/`：各类交接对象的合法样例。地址、确认记录、部署记录均为虚构，不证明真的部署或确认。
 - `backend/python-bridge.cjs`：固定程序入口，无 shell；输入 1 MiB 上限，输出和日志合计 1 MiB，模拟模式默认 10 秒；live 编译 smoke 为 210 秒，development 为每轮 900 秒乘以 1+maxRepairs（最多 6 轮），同项目同时只允许一项任务。
-- 调用方通过 isCurrent 回调检查运行期间规则是否已变化；当前服务尚未接这个入口，持久确认和版本管理也是集成下一步。
+- generation.cjs 保存明确确认过的规则版本，调用 bridge 时用 isCurrent 核对最新版本。新 HTTP 格式见 [GENERATION_API_V1.md](../shared/GENERATION_API_V1.md)；确认和运行查询仍在内存里，重启会清空，持久化未做。
+- Node HTTP 当前固定 C、最多 3 次修复；默认禁用，AGENT2_MODE=live 才开放生成。前端仅提交版本、确认 ID 和重复请求键，不直接传 Python 信封、模型设置或验证报告。
 - worker 在返回前检查完整输出；Node 使用同一 JSON Schema 独立检查完整结果，并核对请求 ID、项目版本、修复预算和最终报告关联。所有金额跨语言传字符串。
 - 格式合法不代表语义正确、更不代表安全。只有独立验证能给真实 passed 报告；格式校验本身不能认证报告来源。
 
