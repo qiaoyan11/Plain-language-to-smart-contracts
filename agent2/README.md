@@ -62,7 +62,7 @@ B 如果只剩条款失败，会停止并返回 failed / no_eligible_feedback，
 旧目录不修改，旧报告不作为本次验证证据。以上例子最多发一次新模型请求。
 这是诊断续跑，不算从头开始的正式 B/C 样本；旧 A 结果仍保持原样。
 对已有版本试用条款反馈时，可将上面的请求换成 `agent2/examples/development-c.request.json`，并把 --resume-run 指向要修复的运行目录；仍最多一次新模型调用。
-历史演练仅通过 clause-v1；升级后的 clause-v2 已捕获收款合约兼容性退化，两个旧版本均 failed；随后一次 C 条款反馈修复出现接口类型编译错误，也已停止，尚未部署；详见 [验证与修复记录](../docs/AGENT2_VALIDATION_RUN.md)。
+最新续跑在开始前设置最多 3 轮修复，实际一次就通过 clause-v2 全部 24 条及编译、静态检查；此前失败记录全部保留，尚未部署。单轮样例仍保持 maxRepairs=1，不悄悄增加调用预算。详见 [验证与修复记录](../docs/AGENT2_VALIDATION_RUN.md)。
 
 ## 输出和模块入口
 
