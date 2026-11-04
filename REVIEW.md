@@ -4,6 +4,36 @@
 
 ---
 
+## 审查 4：补"合法收款合约能收款"条款，suite 升级为 clause-v2 · Claude · 2026-11-03
+
+**范围**：只补 `docs/AGENT2_VALIDATION_RUN.md` 中复现的覆盖缺口；未改 Agent 2、工作流、前后端、参考合约；Slither 阻断规则不变。
+
+**修改**（全部在 `validation/`）：
+- `node/clause-tests.cjs`：新增辅助合约 `Recorder`（`receive()` 中 `received += msg.value`）和条款 `recipient-contract-receives`：
+  以 Recorder 为收款方部署、全额存款、按序验收 3 个阶段，每步断言交易成功、`isPaid` 正确、Recorder 记录金额与实际余额等于已付总额、托管余额相应减少。只测行为，不检查源码写法。suite 改为 `clause-v2`。
+- `core.py`：期望条款清单 23 → 24；suiteVersion 变为 `dev-v1;solc-js-0.8.28;clause-v2;slither-0.11.3;slither-block-high-medium-v1`。
+- `tests/test_mutants.py`：新增变异 `transfer-instead-of-call`；新增断言：正确的 call 版本通过新条款（拒收回滚、重入两条也照常通过），transfer 变异**只**被新条款抓住。
+- `__main__.py`：目标目录已有报告时拒绝写入，防止覆盖旧报告。
+- `README.md`：清单、数量、版本记录。
+
+**测试**：验证器自测 14/14（原 13 + 1；变异 16 个全部被抓住）；`npm test` 26/26；`npm run test:api` 5/5；`npm run e2e` 30/30（Python 18、Node 12）；
+`npm run test:agent2` 24/24。均在已连接的 Linux 环境运行（`PYTHON_BIN` 指向该环境的 Python 3.10）。
+
+**两个真实运行的新结论**（新报告另存，旧报告 sha256 前后一致、未改动）：
+
+| 运行 | 新报告位置 | 编译 | Slither | clause-v2 | 结论 |
+| --- | --- | --- | --- | --- | --- |
+| 原始 `20261104T014714Z-682e1fa6`（call） | `revalidation-clause-v2/`（reportId `val-159b79fb…`） | passed | failed（uninitialized-local，Medium） | 24/24 | failed |
+| 修复 `20261104T022119Z-e41e9f31`（transfer） | `revalidation-clause-v2/`（reportId `val-84cdfc48…`） | passed | passed（0 条） | 23/24，`recipient-contract-receives` 失败：向记账收款合约付款时回滚 | failed |
+
+修复版在 clause-v1 下的 validated 结论只对 clause-v1 成立；在 clause-v2 下不再通过。
+
+**需要处理**：
+- **E-1（环境，信息）**：`requirements.lock.txt` 按 Mac 的 Python 3.14 锁定，`httpcore2==2.16.0`、`multidict==7.2.1` 在 Python 3.10 上没有可装版本。本轮在 Linux 环境改装 `requirements.txt` 的顶层锁定依赖才跑通 e2e。不影响 Mac；若组员用较旧 Python，需在 README 写明最低 Python 版本。未修改该文件。
+- 其他模块无需适配：没有代码写死 clause-v1 或 23 条；`docs/AGENT2_VALIDATION_RUN.md` 中的 clause-v1 数字是历史记录，保持原样即可。
+
+---
+
 ## 审查 3：Agent 2 首次生成结果的独立验证（commit `d6582f1`，运行 `20261104T014714Z-682e1fa6`）· Claude · 2026-11-03
 
 **结论：failed。** 编译 passed、条款测试 23/23 passed；静态分析按 `slither-block-high-medium-v1` 判 failed，

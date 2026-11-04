@@ -19,6 +19,7 @@ report = validate_development(spec, source_bundle)   # ConfirmedSpec, SourceBund
 
 `--run-dir` 读取该目录的 `request.json`（规则）和 `response.json`（SourceBundle），
 在同一目录写入 `validation-report.json`（标准报告）和 `validation-evidence.json`（每条测试、每条 Slither 告警、工具版本等明细）。
+已有报告绝不覆盖：目录里已有报告时命令拒绝执行，请用 `--out` 指定新目录（例如 `<运行目录>/revalidation-clause-v2`）。
 退出码：0 = passed，1 = failed，2 = toolError。
 
 ## 安装
@@ -32,14 +33,14 @@ npm ci                                                     # solc 0.8.28、hardh
 不需要另装 solc：Slither 通过 `node/solc-shim.cjs` 调用仓库锁定的 npm solc 0.8.28，与编译检查是同一个编译器。
 需要 macOS 或 Linux（Slither 的 solc 包装用 `/bin/sh`）；Windows 未支持。
 
-## 三项检查（suiteVersion `dev-v1;solc-js-0.8.28;clause-v1;slither-0.11.3;slither-block-high-medium-v1`）
+## 三项检查（suiteVersion `dev-v1;solc-js-0.8.28;clause-v2;slither-0.11.3;slither-block-high-medium-v1`）
 
 1. **compilation**：重算 sourceHash（不一致直接失败）；核对 projectId/specVersion；用 solc-js 0.8.28 和 bundle 的编译设置重新编译，
    不允许 import 外部文件；入口合约必须有 bytecode；构造函数必须是 `(address,address,uint256[])`；
    ABI 必须完整包含冻结接口 `contracts/IMilestoneEscrow.sol` 的函数和事件；bundle 里的接口文件不能被改动。
 2. **staticAnalysis**：Slither 0.11.3，版本不符即 toolError。阻断规则 `slither-block-high-medium-v1`：
    **impact 为 High 或 Medium 的告警阻止通过**；Low / Informational / Optimization 只记录。无例外清单。
-3. **clauseTests**：在 Hardhat 内置本地链上部署**本模块重新编译出的** bytecode，运行 23 条条款测试（`clause-v1`）：
+3. **clauseTests**：在 Hardhat 内置本地链上部署**本模块重新编译出的** bytecode，运行 24 条条款测试（`clause-v2`）：
 
 | 编号 | 检查内容 |
 | --- | --- |
@@ -50,6 +51,7 @@ npm ci                                                     # solc 0.8.28、hardh
 | order-skip、order-repeat | 不能跳阶段；每阶段只付一次，完成后也不行 |
 | recipient-reject-rollback | 收款方拒收时：回执 status=0、无事件、状态和余额全不变 |
 | recipient-reentry | 重入的收款方拿不到额外付款，账目一致 |
+| recipient-contract-receives | 合法收款合约（receive() 里执行 `received += msg.value`）每个阶段都能收到款，记录金额、实际余额和托管余额都正确（`transfer` 只给 2300 gas，这类收款方会失败） |
 | constructor-*（7 条） | 0 个、6 个阶段、金额为 0、零地址、双方相同时构造失败 |
 | id-out-of-range | 阶段 0 和 count+1 不能验收（读取函数越界不回滚只记 warning） |
 
@@ -68,14 +70,21 @@ npm ci                                                     # solc 0.8.28、hardh
 .venv/bin/python -m unittest discover -s validation/tests -t .
 ```
 
-- `test_mutants.py`：把已知正确的夹具合约（`tests/fixtures/KnownGoodEscrow.sol`，仅自测用）故意改坏 15 种——
-  去掉权限检查、允许跳阶段、允许重复付款、去掉"已存款"检查、多付、重复存款、忽略转账失败、付错金额/付给客户、
-  不置已付标记、事件写错、允许 6 阶段/金额 0/双方相同——每一种都必须被指定的条款测试抓住。
+- `test_mutants.py`：把已知正确的夹具合约（`tests/fixtures/KnownGoodEscrow.sol`，仅自测用）故意改坏 16 种——
+  去掉权限检查、允许跳阶段、允许重复付款、去掉"已存款"检查、多付、重复存款、忽略转账失败、把 call 换成 transfer、付错金额/付给客户、
+  不置已付标记、事件写错、允许 6 阶段/金额 0/双方相同——每一种都必须被指定的条款测试抓住；其中 transfer 变异只被 recipient-contract-receives 抓住（其余 23 条都检测不到）。
 - `test_pipeline.py`：正确合约通过并带 artifact；未检查的转账和未初始化局部变量被 Slither 规则阻断；
   sourceHash 被篡改、版本过期、编译错误、接口文件被改、构造函数不对都失败；Slither 缺失、版本不符、崩溃都是 toolError。
 
 ## 边界
 
-- `clause-v1` 是**开发**测试，可按 A/B/C 设置作为修复反馈；留出（held-out）评测是另一个入口，尚未实现，其内容不得进入生成提示词。
+- `clause-v2` 是**开发**测试，可按 A/B/C 设置作为修复反馈；留出（held-out）评测是另一个入口，尚未实现，其内容不得进入生成提示词。
 - 只覆盖 IMilestoneEscrow v1 付款子集；退款、取消、期限不在本版本。
 - 不部署到任何公共链，不使用真实资金，不调用模型。
+
+## 版本记录
+
+| suite | 条款数 | 变化 |
+| --- | --- | --- |
+| clause-v1 | 23 | 首版（2026-11-03） |
+| clause-v2 | 24 | 新增 recipient-contract-receives：合法收款合约必须能收款（2026-11-03）。Slither 规则不变 |

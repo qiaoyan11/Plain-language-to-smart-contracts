@@ -1,4 +1,4 @@
-// Independent clause tests for IMilestoneEscrow v1 (suite clause-v1).
+// Independent clause tests for IMilestoneEscrow v1 (suite clause-v2).
 // Input (stdin): {abi, bytecode, specAmounts, buildSettings}, where abi/bytecode come from the
 // validator's own recompilation. Output (stdout): one JSON object {suite, results, warnings}.
 // Assertions use mined receipts, balances and state only; never implementation error names.
@@ -10,7 +10,7 @@ const hre = require('hardhat');
 const solc = require('solc');
 const { BrowserProvider, ContractFactory, Interface, ZeroAddress, parseEther } = require('ethers');
 
-const SUITE = 'clause-v1';
+const SUITE = 'clause-v2';
 const GAS = { gasLimit: 3000000 };
 const EVENTS = new Interface([
   'event Deposited(address indexed client, uint256 amount)',
@@ -20,6 +20,7 @@ const HELPERS = `// SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 contract ForceSend { constructor(address payable to) payable { selfdestruct(to); } }
 contract Rejector { }
+contract Recorder { uint256 public received; receive() external payable { received += msg.value; } }
 contract Reentrant {
   address public target; bool public entered;
   function setTarget(address t) external { target = t; }
@@ -203,6 +204,20 @@ async function main() {
     eq(await balance(r.target), paidSum, 'recipient balance equals the sum of milestones marked paid');
     eq(await balance(c), sum(a) - paidSum, 'escrow balance equals total minus paid milestones');
     if (status === 1) eq(paid[0], true, 'isPaid(1) after successful payment');
+  });
+  add('recipient-contract-receives', 'A legitimate recipient contract whose receive() writes storage is paid every milestone', async () => {
+    const a = GENERIC.slice(0, 3), r = await helperFactory('Recorder').deploy(GAS); await r.waitForDeployment();
+    const c = await deploy(a, r.target), total = sum(a);
+    await ok('deposit', () => c.deposit({ ...GAS, value: total }));
+    let released = 0n;
+    for (let id = 1; id <= 3; id++) {
+      await ok(`acceptMilestone(${id}) to a storage-writing recipient contract`, () => c.acceptMilestone(id, GAS));
+      released += a[id - 1];
+      for (let j = 1; j <= 3; j++) eq(await c.isPaid(j), j <= id, `isPaid(${j}) after accepting ${id}`);
+      eq(await r.received(), released, `amount recorded by the recipient after accepting ${id}`);
+      eq(await balance(r.target), released, `recipient balance after accepting ${id}`);
+      eq(await balance(c), total - released, `escrow balance after accepting ${id}`);
+    }
   });
   const ctor = (id, clause, amounts, who) => add(id, clause, async () => {
     const c1 = who === 'zero-client' ? ZeroAddress : clientAddr;

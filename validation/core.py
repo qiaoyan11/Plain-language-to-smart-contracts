@@ -20,7 +20,7 @@ from shared.handoff import ROOT, source_hash, validate
 
 SOLC_VERSION = '0.8.28'
 SLITHER_VERSION = '0.11.3'
-CLAUSE_SUITE = 'clause-v1'
+CLAUSE_SUITE = 'clause-v2'
 STATIC_POLICY = 'slither-block-high-medium-v1'
 BLOCKING_IMPACTS = ('High', 'Medium')
 SUITE_VERSION = f'dev-v1;solc-js-{SOLC_VERSION};{CLAUSE_SUITE};slither-{SLITHER_VERSION};{STATIC_POLICY}'
@@ -28,7 +28,8 @@ CONSTRUCTOR_TYPES = ['address', 'address', 'uint256[]']
 EXPECTED_CLAUSES = [
     'flow-1', 'flow-2', 'flow-3', 'flow-5', 'flow-spec', 'access-deposit', 'access-accept',
     'deposit-exact', 'deposit-once', 'unfunded-accept', 'unfunded-forced-eth', 'order-skip',
-    'order-repeat', 'recipient-reject-rollback', 'recipient-reentry', 'constructor-0', 'constructor-6',
+    'order-repeat', 'recipient-reject-rollback', 'recipient-reentry', 'recipient-contract-receives',
+    'constructor-0', 'constructor-6',
     'constructor-zero-first', 'constructor-zero-later', 'constructor-zero-client',
     'constructor-zero-provider', 'constructor-same-parties', 'id-out-of-range']
 NODE_DIR = Path(__file__).resolve().parent / 'node'

@@ -66,6 +66,15 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-03 · Claude · 补"合法收款合约能收款"测试（clause-v2）
+- 做了什么：新增条款 recipient-contract-receives：收款方是 receive() 里记账的合约时，每个阶段都必须能付款且金额正确；suite 升为 clause-v2（24 条），Slither 规则不变。
+- 自测：验证器 14/14；把 call 换成 transfer 的变异只被新条款抓住；原有拒收回滚、重入测试保留并通过。
+- 回归：npm test 26/26、test:api 5/5、e2e 30/30、test:agent2 24/24，全部通过。
+- 新结论：原始版本 24/24 条款通过，但仍因 Slither Medium 告警 failed；修复版 Slither 0 告警，但新条款失败（向记账合约付款回滚），failed。
+- 报告另存在两个运行目录下的 revalidation-clause-v2/，旧报告未动；命令行现在拒绝覆盖已有报告。
+- 注意：requirements.lock.txt 在 Python 3.10 上装不全（详见 REVIEW 审查 4 E-1），Mac 不受影响。
+- 需要老板决定：无。
+
 ### 2026-11-03 · Codex · 接通独立验证和有限修复
 - 做了什么：原样提交 Claude 验证代码；保持 High/Medium 阻断；手写参考合约显式初始化；LangGraph 接可信验证、A/B/C 反馈隔离和有限修复。
 - 记录：逐轮保存源码、报告、提示词、用量及停止原因；支持新目录续跑，旧结果不覆盖；工具故障（包括混合失败报告）立即停。

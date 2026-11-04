@@ -21,6 +21,8 @@ MUTANTS = {
     'second-deposit-allowed': ('if (funded) revert Rejected();', '', {'deposit-once'}),
     'transfer-failure-ignored': ('(bool ok, ) = payable(provider).call{value: amount}("");\n        if (!ok) revert Rejected();',
                                  'payable(provider).call{value: amount}("");', {'recipient-reject-rollback'}),
+    'transfer-instead-of-call': ('(bool ok, ) = payable(provider).call{value: amount}("");\n        if (!ok) revert Rejected();',
+                                 'payable(provider).transfer(amount);', {'recipient-contract-receives'}),
     'pays-first-amount-every-time': ('uint256 amount = amounts[id - 1];', 'uint256 amount = amounts[0];', {'flow-2', 'flow-spec'}),
     'pays-the-client': ('payable(provider).call{value: amount}', 'payable(client).call{value: amount}', {'flow-1', 'flow-spec'}),
     'paid-flag-not-set': ('paid[id] = true;', '', {'flow-1', 'flow-spec'}),
@@ -40,6 +42,17 @@ class MutantTests(unittest.TestCase):
         self.assertEqual(clauses['staticAnalysis']['status'], 'skipped')
         self.assertEqual(report['status'], 'toolError', 'a skipped check must never yield passed')
         self.assertIsNone(report['artifact'])
+        results = {r['id']: r['status'] for r in evidence['clauseTests']['results']}
+        self.assertEqual(results['recipient-contract-receives'], 'passed', 'call-based payment must reach a storage-writing recipient')
+        self.assertEqual(results['recipient-reject-rollback'], 'passed')
+        self.assertEqual(results['recipient-reentry'], 'passed')
+
+    def test_transfer_mutant_is_caught_only_by_the_recipient_contract_clause(self):
+        old, new, _ = MUTANTS['transfer-instead-of-call']
+        report, evidence = validate_development_detailed(spec(), bundle(mutate(old, new)), static_analysis=False)
+        failed = {r['id'] for r in evidence['clauseTests']['results'] if r['status'] != 'passed'}
+        self.assertEqual(failed, {'recipient-contract-receives'}, 'the other 23 clauses do not detect transfer(); this one must')
+        self.assertEqual(report['status'], 'failed')
 
     def test_each_mutant_is_caught_by_clause_tests(self):
         for name, (old, new, expected) in MUTANTS.items():
