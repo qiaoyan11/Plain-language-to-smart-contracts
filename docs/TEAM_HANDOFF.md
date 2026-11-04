@@ -40,9 +40,10 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 .venv/bin/python -m agent3 shared/examples/planAction.request.json
 ```
 
-Agent 1 当前不理解文字，只返回待核对样例；Agent 2 返回手写参考源码；Agent 3 返回 blocked。
+默认模拟模式下：Agent 1 返回待核对样例；Agent 2 返回手写参考源码；Agent 3 返回 blocked。
+Agent 2 另有显式 --live 的真实生成命令，见 [Agent 2 说明](../agent2/README.md)。
 输出 stderr 的 STUB 提示不能删除，直到真实实现替换完成且文档同步。
-LangGraph 尚未安装或实现；当前 worker 是简单分发入口，留给 B 替换为图。
+LangGraph 已实现 Agent 2 单次生成图；验证与修复循环尚未实现。
 C 的验证模拟实现也尚未连接，development 请求返回 toolError，无报告、无部署许可。
 
 ## 3. 接口究竟如何连接
@@ -60,7 +61,7 @@ C 的验证模拟实现也尚未连接，development 请求返回 toolError，�
 - `shared/schemas/handoff.schema.json`：格式字典，包含规则、源码、报告、部署记录和操作输入输出。
 - `shared/handoff.py`：补充跨字段检查，例如金额之和、连续阶段编号、确认版本、源码指纹。
 - `shared/examples/`：各类交接对象的合法样例。地址、确认记录、部署记录均为虚构，不证明真的部署或确认。
-- `backend/python-bridge.cjs`：固定程序入口，无 shell；输入 1 MiB 上限，输出和日志合计 1 MiB，默认 10 秒超时，同项目同时只允许一项任务。
+- `backend/python-bridge.cjs`：固定程序入口，无 shell；输入 1 MiB 上限，输出和日志合计 1 MiB，模拟模式默认 10 秒、显式 live 模式默认 210 秒超时，同项目同时只允许一项任务。
 - 调用方通过 isCurrent 回调检查运行期间规则是否已变化；当前服务尚未接这个入口，持久确认和版本管理也是集成下一步。
 - worker 在返回前检查完整输出；Node 使用同一 JSON Schema 独立检查完整结果，并核对请求 ID、项目版本、修复预算和最终报告关联。所有金额跨语言传字符串。
 - 格式合法不代表语义正确、更不代表安全。只有独立验证能给真实 passed 报告；格式校验本身不能认证报告来源。

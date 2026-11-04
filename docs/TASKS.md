@@ -1,6 +1,6 @@
 # 四人协作与第一批任务
 
-当前共同起点：网页、Node 后端和 1–5 阶段参考合约已跑通。Python 模拟模块和 Node 连接已实现；真实 Agent、LangGraph 和独立验证尚未接入。先读 [接手说明](TEAM_HANDOFF.md)。本轮先把模块接起来，不重写前后端，不加入钱包、退款、RAG 或数据库。
+当前共同起点：网页、Node 后端和 1–5 阶段参考合约已跑通。Python 模拟模块和 Node 连接已实现；Agent 2 已有真实单次生成 LangGraph，其余 Agent、独立验证和网页 AI 接入尚未完成。先读 [接手说明](TEAM_HANDOFF.md)。本轮先把模块接起来，不重写前后端，不加入钱包、退款、RAG 或数据库。
 
 每人先按 [运行说明](FRONTEND_INTEGRATION.md) 完成创建、部署、存款、付款。之后读 [模块交接 v1](../shared/INTERFACES.md)。A/B/C 是待认领岗位，不是已确认的成员姓名。
 
@@ -22,10 +22,10 @@
 ## 组员 B — Agent 2 与生成修复图
 
 - 目录：agent2/、flows/；分支 feature/agent2-python。
-- 第一项任务：按生成请求样例产出 SourceBundle；明确未验证状态。再实现 LangGraph 的生成、开发验证、修复和停止路径。
+- 当前已完成：单次生成 SourceBundle 和编译，保留未独立验证状态。下一项任务：接开发验证，再实现 LangGraph 有限修复和停止路径。
 - 交付：Python 依赖及版本、固定入口、独立运行样例、失败处理测试。先 maxRepairs=0，接好 C 的开发验证报告后再测试有限修复。
 - 边界：不覆盖参考合约，不修改独立验证工具和测试，不读取 hidden 结果调提示词；不提交 API key。
-- 与 Jiahao 配合：B 把现有 flows.worker 分发替换为 LangGraph，Jiahao 复用已有 Node 侧调用。两人不各自设计另一套入口。
+- 与 Jiahao 配合：复用 flows.worker 和 flows/generation.py，不另建流程入口；网页接入复用已有 Node 侧调用。两人不各自设计另一套入口。
 
 ## 组员 C — 独立验证与实验
 

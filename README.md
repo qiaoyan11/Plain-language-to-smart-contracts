@@ -4,7 +4,7 @@
 
 **已经能运行：** 手动填写 1–5 个阶段 → 确认规则 → 部署手写参考合约 → 存入测试资金 → 按顺序付款。网页、后端和本地测试链已接通。
 
-**正在接入：** Python Agent 理解需求、生成合约、协助操作。模块交接已有模拟实现和自动检查；真实模型、LangGraph 和独立验证尚未接通。
+**AI 进度：** Agent 2 已接通 GPT-5.4 mini＋LangGraph 单次生成，并完成一次真实编译；[运行方法](agent2/README.md)和[首次结果](docs/AGENT2_FIRST_RUN.md)。Agent 1/3 仍为模拟模块，独立验证、修复循环和网页 AI 入口待接。
 
 ## 新组员先看这三个入口
 
@@ -23,7 +23,7 @@
 | AI 模块 | [agent1/](agent1/) | 把用户描述整理成规则，追问缺失的信息 |
 | AI 模块 | [agent2/](agent2/) | 根据确认规则生成合约，之后根据反馈修复 |
 | AI 模块 | [agent3/](agent3/) | 把“查询余额、批准付款”变成待确认的操作 |
-| AI 流程 | [flows/](flows/) | 安排 Agent 的调用顺序；后续放 LangGraph 工作流 |
+| AI 流程 | [flows/](flows/) | 已用 LangGraph 管理 Agent 2 单次生成，后续接验证和修复 |
 | 独立检查 | [validation/](validation/) | Claude 和评测负责人维护，检查生成的代码 |
 | 现有应用 | [frontend/](frontend/) | 用户看到的网页 |
 | 现有应用 | [backend/](backend/) | 接收网页请求、调用 Python、执行合约操作；Python 入口尚未接网页 |

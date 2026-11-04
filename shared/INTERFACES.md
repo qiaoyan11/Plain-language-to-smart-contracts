@@ -1,6 +1,6 @@
 # Module handoff v1 — Python and LangGraph
 
-This v1 contract now has executable JSON schemas, Python fixture modules and a standalone Node bridge. Real AI, LangGraph, independent validation and UI integration are not implemented. The working Node server, frontend and Solidity contracts remain unchanged. See [team setup](../docs/TEAM_HANDOFF.md).
+This v1 contract now has executable JSON schemas, Python fixture modules and a standalone Node bridge. Agent 2 now has live single-generation LangGraph and compilation smoke checks; independent validation, repair, and UI integration are not implemented. The working Node server, frontend and Solidity contracts remain unchanged. See [team setup](../docs/TEAM_HANDOFF.md).
 
 The existing [Project API v2](PROJECT_API_V2.md) continues to serve the current UI. `IMilestoneEscrow v1` in [WORKLOG](../docs/WORKLOG.md) is unchanged. This document replaces the earlier draft v0.1 and its snake_case example fields; no existing HTTP endpoint is renamed.
 
@@ -16,11 +16,11 @@ Existing Node backend -> existing contract tools -> local chain
 
 Node owns project records, user confirmations, deployment records and transaction execution. Python owns AI work within a run; it does not maintain a second authoritative project database or hold signing keys. Agent 2 returns code and a report, not a deployed contract. Reference-contract deployment continues to work independently.
 
-Use LangGraph first for the generation/check/repair loop. No Langflow service is required. Agent modules expose Python callables taking/returning JSON-compatible objects; they must be testable without starting the UI. LangChain is optional, not a required second orchestration layer. The schema validator is pinned in requirements.lock.txt; model and LangGraph dependencies will be pinned when those implementations start.
+Use LangGraph first for the generation/check/repair loop. No Langflow service is required. Agent modules expose Python callables taking/returning JSON-compatible objects; they must be testable without starting the UI. LangChain is optional, not a required second orchestration layer. The schema validator is pinned in requirements.lock.txt; LangGraph, HTTP client and local environment loader are also pinned.
 
 ## 2. One bridge, before adding services
 
-Initial transport: Node launches a configured Python interpreter with a fixed module entry point (`flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The entry point is runnable today in fixture mode only. The bridge is not called by server.cjs yet; immutable confirmations and live version checks remain integration work. Defaults: 10-second timeout, 1 MiB input, 1 MiB combined stdout/stderr, one active process per project per Node process.
+Initial transport: Node launches a configured Python interpreter with a fixed module entry point (`flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The entry point defaults to fixture mode. Explicit AGENT2_MODE=live enables Agent 2 single-generation; Agent 1/3 remain fixtures. The bridge is not called by server.cjs yet; immutable confirmations and live version checks remain integration work. Defaults: 10-second fixture timeout or 210-second explicit live timeout, 1 MiB input, 1 MiB combined stdout/stderr, one active process per project per Node process.
 
 Envelope:
 
@@ -76,7 +76,7 @@ Python callable: `generate(payload) -> result`; the LangGraph workflow calls gen
 
 Input: `{spec, confirmation, runConfig}`.
 
-`runConfig`: `{validationMode, maxRepairs, feedbackSetting, model}`. validationMode is `none` for a first single-generation smoke test or `development` for the integrated loop. maxRepairs is a nonnegative integer (0 means no repair); feedbackSetting is `baseline`, `A`, `B`, or `C`; model identifies the configured model, not an API key. Formal A/B/C definitions and the shared repair budget must come from the proposal and be recorded by the evaluation owner before experiments. No default may silently invent their meanings.
+`runConfig`: `{validationMode, maxRepairs, feedbackSetting, model}`. validationMode is `none` for a first single-generation smoke test or `development` for the integrated loop. maxRepairs is a nonnegative integer (0 means no repair); feedbackSetting is `baseline`, `A`, `B`, or `C`; model identifies the configured model, not an API key. Proposal definitions: A = one generation without repair; B = compiler and Slither feedback; C = additionally development clause-test feedback. A uses zero repairs; B/C must share a fixed repair budget. The current live implementation only supports A/baseline with maxRepairs=0 and validationMode=none; formal B/C evaluation is not implemented.
 
 Result: `{status, sourceBundle, validationReport, attempts}`. Status: `generated`, `validated`, `failed`, or `toolError`. `generated` has no deployment permission. In mode `none`, validationReport is null. Each attempt records `{attempt, sourceHash, reportId, feedbackUsed}`; attempt 0 is initial generation. Only development feedback permitted by the selected experimental setting may be recorded in feedbackUsed or passed to repair.
 
@@ -130,3 +130,5 @@ Both the Python worker and Node receiver validate operation-specific result shap
 On cancellation, the bridge keeps the project lock until the worker closes. On macOS/Linux it sends TERM to the process group, waits 200 ms, then KILLs the group including ordinary compiler children. On Windows it uses taskkill /T /F; this branch has not been exercised on the current Mac. Tools must not detach themselves from the managed process group.
 
 When connecting validation, the trusted workflow must call C's validate_development directly and attach that returned report and artifact. Model output may supply only source/repair content, never validation evidence. A self-consistent JSON report is not proof that tests ran. No deployment path may trust model-authored passed reports. This provenance boundary is a required integration task, not a signature system or a feature claimed complete today.
+
+Agent 2 live progress and usage are documented in ../agent2/README.md and ../docs/AGENT2_FIRST_RUN.md. Its compilation.json is a smoke-check record, never a ValidationReport. No passed independent report or deployment authority is created. Full proposal features (refunds, cancellation, deadlines, OpenZeppelin) are still outside this v1 subset, not removed from the project goal.

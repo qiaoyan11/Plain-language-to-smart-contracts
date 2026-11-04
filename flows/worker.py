@@ -1,11 +1,12 @@
 """One request per process. All stdout is a single JSON envelope.
-This fixture dispatcher will be replaced by a LangGraph workflow; no graph yet.
+Agent 2 can explicitly opt into live single-generation LangGraph; other agents are fixtures.
 """
 import json
+import os
 import sys
 from shared.handoff import validate_request, validate_response
 from agent1.stub import clarify
-from agent2.stub import generate
+from agent2.stub import generate as generate_stub
 from agent3.stub import plan_action
 
 MAX_BYTES = 1024 * 1024
@@ -13,7 +14,15 @@ MAX_BYTES = 1024 * 1024
 
 def dispatch(request):
     validate_request(request)
-    print('STUB MODE: fixtures only; no AI, independent validation, or transactions.', file=sys.stderr)
+    mode = os.getenv('AGENT2_MODE', 'stub')
+    if mode not in ('stub', 'live'):
+        raise ValueError('AGENT2_MODE must be stub or live')
+    generate = generate_stub
+    if request['operation'] == 'generate' and mode == 'live':
+        from agent2.service import generate
+        print('LIVE Agent 2: single generation, compilation only.', file=sys.stderr)
+    else:
+        print('STUB MODE: fixtures only; no AI, independent validation, or transactions.', file=sys.stderr)
     result = {'clarify': clarify, 'generate': generate, 'planAction': plan_action}[request['operation']](request['payload'])
     response = {'interfaceVersion': 1, 'requestId': request['requestId'], 'status': 'ok', 'result': result, 'errors': []}
     validate_response(request, response)
