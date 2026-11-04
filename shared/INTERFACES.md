@@ -1,6 +1,6 @@
 # Module handoff v1 — Python and LangGraph
 
-This v1 contract has executable JSON schemas, Python fixture modules and a Node bridge. Agent 2 has live LangGraph generation, trusted development validation and bounded repair. Node now exposes confirmation, versioning and asynchronous generation through [Generation HTTP API v1](GENERATION_API_V1.md); frontend integration and formal evaluation remain pending. The existing reference-demo endpoints, frontend and Solidity contracts are preserved. See [team setup](../docs/TEAM_HANDOFF.md).
+This v1 contract has executable JSON schemas, Python fixture modules and a Node bridge. Agent 2 has live LangGraph generation, trusted development validation and bounded repair. Node now exposes confirmation, versioning and asynchronous generation through [Generation HTTP API v1](GENERATION_API_V1.md); the agreement frontend now uses these endpoints; formal evaluation remains pending. The reference-demo endpoints and Solidity contracts are preserved; the reference UI has its own routes. See [team setup](../docs/TEAM_HANDOFF.md).
 
 The existing [Project API v2](PROJECT_API_V2.md) continues to serve the current UI. `IMilestoneEscrow v1` in [WORKLOG](../docs/WORKLOG.md) is unchanged. This document replaces the earlier draft v0.1 and its snake_case example fields; no existing HTTP endpoint is renamed.
 

@@ -1,11 +1,8 @@
-<!-- LOVABLE:BEGIN -->
-> [!IMPORTANT]
-> This project is connected to [Lovable](https://lovable.dev). Avoid rewriting
-> published git history — force pushing, or rebasing/amending/squashing commits
-> that are already pushed — as it rewrites history on Lovable's side and the
-> user will likely lose their project history.
->
-> Commits you push to the connected branch sync back to Lovable and show up in
-> the editor, so keep the branch in a working state.
-<!-- LOVABLE:END -->
-- All data calls and mock logic live in src/api/client.ts; pages only call `api.*` so the mock can be swapped for a real backend.
+# Frontend collaboration
+
+- Follow the repository AGENTS.md and shared HTTP contracts.
+- Keep page data access in src/api/client.ts. Never fall back to simulated success after an HTTP error.
+- Preserve the reference-demo routes and distinguish them from AI-generated contracts.
+- Clarification is not connected to a real Agent 1 yet; label scripted guidance honestly.
+- Conversation text and supplementary terms stay in browser storage, separate from payment API payloads.
+- Do not claim unsupported terms are enforced, or enable generated-code deployment.

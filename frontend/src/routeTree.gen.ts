@@ -11,7 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConfirmRouteImport } from './routes/confirm'
+import { Route as ReferenceDemoRouteImport } from './routes/reference-demo'
+import { Route as ReferenceReviewRouteImport } from './routes/reference-review'
 import { Route as ProjectsIdRouteImport } from './routes/projects.$id'
+import { Route as ReferenceProjectsIdRouteImport } from './routes/reference-projects.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,40 +26,86 @@ const ConfirmRoute = ConfirmRouteImport.update({
   path: '/confirm',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReferenceDemoRoute = ReferenceDemoRouteImport.update({
+  id: '/reference-demo',
+  path: '/reference-demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReferenceReviewRoute = ReferenceReviewRouteImport.update({
+  id: '/reference-review',
+  path: '/reference-review',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsIdRoute = ProjectsIdRouteImport.update({
   id: '/projects/$id',
   path: '/projects/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReferenceProjectsIdRoute = ReferenceProjectsIdRouteImport.update({
+  id: '/reference-projects/$id',
+  path: '/reference-projects/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/confirm': typeof ConfirmRoute
+  '/reference-demo': typeof ReferenceDemoRoute
+  '/reference-review': typeof ReferenceReviewRoute
   '/projects/$id': typeof ProjectsIdRoute
+  '/reference-projects/$id': typeof ReferenceProjectsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/confirm': typeof ConfirmRoute
+  '/reference-demo': typeof ReferenceDemoRoute
+  '/reference-review': typeof ReferenceReviewRoute
   '/projects/$id': typeof ProjectsIdRoute
+  '/reference-projects/$id': typeof ReferenceProjectsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/confirm': typeof ConfirmRoute
+  '/reference-demo': typeof ReferenceDemoRoute
+  '/reference-review': typeof ReferenceReviewRoute
   '/projects/$id': typeof ProjectsIdRoute
+  '/reference-projects/$id': typeof ReferenceProjectsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/confirm' | '/projects/$id'
+  fullPaths:
+    | '/'
+    | '/confirm'
+    | '/reference-demo'
+    | '/reference-review'
+    | '/projects/$id'
+    | '/reference-projects/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/confirm' | '/projects/$id'
-  id: '__root__' | '/' | '/confirm' | '/projects/$id'
+  to:
+    | '/'
+    | '/confirm'
+    | '/reference-demo'
+    | '/reference-review'
+    | '/projects/$id'
+    | '/reference-projects/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/confirm'
+    | '/reference-demo'
+    | '/reference-review'
+    | '/projects/$id'
+    | '/reference-projects/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConfirmRoute: typeof ConfirmRoute
+  ReferenceDemoRoute: typeof ReferenceDemoRoute
+  ReferenceReviewRoute: typeof ReferenceReviewRoute
   ProjectsIdRoute: typeof ProjectsIdRoute
+  ReferenceProjectsIdRoute: typeof ReferenceProjectsIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -75,11 +124,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConfirmRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reference-demo': {
+      id: '/reference-demo'
+      path: '/reference-demo'
+      fullPath: '/reference-demo'
+      preLoaderRoute: typeof ReferenceDemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reference-review': {
+      id: '/reference-review'
+      path: '/reference-review'
+      fullPath: '/reference-review'
+      preLoaderRoute: typeof ReferenceReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/$id': {
       id: '/projects/$id'
       path: '/projects/$id'
       fullPath: '/projects/$id'
       preLoaderRoute: typeof ProjectsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reference-projects/$id': {
+      id: '/reference-projects/$id'
+      path: '/reference-projects/$id'
+      fullPath: '/reference-projects/$id'
+      preLoaderRoute: typeof ReferenceProjectsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -88,7 +158,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConfirmRoute: ConfirmRoute,
+  ReferenceDemoRoute: ReferenceDemoRoute,
+  ReferenceReviewRoute: ReferenceReviewRoute,
   ProjectsIdRoute: ProjectsIdRoute,
+  ReferenceProjectsIdRoute: ReferenceProjectsIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

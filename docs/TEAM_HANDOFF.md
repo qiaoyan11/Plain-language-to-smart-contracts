@@ -26,7 +26,7 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 | A | agent1/ | stub.py 的 clarify(payload) | 接模型，完整、缺信息、超范围三种描述返回合法输出，不替用户确认 |
 | B | agent2/、flows/ | service.py 的 generate(payload)、flows/generation.py | 生成、可信验证、有限修复已接通；继续完善规则与实验配置 |
 | C + Claude | validation/ | 自己实现 validate_development(spec, sourceBundle) | 编译、静态检查、条款测试组成可信报告；工具没准备好不能报通过 |
-| Jiahao | backend/、frontend/、agent3/ | 接 generation.cjs 的 HTTP 接口；agent3/stub.py | 后端确认、版本和运行查询已完成；下一步接网页，Agent 3 后做 |
+| Jiahao | backend/、frontend/、agent3/ | 接 generation.cjs 的 HTTP 接口；agent3/stub.py | 网页确认、版本和生成查询已接入；Agent 1/3 的真实模型与 AI 部署后做 |
 
 模拟函数的文件名以后可改为 service.py，届时只调整 flows/worker.py 中对应 import。
 业务模块不互相 import；flows 统一调用它们。shared 仅放格式和共用校验。
@@ -43,7 +43,7 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 默认模拟模式下：Agent 1 返回待核对样例；Agent 2 返回手写参考源码；Agent 3 返回 blocked。
 Agent 2 另有显式 --live 的真实生成命令，见 [Agent 2 说明](../agent2/README.md)。
 输出 stderr 的 STUB 提示不能删除，直到真实实现替换完成且文档同步。
-LangGraph 已接通 Agent 2 生成、独立开发验证和有限修复；后端 HTTP 入口已接通，网页和正式评测尚未接通。
+LangGraph 已接通 Agent 2 生成、独立开发验证和有限修复；后端 HTTP 和网页确认/生成查询已接通；正式评测尚未实施。
 默认 stub 模式的 development 请求仍返回 toolError；显式 live 模式已接 C 的真实验证器，按当前 clause-v2 返回报告，不自动部署。
 
 ## 3. 接口究竟如何连接

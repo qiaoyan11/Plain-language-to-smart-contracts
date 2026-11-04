@@ -1,6 +1,6 @@
 # Generation HTTP API v1
 
-This is the connection for the new frontend: review rules → explicitly confirm → start Agent 2 → poll the result. It is implemented in `backend/generation.cjs` and routed by `backend/server.cjs`. The existing frontend does not call it yet.
+This is the connection for the new frontend: review rules → explicitly confirm → start Agent 2 → poll the result. It is implemented in `backend/generation.cjs` and routed by `backend/server.cjs`. The frontend now calls it from the agreement review and project pages.
 
 Project API v2 and Python handoff v1 are unchanged. A generation run is a separate resource, not a field added to the Project object. The backend calls the existing Python worker; it does not implement another repair loop.
 

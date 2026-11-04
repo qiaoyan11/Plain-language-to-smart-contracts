@@ -1,102 +1,239 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { Row, Shell } from "@/components/Shell";
-import { actionBlockReason, api, MOCK_MODE, formatWei, type ProjectAction, type Project } from "@/api/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { Shell, Row } from "@/components/Shell";
+import { Button } from "@/components/ui/button";
+import { AgreementEditor } from "@/components/AgreementEditor";
+import { AgreementNotes, ScopeAcknowledgement, PaymentRules } from "@/components/AgreementNotes";
+import { GenerationResultView } from "@/components/GenerationResultView";
+import { api, formatWei, type ProjectDraft } from "@/api/client";
+import { emptyWorkspace } from "@/api/workspace";
 
 export const Route = createFileRoute("/projects/$id")({
-  head: () => ({
-    meta: [
-      { title: "Project Details · Smart Contract Escrow (Local Demo)" },
-      { name: "description", content: "View contract address, escrow balance and milestone payment status." },
-      { property: "og:title", content: "Project Details · Smart Contract Escrow" },
-      { property: "og:description", content: "View contract address, escrow balance and milestone payment status." },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Your agreement · Accord" }] }),
   component: DetailPage,
 });
-
 function DetailPage() {
   const { id } = Route.useParams();
-  const [project, setProject] = useState<Project | null | undefined>(undefined);
-  const [pending, setPending] = useState<string | null>(null);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  useEffect(() => {
-    api.getProject(id).then(setProject).catch(e => { setProject(null); setMsg({ok:false,text:e.message}); });
-  }, [id]);
-
-  const run = async (intent: ProjectAction, label: string, key: string) => {
-    setPending(key);
-    setMsg(null);
+  const cache = useQueryClient(),
+    active = useRef(false);
+  const [busy, setBusy] = useState(false),
+    [editing, setEditing] = useState(false),
+    [addition, setAddition] = useState(""),
+    [ack, setAck] = useState(false),
+    [error, setError] = useState("");
+  const key = ["agreement", id];
+  const query = useQuery({
+    queryKey: key,
+    retry: false,
+    queryFn: async () => {
+      const [project, context] = await Promise.all([api.getProject(id), api.getAgreement(id)]);
+      const run = context.latestRunId ? await api.getGeneration(id, context.latestRunId) : null;
+      return { project, context, run };
+    },
+    refetchInterval: (q) => (q.state.data?.run && !q.state.data.run.finishedAt ? 2000 : false),
+  });
+  async function action(work: () => Promise<unknown>) {
+    if (active.current) return;
+    active.current = true;
+    setBusy(true);
+    setError("");
     try {
-      setProject(await api.runAction(id, intent));
-      setMsg({ ok: true, text: `${label} succeeded (${MOCK_MODE ? "mock" : "local chain receipt confirmed"})` });
+      await cache.cancelQueries({ queryKey: key });
+      await work();
+      await query.refetch();
     } catch (e) {
-      setMsg({ ok: false, text: `${label} failed: ${(e as Error).message}` });
+      setError((e as Error).message);
     } finally {
-      setPending(null);
+      active.current = false;
+      setBusy(false);
     }
+  }
+  if (!query.data)
+    return (
+      <Shell step="Agreement">
+        {query.isError ? (
+          <>
+            <h1>We couldn't load this agreement</h1>
+            <p role="alert" className="intro">
+              {query.error.message} Local projects reset when the backend restarts.
+            </p>
+            <Button onClick={() => query.refetch()}>Try again</Button>
+            <Button asChild variant="ghost">
+              <Link to="/">Start an agreement</Link>
+            </Button>
+          </>
+        ) : (
+          <p>Loading agreement…</p>
+        )}
+      </Shell>
+    );
+  const { project, context, run } = query.data;
+  const spec = context.spec;
+  const draft: ProjectDraft = {
+    name: spec.name,
+    clientWallet: spec.clientWallet,
+    developerWallet: spec.developerWallet,
+    milestones: spec.milestones.map(({ title, amountWei }) => ({ title, amountWei })),
   };
-
-  const actions: { intent: ProjectAction; label: string; key: string }[] = project ? [
-    { intent: { action: "deploy" }, label: "Deploy contract", key: "deploy" },
-    { intent: { action: "deposit" }, label: "Deposit funds", key: "deposit" },
-    ...project.milestones.map(m => ({ intent: { action: "acceptMilestone" as const, milestoneId: m.id }, label: `Approve Stage ${m.id} payment`, key: `stage-${m.id}` })),
-  ] : [];
+  const notes = api.getContext(id);
+  const running = Boolean(run && !run.finishedAt);
+  async function revise(next: ProjectDraft) {
+    await action(async () => {
+      const updated = await api.updateTerms(id, spec.specVersion, next);
+      const original = notes || { ...emptyWorkspace(), draft };
+      api.saveContext(
+        id,
+        {
+          ...original,
+          draft: next,
+          messages: addition.trim()
+            ? [...original.messages, { role: "user", content: addition }]
+            : original.messages,
+        },
+        updated.spec.specVersion,
+      );
+      setEditing(false);
+      setAddition("");
+      setAck(false);
+    });
+  }
   return (
-    <Shell step="03 / Project">
-      {project === undefined && <p className="text-muted-foreground">Loading…</p>}
-      {project === null && (
-        <div className="panel">
-          <p>Project not found.</p>
-          <Link to="/" className="btn btn-outline mt-4 inline-flex">Create a new project</Link>
+    <Shell step={editing ? "Revise agreement" : "Generate & check"}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <h1>{spec.name}</h1>
+        <span className="text-xs text-muted-foreground">
+          Version {spec.specVersion} · {context.confirmation ? "Confirmed" : "Needs confirmation"}
+        </span>
+      </div>
+      <p className="intro">
+        {project?.contractAddress
+          ? "This project uses the handwritten reference contract."
+          : context.confirmation
+            ? "Your confirmed payment rules are ready for Agent 2. Generation does not deploy a contract."
+            : "The agreement changed. Review and confirm this version before generating."}
+      </p>
+      <AgreementNotes workspace={notes} />
+      {editing ? (
+        <div className="mt-7">
+          <label className="mb-7 block">
+            <span className="field-label">Add a detail or correction · saved for human review</span>
+            <textarea
+              className="field min-h-28"
+              maxLength={20000}
+              value={addition}
+              onChange={(e) => setAddition(e.target.value)}
+            />
+          </label>
+          <p className="mb-5 text-sm text-muted-foreground">
+            Update payment fields below yourself. Saving any change invalidates confirmation and
+            earlier results. Unsupported rules are not added to the contract.
+          </p>
+          <fieldset disabled={busy}>
+            <AgreementEditor
+              initial={draft}
+              onSave={revise}
+              onCancel={() => {
+                setEditing(false);
+                setAddition("");
+              }}
+              submitLabel="Save changes & require confirmation"
+            />
+          </fieldset>
         </div>
-      )}
-      {project === null && msg && <p className="text-destructive">{msg.text}</p>}
-      {project && (
+      ) : (
         <>
-          <h1 className="font-display text-4xl font-bold">{project.name}</h1>
-          {project.milestones.every(m => m.paid) && <p className="mt-2 text-success font-bold">All stages paid — project complete.</p>}
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <div className="panel">
-              <div className="text-sm text-muted-foreground">Escrow balance</div>
-              <div className="mt-1 break-all font-mono text-3xl font-bold text-primary">{formatWei(project.escrowBalanceWei)} test ETH</div>
-            </div>
-            <div className="panel">
-              <div className="text-sm text-muted-foreground">Contract address</div>
-              <div className="mt-1 break-all font-mono text-sm">{project.contractAddress ?? "Not deployed"}</div>
-            </div>
-          </div>
-          <div className="panel mt-4">
-            <Row label="Total" value={`${formatWei(project.totalAmountWei)} test ETH`} />
-            <Row label="Client wallet" value={project.clientWallet} mono />
-            <Row label="Developer wallet" value={project.developerWallet} mono />
-            {project.milestones.map((s) => (
-              <Row key={s.id} label={`Stage ${s.id} · ${s.title} (${formatWei(s.amountWei)} ETH)`}
-                value={<span className={s.paid ? "badge badge-paid" : "badge"}>{s.paid ? "Paid" : "Unpaid"}</span>} />
+          <div className="my-7">
+            <Row label="Total" value={`${formatWei(spec.totalAmountWei)} test ETH`} />
+            {spec.milestones.map((m) => (
+              <Row
+                key={m.id}
+                label={`${m.id}. ${m.title}`}
+                value={`${formatWei(m.amountWei)} test ETH`}
+              />
             ))}
+            <details className="mt-4">
+              <summary>Participant addresses</summary>
+              <Row label="Client · approves payments" value={spec.clientWallet} mono />
+              <Row label="Developer · receives payments" value={spec.developerWallet} mono />
+            </details>
           </div>
-          <div className="panel mt-4 grid gap-3 sm:grid-cols-2">
-            {actions.map((a) => {
-              const reason = actionBlockReason(project, a.intent);
-              return (
-                <div key={a.key}>
-                  <button className="btn btn-primary w-full" disabled={!!reason || pending !== null}
-                    onClick={() => run(a.intent, a.label, a.key)}>
-                    {pending === a.key ? "Waiting for confirmation…" : a.label}
-                  </button>
-                  {reason && <p className="mt-1 text-xs text-muted-foreground">{reason}</p>}
+          {project?.contractAddress ? (
+            <Button asChild variant="outline">
+              <Link to="/reference-projects/$id" params={{ id }}>
+                Open reference payment controls
+              </Link>
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                className="mb-5 -ml-3"
+                disabled={busy}
+                onClick={() => setEditing(true)}
+              >
+                Add or change agreement details
+              </Button>
+              {!context.confirmation && (
+                <div className="mb-7">
+                  <PaymentRules />
+                  <ScopeAcknowledgement checked={ack} onChange={setAck} />
+                  <Button
+                    className="mt-5"
+                    disabled={!ack || busy}
+                    onClick={() => action(() => api.confirmAgreement(id, spec.specVersion))}
+                  >
+                    Confirm this version
+                  </Button>
                 </div>
-              );
-            })}
-          </div>
-          {project.transactions?.length ? <div className="panel mt-4">
-            <h2 className="font-bold">Confirmed local transactions</h2>
-            {project.transactions.map(tx => <div key={tx.hash} className="mt-2 break-all text-xs font-mono">{tx.action}{tx.milestoneId ? ` ${tx.milestoneId}` : ""} · block {tx.blockNumber}<br />{tx.hash}</div>)}
-          </div> : null}
-          {msg && <p className={`mt-4 text-sm ${msg.ok ? "text-success" : "text-destructive"}`}>{msg.text}</p>}
+              )}
+              {!context.generationEnabled && (
+                <p className="mb-5 text-sm text-muted-foreground">
+                  AI generation is disabled on this backend. Your rules are saved. The project owner
+                  can enable generation when the model and checking tools are configured.
+                </p>
+              )}
+              <Button
+                disabled={
+                  !context.confirmation ||
+                  !context.generationEnabled ||
+                  running ||
+                  busy ||
+                  query.isError
+                }
+                onClick={() =>
+                  action(() => api.startGeneration(id, context, run?.finishedAt ? run.id : null))
+                }
+              >
+                {running
+                  ? "Generating and checking…"
+                  : run
+                    ? "Start another generation"
+                    : "Generate & check contract"}
+              </Button>
+              {context.generationEnabled && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Starts a paid model request with up to 3 repairs. It stops early when checks pass
+                  or a tool fails.
+                </p>
+              )}
+            </>
+          )}
+          {run && <GenerationResultView run={run} currentVersion={spec.specVersion} />}
+          <p className="mt-8 text-sm text-muted-foreground">
+            Generated-contract deployment is not available yet. The independent reference demo uses
+            a handwritten contract.
+          </p>
         </>
       )}
+      {(error || query.isError) && (
+        <p role="alert" className="mt-5 text-sm text-destructive">
+          {error || query.error?.message}
+        </p>
+      )}
+      <Button className="mt-5" variant="link" disabled={busy} onClick={() => query.refetch()}>
+        Refresh status
+      </Button>
     </Shell>
   );
 }

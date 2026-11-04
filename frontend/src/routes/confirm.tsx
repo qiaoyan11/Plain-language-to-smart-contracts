@@ -1,77 +1,91 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { Row, Shell } from "@/components/Shell";
-import { api, formatWei, totalWei, type ProjectDraft } from "@/api/client";
+import { useEffect, useRef, useState } from "react";
+import { Shell } from "@/components/Shell";
+import { AgreementEditor } from "@/components/AgreementEditor";
+import { AgreementNotes, ScopeAcknowledgement, PaymentRules } from "@/components/AgreementNotes";
+import { api, type ProjectDraft } from "@/api/client";
+import type { Workspace } from "@/api/workspace";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/confirm")({
-  head: () => ({
-    meta: [
-      { title: "Review Rules · Smart Contract Escrow (Local Demo)" },
-      { name: "description", content: "Review project details and milestone payment rules." },
-      { property: "og:title", content: "Review Rules · Smart Contract Escrow" },
-      { property: "og:description", content: "Review project details and milestone payment rules." },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Review your agreement · Accord" }] }),
   component: ConfirmPage,
 });
-
-function ConfirmPage() {
-  const nav = useNavigate();
-  const [draft, setDraft] = useState<ProjectDraft | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setDraft(api.getDraft());
-    setLoaded(true);
-  }, []);
-
-  const create = async () => {
-    if (!draft) return;
+export function ConfirmPage() {
+  const nav = useNavigate(),
+    [workspace, setWorkspace] = useState<Workspace | null>(null),
+    [busy, setBusy] = useState(false),
+    [ack, setAck] = useState(false),
+    [error, setError] = useState("");
+  const active = useRef(false),
+    created = useRef<{ id: string; draft: string } | null>(null);
+  useEffect(() => setWorkspace(api.getWorkspace()), []);
+  async function confirm(draft: ProjectDraft) {
+    if (active.current || !workspace) return;
+    if (!ack) {
+      setError("Please acknowledge which terms this contract can enforce.");
+      return;
+    }
+    active.current = true;
     setBusy(true);
     setError("");
     try {
-      const p = await api.createProject(draft);
-      nav({ to: "/projects/$id", params: { id: p.id } });
+      const reason = api.validateDraft(draft);
+      if (reason) throw new Error(reason);
+      const fingerprint = JSON.stringify(draft);
+      if (!created.current || created.current.draft !== fingerprint) {
+        const p = await api.createAgreement(draft);
+        created.current = { id: p.id, draft: fingerprint };
+      }
+      const context = await api.getAgreement(created.current.id);
+      api.saveContext(created.current.id, { ...workspace, draft }, context.spec.specVersion);
+      await api.confirmAgreement(created.current.id, context.spec.specVersion);
+      api.clearWorkspace();
+      await nav({ to: "/projects/$id", params: { id: created.current.id } });
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      active.current = false;
       setBusy(false);
     }
-  };
-
+  }
   return (
-    <Shell step="02 / Review">
-      <h1 className="font-display text-4xl font-bold">Review payment rules</h1>
-      {loaded && !draft ? (
-        <div className="panel mt-8">
-          <p>No project draft to review.</p>
-          <button className="btn btn-outline mt-4" onClick={() => nav({ to: "/" })}>Create one</button>
-        </div>
-      ) : draft && (
-        <div className="panel mt-8">
-          <Row label="Project name" value={draft.name} />
-          <Row label="Client wallet" value={draft.clientWallet} mono />
-          <Row label="Developer wallet" value={draft.developerWallet} mono />
-          <Row label="Total" value={`${formatWei(totalWei(draft.milestones))} test ETH`} />
-          {draft.milestones.map((s, i) => (
-            <Row key={i} label={`Stage ${i + 1} · ${s.title}`} value={`${formatWei(s.amountWei)} ETH`} />
-          ))}
-          <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-            <li>The client must deposit the full amount before any payment can be approved.</li>
-            <li>Stages must be approved in the order shown above.</li>
-            <li>Each stage can only be paid once.</li>
-            <li>The client confirms delivery. This version has no cancellation or refund.</li>
-          </ul>
-          {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
-          <div className="mt-6 flex gap-3">
-            <button className="btn btn-outline flex-1" disabled={busy} onClick={() => nav({ to: "/" })}>Back to edit</button>
-            <button className="btn btn-primary flex-1" disabled={busy} onClick={create}>
-              {busy ? "Creating…" : "Confirm & create"}
-            </button>
-          </div>
-        </div>
+    <Shell step="Review & confirm">
+      <h1>Review your agreement</h1>
+      <p className="intro">
+        Check the payment rules, then add the two local test accounts. Nothing is generated until
+        you ask.
+      </p>
+      {workspace ? (
+        <>
+          <AgreementNotes workspace={workspace} />
+          <PaymentRules />
+          <ScopeAcknowledgement checked={ack} onChange={setAck} />
+          <fieldset disabled={busy} className="mt-7">
+            <AgreementEditor
+              initial={workspace.draft}
+              onDirty={() => setAck(false)}
+              onSave={confirm}
+              onCancel={() => nav({ to: "/" })}
+              submitLabel={busy ? "Confirming…" : "Confirm agreement"}
+            />
+          </fieldset>
+          <p className="mt-5 text-xs text-muted-foreground">
+            Confirmation is stored by the local backend. It does not deploy a contract or start a
+            paid model call.
+          </p>
+        </>
+      ) : (
+        <p>Loading draft…</p>
       )}
+      {error && (
+        <p role="alert" className="mt-4 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      <Button variant="link" className="mt-4 px-0" disabled={busy} onClick={() => nav({ to: "/" })}>
+        Back to conversation
+      </Button>
     </Shell>
   );
 }

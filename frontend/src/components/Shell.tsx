@@ -1,40 +1,49 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { api, MOCK_MODE } from "@/api/client";
+import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { FileText } from "lucide-react";
 
 export function Shell({ step, children }: { step: string; children: ReactNode }) {
-  const [fail, setFail] = useState(false);
-  useEffect(() => setFail(api.getSimulateFailure()), []);
-  const toggle = () => {
-    api.setSimulateFailure(!fail);
-    setFail(!fail);
-  };
   return (
     <div className="min-h-screen">
-      <div className="mock-banner">
-        <span className="mock-pill">{MOCK_MODE ? "MOCK MODE" : "LOCAL TEST CHAIN"}</span>
-        <span>{MOCK_MODE ? "Mock data only — no blockchain connected" : "Real contract execution on a local EVM · demo accounts auto-sign · no real funds · restart resets data"}</span>
-        {MOCK_MODE && <label className="mock-toggle">
-          <input type="checkbox" checked={fail} onChange={toggle} />
-          Simulate failure: {fail ? "ON" : "OFF"}
-        </label>}
+      <div className="prototype-label">
+        Local development · Test funds only · Conversation guidance is scripted
       </div>
-      <header className="mx-auto flex max-w-3xl items-center justify-between px-6 py-6">
-        <Link to="/" className="font-display text-xl font-bold">
-          Escrow<span className="text-primary">.</span>
+      <header className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-7">
+        <Link to="/" className="flex items-center gap-2 font-display text-lg font-semibold">
+          <FileText className="size-5 text-primary" />
+          Accord
         </Link>
-        <span className="font-mono text-xs text-muted-foreground">{step}</span>
+        <Link
+          to="/reference-demo"
+          className="text-xs text-muted-foreground underline underline-offset-4"
+        >
+          Reference payment demo
+        </Link>
       </header>
-      <main className="mx-auto max-w-3xl px-6 pb-20">{children}</main>
+      <main className="mx-auto max-w-3xl px-6 pb-20">
+        <div className="mb-9 border-t border-border pt-5 text-xs text-muted-foreground">
+          Agreement <span className="mx-2">/</span> {step}
+        </div>
+        {children}
+      </main>
+      <footer className="mx-auto max-w-3xl border-t border-border px-6 py-5 text-xs leading-relaxed text-muted-foreground">
+        Conversation notes stay in this browser tab. Confirmed payment rules go to the local
+        backend. No public blockchain is connected.
+      </footer>
     </div>
   );
 }
-
 export function Row({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
-    <div className="flex flex-col gap-1 border-b border-border py-3 sm:flex-row sm:justify-between">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className={mono ? "break-all font-mono text-sm" : "font-medium"}>{value}</span>
+    <div className="flex flex-col gap-2 border-b border-border py-4 sm:flex-row sm:justify-between">
+      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      <span
+        className={
+          mono ? "min-w-0 break-all text-sm font-mono sm:max-w-[70%]" : "text-sm font-medium"
+        }
+      >
+        {value}
+      </span>
     </div>
   );
 }
