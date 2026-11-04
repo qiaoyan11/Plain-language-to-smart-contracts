@@ -53,7 +53,7 @@ class Agent2Tests(unittest.TestCase):
         self.assertIsNone(run['compilation']['artifact'])
 
     def test_unsupported_modes_fail_before_model_call(self):
-        for field,value in [('maxRepairs',1),('feedbackSetting','B'),('validationMode','development')]:
+        for field,value in [('maxRepairs',1),('feedbackSetting','B'),('maxRepairs',6)]:
             request=copy.deepcopy(self.request);request['payload']['runConfig'][field]=value
             with self.subTest(field=field), self.assertRaises(ValueError):
                 run_generation(request,model_call=lambda *args:self.fail('must not call model'))
@@ -123,11 +123,165 @@ class Agent2Tests(unittest.TestCase):
         from flows.worker import dispatch
         result = run_generation(self.request, model_call=lambda *args: reply(GOOD_SOURCE),
                                 compiler=lambda *args: {'status': 'passed'})
-        with patch.dict('os.environ', {'AGENT2_MODE': 'live'}), patch('agent2.service.run_generation', return_value=result) as service:
+        with patch.dict('os.environ', {'AGENT2_MODE': 'live'}), patch('agent2.service.run_and_save', return_value=(result, {'runDirectory': 'offline-test'})) as service:
             response = dispatch(self.request)
         self.assertEqual(service.call_count, 1)
         self.assertEqual(response['requestId'], self.request['requestId'])
         self.assertEqual(response['result']['status'], 'generated')
         self.assertIsNone(response['result']['validationReport'])
+
+
+
+
+def development_request(setting='B', repairs=1):
+    request = copy.deepcopy(REQUEST)
+    request['payload']['runConfig'].update(validationMode='development', feedbackSetting=setting, maxRepairs=repairs)
+    return request
+
+
+def fake_report(bundle, failing=(), tools=()):
+    """Controlled report for workflow tests only; never evidence for deployment."""
+    checks = []
+    for name in ('compilation', 'staticAnalysis', 'clauseTests'):
+        status = 'toolError' if name in tools else 'failed' if name in failing else 'passed'
+        checks.append({'name': name, 'status': status, 'findings': [] if status == 'passed' else
+                       [{'code': name + '_CODE', 'severity': 'error', 'message': name + '_SECRET', 'file': None, 'line': None}]})
+    passed = not failing and not tools
+    return {'reportId': 'test-' + bundle['sourceHash'][-12:], 'projectId': bundle['projectId'],
+            'specVersion': bundle['specVersion'], 'sourceHash': bundle['sourceHash'], 'suiteVersion': 'offline-test-only',
+            'mode': 'development', 'status': 'passed' if passed else 'failed' if failing else 'toolError', 'checks': checks,
+            'artifact': {'abi': [], 'bytecode': '0x00', 'compilerVersion': bundle['compilerVersion'],
+                         'buildSettings': bundle['buildSettings'], 'sourceHash': bundle['sourceHash'],
+                         'constructorTypes': ['address', 'address', 'uint256[]']} if passed else None}
+
+
+class RepairTests(unittest.TestCase):
+    def test_a_validates_but_never_repairs(self):
+        calls=[]
+        def model(*args): calls.append(args); return reply(GOOD_SOURCE)
+        run=run_generation(development_request('A',0),model_call=model,
+                           validator=lambda spec,b:fake_report(b,('staticAnalysis',)))
+        self.assertEqual(len(calls),1)
+        self.assertEqual(run['response']['result']['status'],'failed')
+        self.assertEqual(run['stopReason'],'no_repairs')
+
+    def test_b_filters_clause_feedback_c_includes_it(self):
+        for setting in ('B','C'):
+            with self.subTest(setting=setting):
+                calls=[]
+                def model(*args): calls.append(args); return reply(GOOD_SOURCE + '\n' * len(calls))
+                def validator(spec,b):
+                    return fake_report(b,('staticAnalysis','clauseTests') if len(calls)==1 else ())
+                run=run_generation(development_request(setting),model_call=model,validator=validator)
+                result=run['response']['result']
+                self.assertEqual(len(calls),2)
+                self.assertEqual(result['status'],'validated')
+                self.assertIn('staticAnalysis_SECRET',calls[1][1])
+                self.assertEqual('clauseTests_SECRET' in calls[1][1],setting=='C')
+                self.assertNotIn('bytecode',calls[1][1])
+                self.assertEqual(result['attempts'][-1]['reportId'],result['validationReport']['reportId'])
+                self.assertEqual(len(run['history']),2)
+                self.assertEqual(len(run['modelCalls']),2)
+                self.assertEqual(run['metadata']['usage']['input_tokens'],20)
+                self.assertNotEqual(run['history'][0]['sourceBundle']['sourceHash'],result['sourceBundle']['sourceHash'])
+                if setting=='B':self.assertFalse(any('clause' in f for f in result['attempts'][1]['feedbackUsed']))
+
+    def test_budget_exhaustion_and_no_retry_after_failed_repair(self):
+        calls=[]
+        def model(*args):calls.append(1);return reply(GOOD_SOURCE)
+        run=run_generation(development_request(repairs=2),model_call=model,
+                           validator=lambda spec,b:fake_report(b,('compilation',)))
+        self.assertEqual(len(calls),3)
+        self.assertEqual(len(run['response']['result']['attempts']),3)
+        self.assertEqual(run['stopReason'],'repair_budget_exhausted')
+        self.assertEqual(run['response']['result']['status'],'failed')
+
+    def test_b_stops_when_only_clause_test_fails(self):
+        calls=[]
+        def model(*args):calls.append(1);return reply(GOOD_SOURCE)
+        run=run_generation(development_request(),model_call=model,
+                           validator=lambda spec,b:fake_report(b,('clauseTests',)))
+        self.assertEqual(len(calls),1)
+        self.assertEqual(run['stopReason'],'no_eligible_feedback')
+        self.assertEqual(run['response']['result']['status'],'failed')
+
+    def test_mixed_code_and_tool_failure_always_stops(self):
+        calls=[]
+        def model(*args):calls.append(1);return reply(GOOD_SOURCE)
+        run=run_generation(development_request('C'),model_call=model,
+                           validator=lambda spec,b:fake_report(b,('clauseTests',),('staticAnalysis',)))
+        self.assertEqual(len(calls),1)
+        self.assertEqual(run['response']['result']['status'],'toolError')
+        self.assertEqual(run['stopReason'],'tool_error')
+
+    def test_missing_validator_or_wrong_report_cannot_pass_or_repair(self):
+        def unavailable(*args):raise ImportError('sensitive implementation details')
+        def mismatch(spec,b):
+            report=fake_report(b);report['sourceHash']='sha256:'+'0'*64;return report
+        for validator in (unavailable,mismatch,lambda *args:{'status':'passed'}):
+            calls=[]
+            def model(*args):calls.append(1);return reply(GOOD_SOURCE)
+            run=run_generation(development_request(),model_call=model,validator=validator)
+            self.assertEqual(len(calls),1)
+            self.assertEqual(run['response']['result']['status'],'toolError')
+            self.assertIsNone(run['response']['result']['validationReport'])
+            self.assertNotIn('sensitive implementation',json.dumps(run))
+
+    def test_compilation_failure_can_be_repaired_through_trusted_validation(self):
+        calls=[]
+        def model(*args):calls.append(args);return reply('bad Solidity' if len(calls)==1 else GOOD_SOURCE)
+        def validator(spec,b):return fake_report(b,('compilation',) if len(calls)==1 else ())
+        run=run_generation(development_request(),model_call=model,validator=validator,
+                           compiler=lambda *args:self.fail('development must use independent recompiler'))
+        self.assertEqual(run['response']['result']['status'],'validated')
+        self.assertIn('compilation_SECRET',calls[1][1])
+
+    def test_resume_revalidates_original_and_preserves_input(self):
+        seed=run_generation(REQUEST,model_call=lambda *args:reply(GOOD_SOURCE),compiler=lambda *args:{'status':'passed'})['response']['result']['sourceBundle']
+        before=copy.deepcopy(seed);checks=[];calls=[];events=[]
+        def validator(spec,b):checks.append(b['sourceHash']);return fake_report(b,('staticAnalysis',) if len(checks)==1 else ())
+        def model(*args):calls.append(1);return reply(GOOD_SOURCE+'\n// repaired')
+        run=run_generation(development_request(),initial_bundle=seed,model_call=model,validator=validator,on_record=events.append)
+        self.assertEqual(seed,before)
+        self.assertEqual(len(checks),2)
+        self.assertEqual(len(calls),1)
+        self.assertTrue(run['resumedSource'])
+        self.assertEqual(run['metadata']['apiCalls'],1)
+        self.assertEqual(run['history'][0]['sourceBundle'],seed)
+        self.assertEqual([e['kind'] for e in events],['source','validation','modelCall','source','validation'])
+
+    def test_repair_model_failure_keeps_previous_source_report_and_call_usage(self):
+        calls=[]
+        def model(*args):
+            calls.append(1)
+            return reply(GOOD_SOURCE) if len(calls)==1 else {'source':None,'metadata':{'usage':{'output_tokens':8192},'apiCalls':1},'error':'MODEL_INCOMPLETE'}
+        run=run_generation(development_request(),model_call=model,validator=lambda spec,b:fake_report(b,('staticAnalysis',)))
+        result=run['response']['result']
+        self.assertEqual(result['status'],'failed')
+        self.assertEqual(len(result['attempts']),1)
+        self.assertIsNotNone(result['validationReport'])
+        self.assertEqual(len(run['modelCalls']),2)
+        self.assertEqual(run['metadata']['usage']['output_tokens'],8212)
+        self.assertEqual(run['stopReason'],'model_error')
+
+    def test_real_validator_checks_injected_source_and_returns_its_artifact(self):
+        run=run_generation(development_request('A',0),model_call=lambda *args:reply(GOOD_SOURCE))
+        result=run['response']['result']
+        self.assertEqual(result['status'],'validated',run)
+        report=result['validationReport']
+        self.assertEqual({c['status'] for c in report['checks']},{'passed'})
+        self.assertIn('slither-block-high-medium-v1',report['suiteVersion'])
+        self.assertGreater(len(report['artifact']['bytecode']),1000)
+        self.assertEqual(report['artifact']['sourceHash'],result['sourceBundle']['sourceHash'])
+        self.assertEqual(result['attempts'][0]['reportId'],report['reportId'])
+
+    def test_passed_first_attempt_stops_with_budget_remaining(self):
+        calls=[]
+        def model(*args):calls.append(1);return reply(GOOD_SOURCE)
+        run=run_generation(development_request('C',5),model_call=model,validator=lambda spec,b:fake_report(b))
+        self.assertEqual(len(calls),1)
+        self.assertEqual(run['response']['result']['status'],'validated')
+        self.assertEqual(run['stopReason'],'passed')
+
 
 if __name__=='__main__':unittest.main()

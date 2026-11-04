@@ -24,7 +24,7 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 | 负责人 | 主要编辑位置 | 替换什么 | 第一项完成标准 |
 | --- | --- | --- | --- |
 | A | agent1/ | stub.py 的 clarify(payload) | 接模型，完整、缺信息、超范围三种描述返回合法输出，不替用户确认 |
-| B | agent2/、flows/ | stub.py 的 generate(payload)，之后替换 worker 的调度 | 先真实生成一次；再用 LangGraph 接 C 的开发验证和有限修复 |
+| B | agent2/、flows/ | service.py 的 generate(payload)、flows/generation.py | 生成、可信验证、有限修复已接通；继续完善规则与实验配置 |
 | C + Claude | validation/ | 自己实现 validate_development(spec, sourceBundle) | 编译、静态检查、条款测试组成可信报告；工具没准备好不能报通过 |
 | Jiahao | backend/、frontend/、agent3/ | python-bridge.cjs 后续网页接入；agent3/stub.py | 管用户确认、版本、集成；Agent 3 先输出意图，再由后端执行 |
 
@@ -43,7 +43,7 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 默认模拟模式下：Agent 1 返回待核对样例；Agent 2 返回手写参考源码；Agent 3 返回 blocked。
 Agent 2 另有显式 --live 的真实生成命令，见 [Agent 2 说明](../agent2/README.md)。
 输出 stderr 的 STUB 提示不能删除，直到真实实现替换完成且文档同步。
-LangGraph 已实现 Agent 2 单次生成图；验证与修复循环尚未实现。
+LangGraph 已接通 Agent 2 生成、独立开发验证和有限修复；网页入口与正式评测尚未接通。
 C 的验证模拟实现也尚未连接，development 请求返回 toolError，无报告、无部署许可。
 
 ## 3. 接口究竟如何连接
@@ -84,6 +84,6 @@ PR 写清：改了什么、输入输出例子、测试结果、还没做什么�
 
 ## 接独立验证时必须守住的边界
 
-B 的可信工作流直接调用 C 的 validate_development，报告和编译产物取自该函数。模型只返回源码或修复内容，不能自己填写 passed 报告。格式合法并不能证明检查真的执行；接通时必须测试“模型伪造报告不能替代验证调用”。这一点由 B、C 在首次联调落实，不增加签名系统。
+B 的可信工作流直接调用 C 的 validate_development，报告和编译产物取自该函数。模型只返回源码或修复内容，不能自己填写 passed 报告。格式合法并不能证明检查真的执行；接通时必须测试“模型伪造报告不能替代验证调用”。这一点已由工作流直接调用验证器及集成测试落实，不增加签名系统。
 
 连接超时会先清理进程再释放同项目锁。Mac/Linux 已测试忽略终止信号的父子进程；Windows 的 taskkill 分支暂未在本机验证。

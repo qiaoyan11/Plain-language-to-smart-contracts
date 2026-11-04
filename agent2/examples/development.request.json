@@ -1,0 +1,43 @@
+{
+  "interfaceVersion": 1,
+  "requestId": "development-integration-example",
+  "operation": "generate",
+  "payload": {
+    "spec": {
+      "schemaVersion": 1,
+      "projectId": "demo-001",
+      "specVersion": 1,
+      "name": "Company website",
+      "clientWallet": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "developerWallet": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "milestones": [
+        {
+          "id": 1,
+          "title": "Homepage accepted",
+          "amountWei": "3000000000000000"
+        },
+        {
+          "id": 2,
+          "title": "Completed website accepted",
+          "amountWei": "7000000000000000"
+        }
+      ],
+      "totalAmountWei": "10000000000000000",
+      "approvalRole": "client",
+      "refundPolicy": "none",
+      "deadline": null
+    },
+    "confirmation": {
+      "projectId": "demo-001",
+      "specVersion": 1,
+      "confirmationId": "fixture-only-not-a-real-confirmation",
+      "confirmedAt": "2026-11-02T20:00:00Z"
+    },
+    "runConfig": {
+      "validationMode": "development",
+      "maxRepairs": 1,
+      "feedbackSetting": "B",
+      "model": "gpt-5.4-mini-2026-03-17"
+    }
+  }
+}

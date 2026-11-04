@@ -98,3 +98,20 @@ test('timeout kills stubborn worker and its child before releasing project lock'
   }
   assert.equal((await runPython(clone())).status,'ok');
 });
+
+// Validation includes three bounded tools per attempt; keep the bridge alive long enough.
+test('live timeout accounts for validation and bounded repair rounds', () => {
+  const { defaultTimeout } = require('../backend/python-bridge.cjs');
+  const previous = process.env.AGENT2_MODE;
+  try {
+    delete process.env.AGENT2_MODE;
+    assert.equal(defaultTimeout({}), 10000);
+    process.env.AGENT2_MODE = 'live';
+    assert.equal(defaultTimeout({}), 210000);
+    assert.equal(defaultTimeout({operation:'generate',payload:{runConfig:{validationMode:'development',maxRepairs:1}}}), 1800000);
+    assert.equal(defaultTimeout({operation:'generate',payload:{runConfig:{validationMode:'development',maxRepairs:999}}}), 5400000);
+  } finally {
+    if (previous === undefined) delete process.env.AGENT2_MODE;
+    else process.env.AGENT2_MODE = previous;
+  }
+});

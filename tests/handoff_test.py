@@ -96,6 +96,9 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Last attempt report'):
             validate_response(self.request, response)
         report = json.loads((ROOT/'shared/examples/validation-report.json').read_text())
+        # Match the current stub source before deliberately breaking only reportId.
+        for key in ('projectId', 'specVersion', 'sourceHash'):
+            report[key] = response['result']['sourceBundle'][key]
         self.request['payload']['runConfig']['validationMode'] = 'development'
         response['result'].update(status='toolError', validationReport=report)
         with self.assertRaisesRegex(ValueError, 'Last attempt report'):

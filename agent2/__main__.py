@@ -1,53 +1,50 @@
-"""Fixture mode remains default. --live explicitly enables one paid model call."""
+"""Fixture mode stays default. --live enables explicitly budgeted model calls."""
 import argparse
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
-from uuid import uuid4
-from shared.handoff import ROOT
+from shared.handoff import validate_request, validate_response
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('request', help='JSON request envelope')
-    parser.add_argument('--live', action='store_true', help='Make one real OpenAI call and compile the output')
+    parser.add_argument('request', help='JSON request envelope with explicit runConfig')
+    parser.add_argument('--live', action='store_true', help='Run real generation/validation; obey maxRepairs')
+    parser.add_argument('--resume-run', help='Revalidate original source from a saved run; diagnostic continuation, not a formal experiment')
     args = parser.parse_args()
     request = json.loads(Path(args.request).read_text())
-    if request.get('operation') != 'generate':
+    validate_request(request)
+    if request['operation'] != 'generate':
         raise SystemExit('Wrong operation for agent2')
     if not args.live:
+        if args.resume_run:
+            parser.error('--resume-run requires --live')
         from flows.worker import dispatch
         print(json.dumps(dispatch(request), ensure_ascii=False))
         return
-    from flows.generation import run_generation
-    print('LIVE: one generation call, then local compilation; no deployment or repair.', file=sys.stderr)
-    # Always save in a new ignored folder. Model output never chooses filesystem paths.
-    run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid4().hex[:8]
-    directory = ROOT / 'artifacts/agent2' / run_id
-    directory.mkdir(parents=True, exist_ok=False, mode=0o700)
+    initial_bundle = None
+    if args.resume_run:
+        origin = Path(args.resume_run).resolve()
+        original_request = json.loads((origin / 'request.json').read_text())
+        original_response = json.loads((origin / 'response.json').read_text())
+        validate_request(original_request)
+        validate_response(original_request, original_response)
+        for field in ('spec', 'confirmation'):
+            if original_request['payload'][field] != request['payload'][field]:
+                raise SystemExit('Resume requires exactly the original confirmed specification.')
+        initial_bundle = original_response['result']['sourceBundle']
+        if initial_bundle is None:
+            raise SystemExit('Original run has no source to resume.')
+    config = request['payload']['runConfig']
+    max_calls = config['maxRepairs'] + (0 if initial_bundle is not None else 1)
+    print(f'LIVE: at most {max_calls} new model call(s); mode={config["validationMode"]}; no deployment.', file=sys.stderr)
+    from agent2.records import run_and_save
     try:
-        run = run_generation(request)
+        run, summary = run_and_save(request, initial_bundle=initial_bundle,
+                                    resumed_from=str(origin) if args.resume_run else None)
     except Exception as error:
-        # Do not persist arbitrary library exception text (it could contain request headers).
         print(f'Agent 2 stopped: {type(error).__name__}. Check request settings and installed dependencies.', file=sys.stderr)
         raise SystemExit(1) from None
-    def save(name, data):
-        (directory / name).write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
-    save('request.json', request)
-    save('run.json', run)
-    save('response.json', run['response'])
-    save('compilation.json', run['compilation'])
-    bundle = run['response']['result']['sourceBundle']
-    if bundle:
-        # Only these two fixed filenames are written by the trusted packager.
-        for name in ('GeneratedMilestoneEscrow.sol', 'IMilestoneEscrow.sol'):
-            (directory / name).write_text(bundle['sources'][name])
-    summary = {'runDirectory': str(directory), 'status': run['response']['result']['status'],
-               'compilation': (run['compilation'] or {}).get('status'), 'error': run['error'],
-               'model': run['metadata'].get('returnedModel'), 'usage': run['metadata'].get('usage'),
-               'elapsedSeconds': run['elapsedSeconds'], 'independentValidation': 'not run', 'deployed': False}
-    save('summary.json', summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     if run['response']['result']['status'] in ('failed', 'toolError'):
         raise SystemExit(1)

@@ -1,6 +1,6 @@
 # 四人协作与第一批任务
 
-当前共同起点：网页、Node 后端和 1–5 阶段参考合约已跑通。Python 模拟模块和 Node 连接已实现；Agent 2 已有真实单次生成 LangGraph，其余 Agent、独立验证和网页 AI 接入尚未完成。先读 [接手说明](TEAM_HANDOFF.md)。本轮先把模块接起来，不重写前后端，不加入钱包、退款、RAG 或数据库。
+当前共同起点：网页、Node 后端和 1–5 阶段参考合约已跑通。Python 模拟模块和 Node 连接已实现；Agent 2 已接通生成、独立验证和有限修复；其余 Agent、网页 AI 接入和正式评测尚未完成。先读 [接手说明](TEAM_HANDOFF.md)。本轮先把模块接起来，不重写前后端，不加入钱包、退款、RAG 或数据库。
 
 每人先按 [运行说明](FRONTEND_INTEGRATION.md) 完成创建、部署、存款、付款。之后读 [模块交接 v1](../shared/INTERFACES.md)。A/B/C 是待认领岗位，不是已确认的成员姓名。
 
@@ -22,7 +22,7 @@
 ## 组员 B — Agent 2 与生成修复图
 
 - 目录：agent2/、flows/；分支 feature/agent2-python。
-- 当前已完成：单次生成 SourceBundle 和编译，保留未独立验证状态。下一项任务：接开发验证，再实现 LangGraph 有限修复和停止路径。
+- 当前已完成：SourceBundle 生成、可信开发验证、A/B/C 反馈筛选、有限修复和停止路径。下一项任务：与 C 固定正式样例集和实验预算，再按已定规则扩展合约能力。
 - 交付：Python 依赖及版本、固定入口、独立运行样例、失败处理测试。先 maxRepairs=0，接好 C 的开发验证报告后再测试有限修复。
 - 边界：不覆盖参考合约，不修改独立验证工具和测试，不读取 hidden 结果调提示词；不提交 API key。
 - 与 Jiahao 配合：复用 flows.worker 和 flows/generation.py，不另建流程入口；网页接入复用已有 Node 侧调用。两人不各自设计另一套入口。
@@ -30,7 +30,7 @@
 ## 组员 C — 独立验证与实验
 
 - 目录：validation/；分支 feature/validation，由 C 与 Claude 协调，避免同时修改同一文件。
-- 第一项任务：按 validate_development 约定返回报告，接编译、静态检查、条款测试；工具缺失返回 toolError。
+- 当前已完成：validate_development 的编译、静态检查、开发条款测试；工具缺失返回 toolError。下一项任务：准备正式样例和独立留出评测。
 - 交付：报告样例、独立运行方式、版本化通过标准，给 B 的开发反馈格式。
 - 后续任务：对照 proposal 落实 A/B/C 反馈定义、统一修复预算和 visible/hidden 拆分。三种条件使用相同模型及测试条件，保留失败案例。
 - 隔离：hidden 由 C/Claude 独立维护，不发给 B，也不通过生成图的工具或日志泄露。

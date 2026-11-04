@@ -20,7 +20,7 @@ def dispatch(request):
     generate = generate_stub
     if request['operation'] == 'generate' and mode == 'live':
         from agent2.service import generate
-        print('LIVE Agent 2: single generation, compilation only.', file=sys.stderr)
+        print('LIVE Agent 2: explicit generation/validation budget; no deployment.', file=sys.stderr)
     else:
         print('STUB MODE: fixtures only; no AI, independent validation, or transactions.', file=sys.stderr)
     result = {'clarify': clarify, 'generate': generate, 'planAction': plan_action}[request['operation']](request['payload'])

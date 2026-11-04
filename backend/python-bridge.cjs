@@ -8,7 +8,15 @@ const localPython = path.join(ROOT, '.venv', process.platform === 'win32' ? 'Scr
 const active = new Set();
 const LIMIT = 1024 * 1024;
 
-function runPython(request, { timeoutMs = (process.env.AGENT2_MODE === 'live' ? 210000 : 10000), maxBytes = LIMIT, isCurrent = () => true } = {}) {
+function defaultTimeout(request) {
+  if (process.env.AGENT2_MODE !== 'live') return 10000;
+  const config = request.payload?.runConfig;
+  if (request.operation !== 'generate' || config?.validationMode !== 'development') return 210000;
+  const repairs = Number.isInteger(config.maxRepairs) ? Math.min(5, Math.max(0, config.maxRepairs)) : 0;
+  return 900000 * (1 + repairs);
+}
+
+function runPython(request, { timeoutMs = defaultTimeout(request), maxBytes = LIMIT, isCurrent = () => true } = {}) {
   const key = request.payload?.spec?.projectId ?? request.payload?.projectId ?? request.payload?.draftSpec?.projectId ?? request.requestId;
   if (active.has(key)) return Promise.reject(new Error('PROJECT_BUSY'));
   const input = JSON.stringify(request);
@@ -82,4 +90,4 @@ function runPython(request, { timeoutMs = (process.env.AGENT2_MODE === 'live' ? 
     child.stdin.end(input);
   });
 }
-module.exports = { runPython };
+module.exports = { runPython, defaultTimeout };

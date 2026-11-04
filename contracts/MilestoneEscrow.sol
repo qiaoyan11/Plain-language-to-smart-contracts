@@ -28,7 +28,7 @@ contract MilestoneEscrow is IMilestoneEscrow {
             revert InvalidParties();
         }
         if (amounts_.length == 0 || amounts_.length > 5) revert InvalidMilestoneCount();
-        uint256 sum;
+        uint256 sum = 0;
         for (uint256 i = 0; i < amounts_.length; ++i) {
             if (amounts_[i] == 0) revert InvalidAmount();
             sum += amounts_[i];
