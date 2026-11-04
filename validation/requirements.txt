@@ -1,0 +1,4 @@
+# Static analysis for validation/ (pinned; suiteVersion records the Slither version).
+# Install into the same interpreter that runs the project: .venv/bin/python -m pip install -r validation/requirements.txt
+slither-analyzer==0.11.3
+crytic-compile==0.3.11

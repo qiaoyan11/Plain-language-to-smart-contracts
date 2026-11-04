@@ -65,6 +65,14 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-03 · Claude · 独立验证接入并检查 Agent 2 首次生成结果
+- 结论：本次生成合约 failed。编译通过、23/23 条款测试通过；Slither 报 1 条 Medium（`uint256 sum;` 未显式初始化），按规则阻断。
+- 做了什么：实现 `validation.validate_development`：重算 hash 并重新编译 → Slither 0.11.3 → 本地链部署后跑 23 条条款测试；报告存进运行目录。
+- 怎么验证：验证器自测 13/13；故意注入 15 种缺陷，全部被抓住；Slither 缺失、版本不符、崩溃都返回 toolError。原有测试 26/26、5/5、18/18 不受影响。
+- 发现：手写参考合约有同样那一行，在同一规则下也会失败。详见 `REVIEW.md` 审查 3。
+- 下一步：Codex 按审查 3 的 V-2、V-3 接入；本轮未提交 git，新增文件都在 validation/。
+- 需要老板决定：静态分析规则——A 保持严格，改一行即可通过（建议）；B 把这类告警设为不阻断。
+
 ### 2026-11-03 · Codex · Agent 2 单次真实生成与编译
 - 做了什么：接通 GPT-5.4 mini Responses API 和 LangGraph，规则→生成→源码打包→真实编译；提供显式 live 命令及用量记录。
 - 真实结果：一次调用、零修复，约 29.7 秒；输入 739、输出 5115 tokens；solc 0.8.28 编译通过，无诊断；原始结果保存在本机 artifacts/agent2/。

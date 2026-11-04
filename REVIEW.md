@@ -4,6 +4,60 @@
 
 ---
 
+## 审查 3：Agent 2 首次生成结果的独立验证（commit `d6582f1`，运行 `20261104T014714Z-682e1fa6`）· Claude · 2026-11-03
+
+**结论：failed。** 编译 passed、条款测试 23/23 passed；静态分析按 `slither-block-high-medium-v1` 判 failed，
+唯一阻断项是 Slither `uninitialized-local`（Medium）。报告：`artifacts/agent2/20261104T014714Z-682e1fa6/validation-report.json`
+（reportId `val-eac2985275504647bec91587c0e99c9d`），明细在同目录 `validation-evidence.json`。
+
+### 核实了什么
+
+| 项 | 结果 |
+| --- | --- |
+| 被测对象 | 运行目录里的 `response.json` 的 SourceBundle；其 `GeneratedMilestoneEscrow.sol` 与目录中的同名文件逐字相同。未用手写合约替代 |
+| sourceHash | 重算 = 声明值 `sha256:e4b5be20…a7e2` |
+| 编译 | solc-js 0.8.28 / paris / optimizer 200 重新编译，无诊断；构造函数与冻结接口一致。重新编译的 bytecode 与 Agent 2 自报一致（只作记录，不参与判定） |
+| Slither 0.11.3 | 2 条：`uninitialized-local` Medium（阻断，`GeneratedMilestoneEscrow.sol` 第 25 行 `uint256 sum;`）；`low-level-calls` Informational（不阻断） |
+| 条款测试 | 23/23 通过，在 Hardhat 本地链部署本次重新编译的 bytecode |
+| 验证器自测 | 13/13 通过；15 个注入缺陷全部被对应条款抓住；Slither 缺失、版本不符、崩溃均返回 toolError |
+| 未受影响 | `npm test` 26/26、`npm run test:api` 5/5、交接 Python 18/18 |
+
+### 需要处理
+
+**V-1（需要老板决定）静态分析阻断规则。** 当前规则：High/Medium 全部阻断，无例外。
+`uninitialized-local` 在这里其实无害（Solidity 局部变量默认是 0），但它是 Medium，按规则就阻断。
+- 选项 A（建议）：保持严格。改一行 `uint256 sum = 0;` 即可通过；B/C 设置的修复循环正好能拿 Slither 反馈练手，规则也简单、好解释。
+- 选项 B：把 `uninitialized-local` 列为不阻断，升级为 `slither-block-high-medium-v2`。本次生成结果会因此通过。
+规则一旦用于正式实验就不能再改，否则 A/B/C 结果不可比。
+
+**V-2（Codex，选项 A 时必做）手写参考合约在同一规则下也失败。** `contracts/MilestoneEscrow.sol` 第 31 行同样是 `uint256 sum;`，
+用本验证器检查：编译 passed、条款 23/23 passed、静态分析因同一条 Medium 失败。作为 A/B/C 的基线，参考合约应当 0 阻断。
+修复：改为 `uint256 sum = 0;`，重跑 `npm test`。
+
+**V-3（Codex）Agent 2 接入。** 见下节；另请把 `validation/requirements.txt`（Slither）并入安装说明或锁文件，
+并在 `package.json` 加 `"test:validation": "<python> -m unittest discover -s validation/tests -t ."`。
+这两处文件不归 validation/，本轮未改。
+
+**V-4（信息）运行环境。** 本轮在已连接的 Linux 环境（Python 3.10、Node 22.23）运行；Mac 上的 `.venv` 在该环境不可用，
+建议老板在 Mac 上跑一次 README 里的安装和自测命令确认。
+
+### Agent 2 如何调用
+
+在 `flows/generation.py` 的编译节点之后（`validationMode == "development"` 时）：
+
+```python
+from validation import validate_development
+report = validate_development(spec, source_bundle)      # 直接调用，不经模型
+# result['validationReport'] = report；attempts[-1]['reportId'] = report['reportId']
+# status: report passed -> 'validated'；failed -> 进入修复或 'failed'；toolError -> 'toolError'，停止，不当作代码缺陷
+```
+
+- 修复反馈按设置筛选：B = `compilation` + `staticAnalysis` 的 findings；C = 再加 `clauseTests` 的 findings。A 不修复。
+- 部署只认本函数返回的 `passed` 报告，并部署报告里的 `artifact.bytecode`，不用模型或 Agent 2 自己的编译产物。
+- `clause-v1` 是开发测试；留出评测另设入口，不得进入提示词。
+
+---
+
 ## 审查 2：commit `5628888`（IMilestoneEscrow v1）· Claude · 2026-11-02
 
 **结论：通过。** 有 1 个中等问题（测试会误判通过），建议下一步顺手修，不阻塞后续工作。
