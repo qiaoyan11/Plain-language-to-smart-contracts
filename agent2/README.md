@@ -24,6 +24,9 @@ npm run test:agent2
 
 # 生成＋完整独立验证；B 设置，最多修复一次（最多两次收费调用）
 .venv/bin/python -m agent2 --live agent2/examples/development.request.json
+
+# C 设置：在 B 的基础上，允许失败的开发条款测试进入修复反馈
+.venv/bin/python -m agent2 --live agent2/examples/development-c.request.json
 ```
 
 样例确认记录是虚构测试数据，不代表网页用户点过确认。模型固定为
@@ -58,7 +61,8 @@ B 如果只剩条款失败，会停止并返回 failed / no_eligible_feedback，
 此命令读取旧源码，在新目录重新验证，再按新请求预算修复；要求规则和确认记录完全一致。
 旧目录不修改，旧报告不作为本次验证证据。以上例子最多发一次新模型请求。
 这是诊断续跑，不算从头开始的正式 B/C 样本；旧 A 结果仍保持原样。
-历史演练仅通过 clause-v1；升级后的 clause-v2 已捕获收款合约兼容性退化，两个已有版本均 failed，尚未部署；详见 [验证与修复记录](../docs/AGENT2_VALIDATION_RUN.md)。
+对已有版本试用条款反馈时，可将上面的请求换成 `agent2/examples/development-c.request.json`，并把 --resume-run 指向要修复的运行目录；仍最多一次新模型调用。
+历史演练仅通过 clause-v1；升级后的 clause-v2 已捕获收款合约兼容性退化，两个旧版本均 failed；随后一次 C 条款反馈修复出现接口类型编译错误，也已停止，尚未部署；详见 [验证与修复记录](../docs/AGENT2_VALIDATION_RUN.md)。
 
 ## 输出和模块入口
 

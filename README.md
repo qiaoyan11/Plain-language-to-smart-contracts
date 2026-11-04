@@ -4,7 +4,7 @@
 
 **已经能运行：** 手动填写 1–5 个阶段 → 确认规则 → 部署手写参考合约 → 存入测试资金 → 按顺序付款。网页、后端和本地测试链已接通。
 
-**AI 进度：** Agent 2 已接通 GPT-5.4 mini＋LangGraph、独立验证和有限修复；开发条款测试已升级到 clause-v2（24 条），现在能抓住收款合约兼容性退化。两个已有生成版本在新标准下都未通过，尚未部署。[运行方法](agent2/README.md) · [实际结果](docs/AGENT2_VALIDATION_RUN.md)。Agent 1/3 仍为模拟模块，网页 AI 入口和正式 A/B/C 评测尚未接通。
+**AI 进度：** Agent 2 已接通 GPT-5.4 mini＋LangGraph、独立验证和有限修复；开发条款测试已升级到 clause-v2（24 条），现在能抓住收款合约兼容性退化。两个旧版本在新标准下都未通过；随后一次条款反馈修复又出现编译错误，系统按预算停止，尚未部署。[运行方法](agent2/README.md) · [实际结果](docs/AGENT2_VALIDATION_RUN.md)。Agent 1/3 仍为模拟模块，网页 AI 入口和正式 A/B/C 评测尚未接通。
 
 安装 Python 模块请用 **Python 3.11 或以上（排除 3.12.0）**；锁定依赖不支持 Python 3.10。目前在 Mac 上实测的是 Python 3.14.3。建议组员统一版本，并按 `requirements.lock.txt` 安装，避免各自解析出不同依赖。
 
