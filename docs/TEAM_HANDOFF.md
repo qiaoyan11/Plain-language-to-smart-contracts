@@ -5,7 +5,7 @@
 ## 1. 先运行共同版本
 
 先按 [网页运行说明](FRONTEND_INTEGRATION.md) 跑一次创建、部署、存款、付款。
-再从仓库根目录运行下面命令（Python 3.11 或更高；现有 Node 版本要求保持不变）：
+再从仓库根目录运行下面命令（Python 3.11 或更高，排除 3.12.0，建议已实测的 3.14.3；现有 Node 版本要求保持不变）：
 
 ```sh
 python3 -m venv .venv
@@ -44,7 +44,7 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 Agent 2 另有显式 --live 的真实生成命令，见 [Agent 2 说明](../agent2/README.md)。
 输出 stderr 的 STUB 提示不能删除，直到真实实现替换完成且文档同步。
 LangGraph 已接通 Agent 2 生成、独立开发验证和有限修复；网页入口与正式评测尚未接通。
-C 的验证模拟实现也尚未连接，development 请求返回 toolError，无报告、无部署许可。
+默认 stub 模式的 development 请求仍返回 toolError；显式 live 模式已接 C 的真实验证器，按当前 clause-v2 返回报告，不自动部署。
 
 ## 3. 接口究竟如何连接
 
@@ -61,7 +61,7 @@ C 的验证模拟实现也尚未连接，development 请求返回 toolError，�
 - `shared/schemas/handoff.schema.json`：格式字典，包含规则、源码、报告、部署记录和操作输入输出。
 - `shared/handoff.py`：补充跨字段检查，例如金额之和、连续阶段编号、确认版本、源码指纹。
 - `shared/examples/`：各类交接对象的合法样例。地址、确认记录、部署记录均为虚构，不证明真的部署或确认。
-- `backend/python-bridge.cjs`：固定程序入口，无 shell；输入 1 MiB 上限，输出和日志合计 1 MiB，模拟模式默认 10 秒、显式 live 模式默认 210 秒超时，同项目同时只允许一项任务。
+- `backend/python-bridge.cjs`：固定程序入口，无 shell；输入 1 MiB 上限，输出和日志合计 1 MiB，模拟模式默认 10 秒；live 编译 smoke 为 210 秒，development 为每轮 900 秒乘以 1+maxRepairs（最多 6 轮），同项目同时只允许一项任务。
 - 调用方通过 isCurrent 回调检查运行期间规则是否已变化；当前服务尚未接这个入口，持久确认和版本管理也是集成下一步。
 - worker 在返回前检查完整输出；Node 使用同一 JSON Schema 独立检查完整结果，并核对请求 ID、项目版本、修复预算和最终报告关联。所有金额跨语言传字符串。
 - 格式合法不代表语义正确、更不代表安全。只有独立验证能给真实 passed 报告；格式校验本身不能认证报告来源。
