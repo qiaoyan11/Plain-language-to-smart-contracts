@@ -68,6 +68,13 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-09 · Xiangyi Zhu（Claude 协助）· 新增 data/ 数据来源记录
+- 做了什么：新增 data/README.md、manifest.csv、ATTRIBUTION.md，登记 5 个合同来源（Common Paper 2 份、Bonterms、SEC EDGAR 2 份）。
+- 结果：只有 Common Paper PSA 1.1 已下载并记录 SHA-256；其余待下载、待审或待核对原文。
+- 规则：SEC 合同全文不提交，只放链接和标准答案；全文放 data/private/（已被 git 忽略）。
+- 范围：未改代码、共享接口或其他人的目录；分组和标准答案流程是提案，未经团队确认。
+- 需要老板决定：是否做 interface v2（退款、取消、超时）；现 schema 固定 refundPolicy=none、deadline=null。
+
 ### 2026-11-04 · Codex · 网页到 Agent 2 真模型联调通过
 - 做了什么：从网页填写两阶段付款规则、载入本地测试账户、明确确认，再启动真模型生成；未用直接请求替代网页操作。
 - 结果：第一版静态检查失败，自动修复 1 次后编译、Slither 和 24/24 条款测试通过；Slither 剩 1 条非阻断信息提示。
