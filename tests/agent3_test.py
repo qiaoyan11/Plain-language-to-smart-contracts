@@ -2,8 +2,12 @@
 import copy
 import json
 import unittest
+from unittest.mock import patch
+import httpx
 from shared.handoff import ROOT, validate
 from agent3 import rules
+from agent3.model import ModelError, OUTPUT_SCHEMA, call_model, read_output
+from agent3.prompts import build_user
 
 PAYLOAD = json.loads((ROOT / 'shared/examples/planAction.request.json').read_text())['payload']
 
@@ -133,6 +137,64 @@ class RulesTest(unittest.TestCase):
     def test_guess_language(self):
         self.assertEqual(rules.guess_language('付一下'), 'zh')
         self.assertEqual(rules.guess_language('pay'), 'en')
+
+
+def body(text, **extra):
+    data = {'status': 'completed',
+            'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': text}]}]}
+    data.update(extra)
+    return data
+
+
+class ModelTest(unittest.TestCase):
+    def test_read_output_ok(self):
+        text = '{"kind":"acceptMilestone","milestoneId":1,"language":"en"}'
+        self.assertEqual(read_output(body(text)),
+                         {'kind': 'acceptMilestone', 'milestoneId': 1, 'language': 'en'})
+
+    def test_read_output_null_id(self):
+        text = '{"kind":"query","milestoneId":null,"language":"zh"}'
+        self.assertIsNone(read_output(body(text))['milestoneId'])
+
+    def test_read_output_rejects(self):
+        def txt(**kw):
+            d = {'kind': 'query', 'milestoneId': None, 'language': 'en'}
+            d.update(kw)
+            return json.dumps(d)
+        refusal = {'status': 'completed',
+                   'output': [{'type': 'message', 'content': [{'type': 'refusal', 'refusal': 'no'}]}]}
+        bad = [body(txt(), status='incomplete'), refusal, body('not json'),
+               body(txt(extra=1)), body(txt(kind='transfer')), body(txt(language='fr')),
+               body(txt(milestoneId=0)), body(txt(milestoneId=-1)), body(txt(milestoneId=1.5)),
+               body(txt(milestoneId='1')), body(txt(milestoneId=True))]
+        for data in bad:
+            with self.subTest(data=data):
+                with self.assertRaises(ModelError):
+                    read_output(data)
+
+    def test_call_model_rejects_other_model(self):
+        with patch('agent3.model.httpx.Client') as client:
+            with self.assertRaises(ModelError):
+                call_model('s', 'u', 'gpt-5.6-sol')
+            client.assert_not_called()
+
+    def test_call_model_network_error(self):
+        with patch('agent3.model.load_dotenv'), patch.dict('os.environ', {'OPENAI_API_KEY': 'test'}), \
+                patch('agent3.model.httpx.Client', side_effect=httpx.ConnectTimeout('x')):
+            with self.assertRaises(ModelError):
+                call_model('s', 'u')
+
+    def test_build_user_has_no_address_or_amount(self):
+        out = build_user('Approve first milestone', PAYLOAD['snapshot'])
+        self.assertIn('Approve first milestone', out)
+        self.assertIn('Homepage accepted', out)
+        self.assertIn('unpaid', out)
+        self.assertNotIn('0x', out)
+        self.assertNotIn('3000000000000000', out)
+
+    def test_schema_is_strict(self):
+        self.assertIs(OUTPUT_SCHEMA['additionalProperties'], False)
+        self.assertEqual(set(OUTPUT_SCHEMA['required']), {'kind', 'milestoneId', 'language'})
 
 
 if __name__ == '__main__':
