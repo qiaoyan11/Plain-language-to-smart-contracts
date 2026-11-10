@@ -79,20 +79,29 @@ message + snapshot
 "验收里程碑 1「Homepage accepted」：向开发者 0x7099…79C8 支付 0.003 ETH。尚未发送任何交易。"
 查询的 `summary` 写明：托管余额、是否已存款、每个里程碑的金额和是否已付。
 
+规则 1 是双重保险：`shared.handoff` 校验输入时已经会拒绝这种情况（返回错误信封），
+所以它只在 `rules.py` 的单元测试里直接测。
+
 说话的人默认是客户。输入里没有调用者身份，由 Node 和合约的 `onlyClient` 把关。
 
 ## 4. 出错时的行为
 
-- 用户的话超过 2000 个字符：`blocked`，不调用模型。
+- 输入不符合 `PlanInput`：由 `shared.handoff` 抛错，worker 返回错误信封（现有行为，不改）。
+- 输入合格但用户的话超过 2000 个字符：`blocked`，不调用模型。
 - 模型调用失败、被拒答、输出不合格式：`blocked`，`summary` 说明"暂时无法理解请求，没有发送任何交易"。不自动重试。
 - 用户的话是不可信输入。模型的输出只能落在上表的枚举里，所以最坏情况是选错三种操作之一，仍然要过规则检查和用户确认。
 
 ## 5. 模型调用
 
 - OpenAI Responses API，`httpx` 直接调用，写法参考 `agent2/model.py` 但代码独立。
-- 模型：环境变量 `AGENT3_MODEL`，默认 `gpt-5.6-luna`，有允许列表。
-- `text.format` 用 strict `json_schema`；`store: false`；`reasoning.effort: low`；
-  `max_output_tokens` 约 500；超时 30 秒；不重试。
+- 模型：环境变量 `AGENT3_MODEL`，默认 `gpt-5.6-luna`，允许列表只有它。
+  2026-11-09 已用同一个 key 通过 Responses API 加 strict `json_schema` 调通过这个模型。
+- `text.format` 用 strict `json_schema`；`store: false`；`reasoning.effort: low`
+  （如果模型不接受 `low`，改回已验证过的 `medium`）；`max_output_tokens` 约 500；不重试。
+- 超时：整次调用 8 秒（连接 3 秒）。原因：`backend/python-bridge.cjs` 在没有
+  `AGENT2_MODE=live` 时 10 秒就结束 Python 进程，`backend/` 不归我改。
+  超时按第 4 节返回 `blocked`。评测时记录每次调用的耗时；如果 8 秒不够，
+  再请 Jiahao 调整 bridge 的时限。
 - key 从环境变量或 repo 根目录 `.env` 的 `OPENAI_API_KEY` 读取，不写入任何文件或日志。
 
 ## 6. 文件
@@ -135,6 +144,8 @@ message + snapshot
 - 每次调用互不相关。用户回答反问时要说完整的话（"验收第一阶段"），只回"第一个"会再被反问。
   如果要多轮，需要接口加历史字段，这要团队决定。
 - 网页接入由 Jiahao 完成：调用时设 `AGENT3_MODE=live`，其余按现有接口。
+- `flows/worker.py` 在 live 模式下仍会往 stderr 打印 "STUB MODE…" 这行提示。
+  `flows/` 不归我改，README 里说明，并告诉 `flows/` 的负责人。不影响结果。
 - 只对手写参考合约在本地 Hardhat 上验证过；AI 生成合约的部署还没接通。
 
 ## 10. 留给实现者决定
