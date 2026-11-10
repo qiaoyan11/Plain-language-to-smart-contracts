@@ -42,18 +42,19 @@ The function `decide` applies these rules in order. The first rule that matches 
 | # | Condition | Result |
 | --- | --- | --- |
 | 1 | Snapshot address differs from deployed address | `blocked` |
-| 2 | `kind` is `unsupported` | `blocked` |
-| 3 | `kind` is `unclear` | `needsClarification` |
-| 4 | `kind` is `query` | `readyForConfirmation`, action `query` |
-| 5 | `deposit` and the escrow is funded | `blocked` |
-| 6 | `deposit` and the escrow is not funded | `readyForConfirmation`, action `deposit` |
-| 7 | `acceptMilestone` and all milestones are paid | `blocked` |
-| 8 | `acceptMilestone` and no milestone number | `needsClarification` (names the next unpaid milestone) |
-| 9 | The milestone does not exist | `blocked` |
-| 10 | The escrow is not funded | `blocked` |
-| 11 | The milestone is already paid | `blocked` |
-| 12 | A lower milestone is unpaid | `blocked` |
-| 13 | All checks pass | `readyForConfirmation`, action `acceptMilestone` |
+| 2 | The milestone ids are not 1 to n in order | `blocked` |
+| 3 | `kind` is `unsupported` | `blocked` |
+| 4 | `kind` is `unclear` | `needsClarification` |
+| 5 | `kind` is `query` | `readyForConfirmation`, action `query` |
+| 6 | `deposit` and the escrow is funded | `blocked` |
+| 7 | `deposit` and the escrow is not funded | `readyForConfirmation`, action `deposit` |
+| 8 | `acceptMilestone` and all milestones are paid | `blocked` |
+| 9 | `acceptMilestone` and no milestone number | `needsClarification` (names the next unpaid milestone) |
+| 10 | The milestone does not exist | `blocked` |
+| 11 | The escrow is not funded | `blocked` |
+| 12 | The milestone is already paid | `blocked` |
+| 13 | A lower milestone is unpaid | `blocked` |
+| 14 | All checks pass | `readyForConfirmation`, action `acceptMilestone` |
 
 `agent3/service.py` handles these cases before and after the model call:
 
@@ -73,6 +74,7 @@ Prerequisites:
 Stub mode (default, no network):
 
 1. Run `.venv/bin/python -m agent3 shared/examples/planAction.request.json`
+2. Stub mode always returns `blocked`. The summary starts with "STUB:".
 
 Live mode (one model call):
 
@@ -84,11 +86,13 @@ Agent 3 reads `AGENT3_MODEL` from the environment only, not from `.env`.
 
 ## 6. Tests
 
-Offline tests (44 tests, no network):
+Offline tests (49 tests, no network):
 
 1. Run `npm run test:agent3`
 
 Evaluation with the real model (30 calls, costs money):
+
+Prerequisite: `OPENAI_API_KEY` is set. `AGENT3_MODE` has no effect on the evaluation.
 
 1. Run `.venv/bin/python -m agent3.evaluate`
 2. Read the report in `artifacts/agent3/<timestamp>/report.json`.
@@ -114,8 +118,10 @@ This is one run only. The model is not deterministic, so a new run can differ.
 ## 7. Limits
 
 - Each call is independent. There is no memory of earlier turns. The answer to a question must be a complete sentence, for example "accept milestone 1".
-- The model call has an 8-second limit, because `backend/python-bridge.cjs` stops Python after 10 seconds. Agent 3 checks the limit when data arrives. A stalled connection can exceed it.
-- In live mode, `flows/worker.py` still prints a "STUB MODE" line to stderr. The result is correct. `flows/` has a different owner.
+- The model call has a hard limit of 8 seconds. After that time, Agent 3 returns a refusal.
+- The Node bridge stops Python after 10 seconds by default. This is when `AGENT2_MODE` is not `live`.
+- In live mode, `flows/worker.py` still prints a "STUB MODE" line to stderr.
+- The result is correct. `flows/` has a different owner.
 - Agent 3 is verified only against the handwritten reference contract on local Hardhat.
 - The web page is not connected yet. Jiahao: set `AGENT3_MODE=live` for the planAction call.
 - Agent 3 never signs or sends a transaction.

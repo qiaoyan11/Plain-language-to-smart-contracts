@@ -1,6 +1,7 @@
 """One bounded Responses API call that classifies a client sentence. No retries."""
 import json
 import os
+import threading
 import time
 import httpx
 from dotenv import load_dotenv
@@ -73,24 +74,47 @@ def call_model(system, user, model=None):
             'text': {'format': {'type': 'json_schema', 'name': 'agent3_intent',
                                 'strict': True, 'schema': OUTPUT_SCHEMA}}}
     start = time.monotonic()
-    try:
-        with httpx.Client(timeout=httpx.Timeout(8, connect=3), follow_redirects=False) as client:
-            with client.stream('POST', 'https://api.openai.com/v1/responses',
-                               headers={'Authorization': 'Bearer ' + key}, json=body) as response:
-                if response.status_code != 200:
-                    raise ModelError(f'MODEL_HTTP_{response.status_code}')
-                chunks = bytearray()
-                for chunk in response.iter_bytes():
-                    chunks.extend(chunk)
-                    if time.monotonic() - start > TOTAL_TIMEOUT_SECONDS:
-                        raise ModelError('MODEL_NETWORK: total deadline exceeded.')
-                    if len(chunks) > 1024 * 1024:
-                        raise ModelError('MODEL_SIZE: response exceeds 1 MiB.')
-                data = json.loads(chunks)
-    except httpx.HTTPError:
+
+    def fetch():
+        try:
+            with httpx.Client(timeout=httpx.Timeout(8, connect=3), follow_redirects=False) as client:
+                with client.stream('POST', 'https://api.openai.com/v1/responses',
+                                   headers={'Authorization': 'Bearer ' + key}, json=body) as response:
+                    if response.status_code != 200:
+                        raise ModelError(f'MODEL_HTTP_{response.status_code}')
+                    chunks = bytearray()
+                    for chunk in response.iter_bytes():
+                        chunks.extend(chunk)
+                        if time.monotonic() - start > TOTAL_TIMEOUT_SECONDS:
+                            raise ModelError('MODEL_NETWORK: total deadline exceeded.')
+                        if len(chunks) > 1024 * 1024:
+                            raise ModelError('MODEL_SIZE: response exceeds 1 MiB.')
+                    return json.loads(chunks)
+        except ModelError:
+            raise
+        except httpx.HTTPError:
+            raise ModelError('MODEL_NETWORK') from None
+        except (ValueError, TypeError):
+            raise ModelError('MODEL_FORMAT: provider returned invalid JSON.') from None
+
+    outcome = []
+
+    def worker():
+        try:
+            outcome.append((True, fetch()))
+        except BaseException as error:
+            outcome.append((False, error))
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join(TOTAL_TIMEOUT_SECONDS)
+    if thread.is_alive() or not outcome:
+        raise ModelError('MODEL_NETWORK: deadline exceeded; no automatic retry.')
+    ok, data = outcome[0]
+    if not ok:
+        if isinstance(data, ModelError):
+            raise data
         raise ModelError('MODEL_NETWORK') from None
-    except (ValueError, TypeError):
-        raise ModelError('MODEL_FORMAT: provider returned invalid JSON.') from None
     if not isinstance(data, dict):
         raise ModelError('MODEL_FORMAT: provider returned invalid JSON.')
     parsed = read_output(data)

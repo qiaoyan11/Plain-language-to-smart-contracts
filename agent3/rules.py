@@ -1,6 +1,6 @@
 """Pure decision rules: a parsed request plus the project state give a PlanResult."""
 import re
-from decimal import Decimal
+from decimal import Context, Decimal
 
 TEXT = {
     'en': {
@@ -24,6 +24,7 @@ TEXT = {
         'accept': 'Accept milestone #{id} "{title}" and pay {eth} ETH to the developer wallet {wallet}. {done}',
         'model_error': 'The request could not be understood because of a service error. Please try again. {done}',
         'too_long': 'The message is too long. Please shorten it and try again. {done}',
+        'bad_ids': 'The project data is not in the expected form, so the request cannot be handled. {done}',
     },
     'zh': {
         'done': '尚未发送任何交易。',
@@ -46,6 +47,7 @@ TEXT = {
         'accept': '验收里程碑 #{id}「{title}」，并向开发者钱包 {wallet} 支付 {eth} ETH。{done}',
         'model_error': '由于服务错误，无法理解该请求。请重试。{done}',
         'too_long': '消息过长，请缩短后重试。{done}',
+        'bad_ids': '项目数据格式不符合预期，无法处理该请求。{done}',
     },
 }
 
@@ -60,7 +62,9 @@ def guess_language(message):
 
 
 def format_eth(wei):
-    text = format(Decimal(wei) / 10 ** 18, 'f')
+    value = Decimal(wei)
+    # The default context keeps 28 digits; widen it so scaleb stays exact.
+    text = format(value.scaleb(-18, Context(prec=max(28, len(value.as_tuple().digits)))), 'f')
     if '.' in text:
         text = text.rstrip('0').rstrip('.')
     return text
@@ -95,11 +99,13 @@ def decide(parsed, payload):
     addr = snap['contractAddress']
     if addr is None or addr.lower() != payload['deployment']['contractAddress'].lower():
         return _blocked(lang, 'mismatch')
+    milestones = snap['milestones']
+    if [m['id'] for m in milestones] != list(range(1, len(milestones) + 1)):
+        return _blocked(lang, 'bad_ids')
     if kind == 'unsupported':
         return _blocked(lang, 'unsupported')
     if kind == 'unclear':
         return clarify(lang)
-    milestones = snap['milestones']
     funded = snap['funded']
     if kind == 'query':
         items = '; '.join(_t(lang, 'query_item', id=m['id'], title=m['title'], eth=format_eth(m['amountWei']),

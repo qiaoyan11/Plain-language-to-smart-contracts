@@ -18,11 +18,16 @@ language: "zh" if the message is mainly Chinese, otherwise "en".
 Return only the JSON object required by the schema."""
 
 
+def _clean(text):
+    while 'MESSAGE>>>' in text or '<<<MESSAGE' in text:
+        text = text.replace('MESSAGE>>>', '').replace('<<<MESSAGE', '')
+    return text
+
+
 def build_user(message, snapshot):
-    while 'MESSAGE>>>' in message or '<<<MESSAGE' in message:
-        message = message.replace('MESSAGE>>>', '').replace('<<<MESSAGE', '')
-    lines = ['<<<MESSAGE', message, 'MESSAGE>>>',
+    lines = ['<<<MESSAGE', _clean(message), 'MESSAGE>>>',
              'funded: ' + ('true' if snapshot.get('funded') else 'false')]
     for m in snapshot.get('milestones', []):
-        lines.append(f"{m['id']} | {m['title']} | {'paid' if m.get('paid') else 'unpaid'}")
+        title = _clean(m['title']).replace('\r', ' ').replace('\n', ' ')
+        lines.append(f"{m['id']} | {title} | {'paid' if m.get('paid') else 'unpaid'}")
     return '\n'.join(lines)
