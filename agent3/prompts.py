@@ -19,7 +19,8 @@ Return only the JSON object required by the schema."""
 
 
 def build_user(message, snapshot):
-    message = message.replace('MESSAGE>>>', '').replace('<<<MESSAGE', '')
+    while 'MESSAGE>>>' in message or '<<<MESSAGE' in message:
+        message = message.replace('MESSAGE>>>', '').replace('<<<MESSAGE', '')
     lines = ['<<<MESSAGE', message, 'MESSAGE>>>',
              'funded: ' + ('true' if snapshot.get('funded') else 'false')]
     for m in snapshot.get('milestones', []):
