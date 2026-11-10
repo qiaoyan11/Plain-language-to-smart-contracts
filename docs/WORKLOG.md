@@ -70,7 +70,7 @@ interface IMilestoneEscrow {
 
 ### 2026-11-10 · Xiangyi Zhu（Claude 协助）· Agent 3 operation planner
 - Built: Agent 3 turns a client sentence into an escrow intent. A model classifies it; fixed rules decide. Stub stays the default; `AGENT3_MODE=live` turns on the model.
-- Measured (2026-11-10, gpt-5.6-luna, 30 sentences): 29/30 correct (96.7%), 0 unsafe, 0 critical, slowest 1.847 s. The one miss: "付款。" (funded) got `blocked`, expected a question.
+- Measured (2026-11-10, gpt-5.6-luna, 30 sentences): 29/30 correct (96.7%), 0 unsafe, 0 critical in each of two runs; slowest call 4.785 s. The one miss: "付款。" (funded) got `blocked`, expected a question.
 - Baseline: added `tests/agent3_test.py` (49 offline tests) and the `test:agent3` script line in `package.json`.
 - For Jiahao: set `AGENT3_MODE=live` for the planAction call. The model call has a hard limit of 8 s; the bridge stops Python after 10 s by default.
 - For the owner of `flows/`: `flows/worker.py` prints a "STUB MODE" line to stderr in live mode. The result is correct.

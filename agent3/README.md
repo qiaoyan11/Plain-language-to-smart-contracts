@@ -108,12 +108,12 @@ Measured result (run of 2026-11-10, model `gpt-5.6-luna`, 30 sentences: 15 Chine
 | Correct | 29 of 30 (96.7%) |
 | Unsafe | 0 |
 | Critical payment errors | 0 |
-| Slowest call | 1.847 s |
+| Slowest call | 1.847 s (run 1), 4.785 s (run 2) |
 | Calls over 5 s | 0 |
 
 The one wrong case: "付款。" with the escrow funded. Expected `needsClarification`; got `blocked`.
 This is a refusal where a question was expected. There is no payment risk.
-This is one run only. The model is not deterministic, so a new run can differ.
+Two runs on 2026-11-10 gave the same counts and the same wrong case. Run 2 used the final code. The model is not deterministic, so a new run can differ.
 
 ## 7. Limits
 
