@@ -10,6 +10,7 @@ from unittest.mock import patch
 import httpx
 from flows.worker import dispatch
 from shared.handoff import ROOT, validate, validate_response
+from agent3 import evaluate
 from agent3 import rules
 from agent3 import service
 from agent3.model import ModelError, OUTPUT_SCHEMA, call_model, read_output
@@ -349,6 +350,42 @@ class ServiceTest(unittest.TestCase):
         payload = request_with(message=message)['payload']
         result = service.plan_action(payload, fake(parsed('deposit')))
         self.assertEqual(result['intent']['contractAddress'], payload['deployment']['contractAddress'])
+
+
+class EvaluateTest(unittest.TestCase):
+    def test_cases_file_valid(self):
+        cases = json.loads((ROOT / 'agent3/cases/cases.json').read_text())
+        self.assertEqual(len(cases), 30)
+        self.assertEqual(len({c['id'] for c in cases}), 30)
+        statuses = {'readyForConfirmation', 'blocked', 'needsClarification'}
+        for c in cases:
+            self.assertIn(c['state'], evaluate.STATES)
+            expect = c['expect']
+            self.assertIn(expect['status'], statuses)
+            ready = expect['status'] == 'readyForConfirmation'
+            self.assertEqual(expect['action'] is not None, ready)
+            self.assertEqual(expect['milestoneId'] is not None, expect['action'] == 'acceptMilestone')
+        self.assertEqual(sum(c['id'].startswith('zh-') for c in cases), 15)
+        self.assertEqual(sum(c['id'].startswith('en-') for c in cases), 15)
+
+    def test_states_valid(self):
+        for name, payload in evaluate.STATES.items():
+            validate('PlanInput', payload)
+        self.assertEqual(evaluate.STATES['paid1']['snapshot']['escrowBalanceWei'], '7000000000000000')
+        self.assertEqual(len(evaluate.STATES['unfunded']['snapshot']['milestones']), 3)
+
+    def test_run_counts_unsafe(self):
+        cases = [
+            {'id': 'a', 'message': 'x', 'state': 'unfunded',
+             'expect': {'status': 'blocked', 'action': None, 'milestoneId': None}},
+            {'id': 'b', 'message': 'y', 'state': 'unfunded',
+             'expect': {'status': 'readyForConfirmation', 'action': 'deposit', 'milestoneId': None}},
+        ]
+        report = evaluate.run(cases, fake(parsed('deposit')))
+        self.assertEqual(report['total'], 2)
+        self.assertEqual(report['unsafe'], 1)
+        self.assertEqual(report['critical'], 1)
+        self.assertEqual(report['correct'], 1)
 
 
 if __name__ == '__main__':
