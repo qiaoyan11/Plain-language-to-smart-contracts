@@ -8,6 +8,7 @@ from shared.handoff import ROOT
 
 DEFAULT_MODEL = 'gpt-5.6-luna'
 ALLOWED_MODELS = {DEFAULT_MODEL}
+TOTAL_TIMEOUT_SECONDS = 8
 KINDS = ['query', 'deposit', 'acceptMilestone', 'unsupported', 'unclear']
 LANGUAGES = ['zh', 'en']
 OUTPUT_SCHEMA = {
@@ -29,8 +30,19 @@ class ModelError(RuntimeError):
 def read_output(data):
     if data.get('status') != 'completed':
         raise ModelError('MODEL_INCOMPLETE: response did not finish.')
-    parts = [part for item in data.get('output', []) if item.get('type') == 'message'
-             for part in item.get('content', [])]
+    items = data.get('output')
+    if not isinstance(items, list):
+        raise ModelError('MODEL_FORMAT: output is not a list.')
+    parts = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise ModelError('MODEL_FORMAT: output item is not an object.')
+        if item.get('type') != 'message':
+            continue
+        content = item.get('content')
+        if not isinstance(content, list) or not all(isinstance(part, dict) for part in content):
+            raise ModelError('MODEL_FORMAT: message content is malformed.')
+        parts.extend(content)
     if any(part.get('type') == 'refusal' for part in parts):
         raise ModelError('MODEL_REFUSAL: the model refused.')
     text = ''.join(part.get('text', '') for part in parts if part.get('type') == 'output_text')
@@ -70,6 +82,8 @@ def call_model(system, user, model=None):
                 chunks = bytearray()
                 for chunk in response.iter_bytes():
                     chunks.extend(chunk)
+                    if time.monotonic() - start > TOTAL_TIMEOUT_SECONDS:
+                        raise ModelError('MODEL_NETWORK: total deadline exceeded.')
                     if len(chunks) > 1024 * 1024:
                         raise ModelError('MODEL_SIZE: response exceeds 1 MiB.')
                 data = json.loads(chunks)
