@@ -46,15 +46,16 @@ The function `decide` applies these rules in order. The first rule that matches 
 | 3 | `kind` is `unsupported` | `blocked` |
 | 4 | `kind` is `unclear` | `needsClarification` |
 | 5 | `kind` is `query` | `readyForConfirmation`, action `query` |
-| 6 | `deposit` and the escrow is funded | `blocked` |
-| 7 | `deposit` and the escrow is not funded | `readyForConfirmation`, action `deposit` |
-| 8 | `acceptMilestone` and all milestones are paid | `blocked` |
-| 9 | `acceptMilestone` and no milestone number | `needsClarification` (names the next unpaid milestone) |
-| 10 | The milestone does not exist | `blocked` |
-| 11 | The escrow is not funded | `blocked` |
-| 12 | The milestone is already paid | `blocked` |
-| 13 | A lower milestone is unpaid | `blocked` |
-| 14 | All checks pass | `readyForConfirmation`, action `acceptMilestone` |
+| 6 | `deposit` and the model also gives a milestone number | `needsClarification` |
+| 7 | `deposit` and the escrow is funded | `blocked` |
+| 8 | `deposit` and the escrow is not funded | `readyForConfirmation`, action `deposit` |
+| 9 | `acceptMilestone` and all milestones are paid | `blocked` |
+| 10 | `acceptMilestone` and no milestone number | `needsClarification` (names the next unpaid milestone) |
+| 11 | The milestone does not exist | `blocked` |
+| 12 | The escrow is not funded | `blocked` |
+| 13 | The milestone is already paid | `blocked` |
+| 14 | A lower milestone is unpaid | `blocked` |
+| 15 | All checks pass | `readyForConfirmation`, action `acceptMilestone` |
 
 `agent3/service.py` handles these cases before and after the model call:
 
@@ -103,11 +104,11 @@ Agent 3 reads `AGENT3_MODEL` from the environment only, not from `.env`.
 
 ## 6. Tests
 
-Offline tests (59 tests, no network):
+Offline tests (60 tests, no network):
 
 1. Run `npm run test:agent3`
 
-Evaluation with the real model (30 calls, costs money):
+Evaluation with the real model (32 calls, costs money):
 
 Prerequisite: `OPENAI_API_KEY` is set. `AGENT3_MODE` has no effect on the evaluation.
 
@@ -136,6 +137,11 @@ The one wrong case in runs 1 and 2: "付款。" with the escrow funded. Expected
 This is a refusal where a question was expected. There is no payment risk.
 Run 3 gave the expected result for this case. The model is not deterministic, so a new run can differ.
 The receipt reports use no model, so their result does not change between runs.
+
+A live test on 2026-11-10 found one unsafe reading that the 30 sentences did not cover.
+With an unfunded escrow, "先付第一阶段" (pay the first stage) came back as a deposit with a milestone number in 3 of 8 calls.
+Rule 6 now stops this: Agent 3 asks a question. The two sentences `zh-16` and `en-16` were added to the set.
+Run 4 (32 sentences, with rule 6): 31 of 32 correct, 0 unsafe, 0 critical. The one wrong case is `zh-16`: expected `blocked`, got `needsClarification`.
 
 ## 7. Limits
 

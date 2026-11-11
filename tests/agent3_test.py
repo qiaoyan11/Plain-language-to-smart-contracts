@@ -81,6 +81,13 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(r['intent']['action'], 'deposit')
         self.assertIn('0.01', r['summary'])
 
+    def test_deposit_with_milestone_asks(self):
+        # "Pay milestone 1" on an unfunded escrow was sometimes read as a deposit with an id.
+        r = rules.decide(parsed('deposit', 1), state())
+        self.assertEqual(r['status'], 'needsClarification')
+        self.assertIsNone(r['intent'])
+        validate('PlanResult', r)
+
     def test_deposit_twice_blocked(self):
         self.assert_blocked(self.run_rules('deposit', state(funded=True)))
 
@@ -411,8 +418,8 @@ class ServiceTest(unittest.TestCase):
 class EvaluateTest(unittest.TestCase):
     def test_cases_file_valid(self):
         cases = json.loads((ROOT / 'agent3/cases/cases.json').read_text())
-        self.assertEqual(len(cases), 30)
-        self.assertEqual(len({c['id'] for c in cases}), 30)
+        self.assertEqual(len(cases), 32)
+        self.assertEqual(len({c['id'] for c in cases}), 32)
         statuses = {'readyForConfirmation', 'blocked', 'needsClarification'}
         for c in cases:
             self.assertIn(c['state'], evaluate.STATES)
@@ -421,8 +428,8 @@ class EvaluateTest(unittest.TestCase):
             ready = expect['status'] == 'readyForConfirmation'
             self.assertEqual(expect['action'] is not None, ready)
             self.assertEqual(expect['milestoneId'] is not None, expect['action'] == 'acceptMilestone')
-        self.assertEqual(sum(c['id'].startswith('zh-') for c in cases), 15)
-        self.assertEqual(sum(c['id'].startswith('en-') for c in cases), 15)
+        self.assertEqual(sum(c['id'].startswith('zh-') for c in cases), 16)
+        self.assertEqual(sum(c['id'].startswith('en-') for c in cases), 16)
 
     def test_states_valid(self):
         for name, payload in evaluate.STATES.items():

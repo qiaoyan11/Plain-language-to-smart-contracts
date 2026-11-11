@@ -298,5 +298,25 @@
       "action": "acceptMilestone",
       "milestoneId": 2
     }
+  },
+  {
+    "id": "zh-16",
+    "message": "先付第一阶段",
+    "state": "unfunded",
+    "expect": {
+      "status": "blocked",
+      "action": null,
+      "milestoneId": null
+    }
+  },
+  {
+    "id": "en-16",
+    "message": "Pay the first milestone now.",
+    "state": "unfunded",
+    "expect": {
+      "status": "blocked",
+      "action": null,
+      "milestoneId": null
+    }
   }
 ]

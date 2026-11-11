@@ -114,6 +114,9 @@ def decide(parsed, payload):
                      funded=_t(lang, 'yes' if funded else 'no'), items=items)
         return _ready(payload, 'query', None, summary)
     if kind == 'deposit':
+        if mid is not None:
+            # A deposit never names a milestone. The model mixed two requests, so ask.
+            return clarify(lang)
         if funded:
             return _blocked(lang, 'already_funded')
         return _ready(payload, 'deposit', None, _t(lang, 'deposit', total=format_eth(snap['totalAmountWei'])))
