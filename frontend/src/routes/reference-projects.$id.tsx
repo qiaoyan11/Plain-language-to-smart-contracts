@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Row, Shell } from "@/components/ReferenceShell";
+import { OperationAssistant } from "@/components/OperationAssistant";
 import { actionBlockReason, api, MOCK_MODE, formatWei, type ProjectAction, type Project } from "@/api/client";
 
 export const Route = createFileRoute("/reference-projects/$id")({
@@ -90,6 +91,8 @@ function DetailPage() {
               );
             })}
           </div>
+          {!MOCK_MODE && <OperationAssistant project={project} disabled={pending !== null}
+            onProject={next => { setProject(next); setMsg(null); }} />}
           {project.transactions?.length ? <div className="panel mt-4">
             <h2 className="font-bold">Confirmed local transactions</h2>
             {project.transactions.map(tx => <div key={tx.hash} className="mt-2 break-all text-xs font-mono">{tx.action}{tx.milestoneId ? ` ${tx.milestoneId}` : ""} · block {tx.blockNumber}<br />{tx.hash}</div>)}

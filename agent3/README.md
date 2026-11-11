@@ -10,7 +10,7 @@ Agent 3 never signs or sends a transaction.
 ## 2. Owner and branch
 
 - Owner: Xiangyi Zhu
-- Branch: `feature/agent3`
+- Branches: `feature/agent3` (module), `feature/agent3-integration` (backend and web page)
 
 ## 3. Input and output
 
@@ -102,6 +102,23 @@ Live mode (one model call):
 `AGENT3_MODEL` defaults to `gpt-5.6-luna`. This is the only allowed model.
 Agent 3 reads `AGENT3_MODEL` from the environment only, not from `.env`.
 
+### Use it from the web page
+
+Prerequisites: the steps in `docs/FRONTEND_INTEGRATION.md` work, and `OPENAI_API_KEY` is set.
+
+1. In the repository root, run `AGENT3_MODE=live npm run backend`
+2. In `frontend/`, run `npm run dev`
+3. Open `http://127.0.0.1:5173/reference-demo` and create a project.
+4. On the project page, select "Deploy contract".
+5. Type a request in "Ask in plain language" and select "Ask".
+6. Read the proposed operation. Select "Confirm and send" to execute it.
+7. Read the report. It comes from the transaction receipt.
+
+HTTP endpoints (see `shared/INTERFACES.md` section 7):
+
+- `POST /api/projects/:id/plans` with `{message}`
+- `POST /api/projects/:id/plans/:planId/confirmation` with `{approved: true}`
+
 ## 6. Tests
 
 Offline tests (60 tests, no network):
@@ -148,8 +165,8 @@ Run 4 (32 sentences, with rule 6): 31 of 32 correct, 0 unsafe, 0 critical. The o
 - Each call is independent. There is no memory of earlier turns. The answer to a question must be a complete sentence, for example "accept milestone 1".
 - The model call has a hard limit of 8 seconds. After that time, Agent 3 returns a refusal.
 - The Node bridge stops Python after 10 seconds by default. This is when `AGENT2_MODE` is not `live`.
-- In live mode, `flows/worker.py` still prints a "STUB MODE" line to stderr.
-- The result is correct. `flows/` has a different owner.
 - Agent 3 is verified only against the handwritten reference contract on local Hardhat.
-- The web page is not connected yet. Jiahao: set `AGENT3_MODE=live` for the planAction call.
+- The web page uses Agent 3 only if the backend starts with `AGENT3_MODE=live`. Without it, the plan endpoint returns 503.
+- Node keeps one plan for each project for 10 minutes. A new request replaces the earlier plan.
+- Sepolia and browser-wallet signing are not done.
 - Agent 3 never signs or sends a transaction.

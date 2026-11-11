@@ -4,14 +4,21 @@
 
 每人先按 [运行说明](FRONTEND_INTEGRATION.md) 完成创建、部署、存款、付款。之后读 [模块交接 v1](../shared/INTERFACES.md)。A/B/C 是待认领岗位，不是已确认的成员姓名。
 
-## Jiahao — 集成及后续 Agent 3
+## Jiahao — 集成
 
-- 目录：frontend/、backend/、agent3/；协调 shared/，与 B 协调 flows/。
-- 分支：feature/python-bridge；后续 feature/agent3。
+- 目录：frontend/、backend/；协调 shared/，与 B 协调 flows/。
+- 分支：feature/python-bridge。
 - 当前已完成：generation.cjs 提供确认、版本管理、异步运行和查询接口，复用 python-bridge.cjs；详见 [生成 HTTP 接口](../shared/GENERATION_API_V1.md)。
 - 网页已接入：持续对话草稿、版本确认、生成查询和最终结果；刷新不重复启动模型。下一项任务：接真实 Agent 1，把描述可靠地变成待确认规则；AI 部署另立任务。
 - 交付：能发送样例并显示生成结果或明确错误；原有手写合约演示仍能运行。第一轮不部署 AI 生成代码。
-- 后续任务：Agent 3 仅提出操作意图，Node 核对并在用户确认后执行。不是重做一套交易系统。
+
+## Xiangyi Zhu — Agent 3、部署和链上交互
+
+- 目录：agent3/；接入 backend/、frontend/ 时与 Jiahao 协调。
+- 分支：feature/agent3、feature/agent3-integration。
+- 当前已完成：Agent 3 提出操作意图（query、deposit、acceptMilestone），并根据交易回执汇报结果；详见 [agent3/README.md](../agent3/README.md)。
+- 边界：Agent 3 仅提出操作意图，Node 核对并在用户确认后执行。不是重做一套交易系统。
+- 后续任务：Sepolia 测试钱包、部署和链上操作，另立任务。
 
 ## 组员 A — Agent 1
 

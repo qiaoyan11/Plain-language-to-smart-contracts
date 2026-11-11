@@ -20,7 +20,8 @@
 
 | 人 | 主要目录 | 第一项交付 |
 | --- | --- | --- |
-| Jiahao | frontend/、backend/、agent3/；协调 flows/、shared/ | 维护现有演示，负责 Node 与 Python 的单一连接入口及最终集成；Agent 3 后做 |
+| Jiahao | frontend/、backend/；协调 flows/、shared/ | 维护现有演示，负责 Node 与 Python 的单一连接入口及最终集成 |
+| Xiangyi Zhu | agent3/；部署和链上交互 | Python：把自然语言请求变成待确认的操作，并根据交易回执汇报结果 |
 | 组员 A | agent1/ | Python：描述变规则、缺信息时追问；先输出 JSON，不重写网页 |
 | 组员 B | agent2/；负责 flows/ 的生成修复图 | Python：按确认规则生成合约；LangGraph 调用验证并有限修复 |
 | 组员 C | validation/，与 Claude 协作 | 独立检查、开发反馈和 A/B/C 实验；隐藏评测结果不进入修复流程 |
@@ -31,6 +32,7 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
+| 2026-11-10 | Add the worker operation `reportAction` and two HTTP endpoints for Agent 3 (`POST /plans`, `POST /plans/:planId/confirmation`). Handoff v1 fields for the other operations do not change. Agent 3 owner in the tables is now Xiangyi Zhu. | The proposal and the TA ask that the agent reports only what the receipt confirms. Both Python and Node refuse a `confirmed` report without a status-1 receipt. Needs review by the `shared/`, `backend/`, `frontend/` and `flows/` owners before merge. |
 | 2026-11-04 | 接入导出页面的样式和编辑组件，新增持续对话草稿并连接既有生成 HTTP 接口；补充条款仅存浏览器，不改交接格式 | 用户已授权导入并清理平台开发标记；保留独立参考演示，不把模拟 Agent 1 或 AI 部署当作已实现 |
 | 2026-11-03 | 在 Node 增加独立的协议版本、用户确认和异步生成 HTTP 接口，沿用 Project API v2 与 Agent 交接 v1；前端暂不改 | 与 Replit 并行准备真实连接；只返回生成结果，不部署 AI 合约；live 必须显式开启，测试不调用收费模型 |
 | 2026-11-03 | 老板确认保持 High/Medium 阻断；接可信开发验证和 B/C 有限修复，保留原始 A 输出；修复手写参考合约的显式初始化 | 不改变验证标准或交接 v1，不把手写参考合约算作实验 A；先做一次最多 1 轮的接通演练，正式预算另定 |
@@ -67,6 +69,17 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-10 · Xiangyi Zhu（Claude 协助）· Agent 3 receipt report and web connection
+- Built: `agent3/report.py` words the result of a deposit or acceptance from the receipt (no model). New worker operation `reportAction`.
+- Built: `backend/operations.cjs` with `POST /plans` and `POST /plans/:planId/confirmation`. Node keeps the intent, checks the chain state again, executes once, then reports.
+- Built: a plain-language panel on the reference project page (`frontend/src/components/OperationAssistant.tsx`).
+- Fixed: `flows/worker.py` no longer prints "STUB MODE" for live Agent 3.
+- Measured: 20 receipt cases, 20 correct, 0 false success. Sentence evaluation run 4 (32 sentences): 31/32, 0 unsafe, 0 critical.
+- Found in a live test and fixed: "先付第一阶段" on an unfunded escrow was sometimes read as a deposit. The rules now ask a question.
+- Tests: `test:agent3` 60, `e2e` 18 + 13, `test:api` 22, frontend 21, all pass. One live browser run is recorded in the PR.
+- Changes in other owners' folders (`shared/`, `flows/`, `backend/`, `frontend/`, `docs/`) are in a separate branch for review: `feature/agent3-integration`.
+- Limits: local Hardhat and the reference contract only. Start the backend with `AGENT3_MODE=live`. Sepolia is not done.
 
 ### 2026-11-10 · Xiangyi Zhu（Claude 协助）· Agent 3 operation planner
 - Built: Agent 3 turns a client sentence into an escrow intent. A model classifies it; fixed rules decide. Stub stays the default; `AGENT3_MODE=live` turns on the model.
