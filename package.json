@@ -7,7 +7,7 @@
     "test": "node --test tests/escrow.test.cjs tests/milestone.test.cjs",
     "demo": "node scripts/demo.cjs",
     "backend": "node backend/server.cjs",
-    "test:api": "node --test tests/api.test.cjs tests/generation-api.test.cjs",
+    "test:api": "node --test tests/api.test.cjs tests/generation-api.test.cjs tests/operations-api.test.cjs",
     "test:handoff": "node scripts/test-handoff.cjs",
     "e2e": "npm run test:handoff && node --test tests/python-bridge.test.cjs",
     "test:agent2": "node scripts/test-agent2.cjs",
