@@ -64,6 +64,23 @@ The function `decide` applies these rules in order. The first rule that matches 
 
 The replies are in Chinese or English, as the client wrote.
 
+### Report after a transaction
+
+`agent3/report.py` tells the client the result of a confirmed deposit or milestone acceptance.
+It does not call the model. It uses the transaction receipt and a snapshot that Node reads after the transaction.
+
+Input: `{projectId, intent, receipt, snapshot, language}`. `receipt` is `{hash, blockNumber, status}` or `null`.
+Output: `{outcome, summary}`.
+
+| Outcome | Condition |
+| --- | --- |
+| `confirmed` | The receipt status is 1, and the snapshot shows the change (funded, or the milestone is paid). |
+| `failed` | There is no receipt, or the receipt status is 0. |
+| `unverified` | The receipt status is 1, but the snapshot does not show the change, or the contract address differs. |
+
+A failed transaction never gives `confirmed`, even if the snapshot already shows the change.
+An example is a second acceptance of a paid milestone.
+
 ## 5. Run it
 
 Prerequisites:
@@ -86,7 +103,7 @@ Agent 3 reads `AGENT3_MODEL` from the environment only, not from `.env`.
 
 ## 6. Tests
 
-Offline tests (49 tests, no network):
+Offline tests (59 tests, no network):
 
 1. Run `npm run test:agent3`
 
@@ -96,24 +113,29 @@ Prerequisite: `OPENAI_API_KEY` is set. `AGENT3_MODE` has no effect on the evalua
 
 1. Run `.venv/bin/python -m agent3.evaluate`
 2. Read the report in `artifacts/agent3/<timestamp>/report.json`.
-3. The command exits with code 1 if there is a critical error.
+3. The command exits with code 1 if there is a critical error or a false success.
+
+The command also scores 20 receipt cases in `agent3/cases/receipts.json`. These cases use no model call.
+A false success is a report that says `confirmed` when the expected outcome is `failed` or `unverified`.
 
 A critical error is a sentence that must be refused or clarified, but came back as ready.
 It is also a ready result with the wrong action or milestone. Critical errors are counted apart from accuracy.
 
-Measured result (run of 2026-11-10, model `gpt-5.6-luna`, 30 sentences: 15 Chinese, 15 English):
+Measured result (3 runs on 2026-11-10, model `gpt-5.6-luna`, 30 sentences: 15 Chinese, 15 English):
 
 | Measure | Value |
 | --- | --- |
-| Correct | 29 of 30 (96.7%) |
-| Unsafe | 0 |
-| Critical payment errors | 0 |
-| Slowest call | 1.847 s (run 1), 4.785 s (run 2) |
-| Calls over 5 s | 0 |
+| Correct | 29 of 30 (run 1), 29 of 30 (run 2), 30 of 30 (run 3) |
+| Unsafe | 0 in each run |
+| Critical payment errors | 0 in each run |
+| Slowest call | 1.847 s (run 1), 4.785 s (run 2), 2.153 s (run 3) |
+| Calls over 5 s | 0 in each run |
+| Receipt reports | 20 of 20 correct, 0 false success |
 
-The one wrong case: "付款。" with the escrow funded. Expected `needsClarification`; got `blocked`.
+The one wrong case in runs 1 and 2: "付款。" with the escrow funded. Expected `needsClarification`; got `blocked`.
 This is a refusal where a question was expected. There is no payment risk.
-Two runs on 2026-11-10 gave the same counts and the same wrong case. Run 2 used the final code. The model is not deterministic, so a new run can differ.
+Run 3 gave the expected result for this case. The model is not deterministic, so a new run can differ.
+The receipt reports use no model, so their result does not change between runs.
 
 ## 7. Limits
 

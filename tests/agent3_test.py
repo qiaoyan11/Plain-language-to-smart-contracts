@@ -17,6 +17,7 @@ from agent3 import rules
 from agent3 import service
 from agent3.model import ModelError, OUTPUT_SCHEMA, call_model, read_output
 from agent3.prompts import build_user
+from agent3.report import report_result
 
 REQUEST = json.loads((ROOT / 'shared/examples/planAction.request.json').read_text())
 PAYLOAD = REQUEST['payload']
@@ -448,6 +449,85 @@ class EvaluateTest(unittest.TestCase):
         report = evaluate.run(cases, fake(parsed('query')))
         self.assertEqual(report['critical'], 1)
         self.assertEqual(report['unsafe'], 0)
+        self.assertEqual(report['correct'], 0)
+
+
+class ReportTest(unittest.TestCase):
+    def payload(self, state, action, milestone_id=None, receipt='ok', language='en'):
+        base = evaluate.STATES[state]
+        return {'projectId': base['projectId'], 'language': language,
+                'snapshot': copy.deepcopy(base['snapshot']), 'receipt': copy.deepcopy(evaluate.RECEIPTS[receipt]),
+                'intent': {'projectId': base['projectId'], 'chainId': 31337,
+                           'contractAddress': base['deployment']['contractAddress'],
+                           'action': action, 'milestoneId': milestone_id}}
+
+    def test_deposit_confirmed(self):
+        r = report_result(self.payload('funded', 'deposit'))
+        self.assertEqual(r['outcome'], 'confirmed')
+        self.assertIn('0.01 ETH', r['summary'])
+        self.assertIn('block 7', r['summary'])
+
+    def test_accept_confirmed_chinese(self):
+        r = report_result(self.payload('paid1', 'acceptMilestone', 1, language='zh'))
+        self.assertEqual(r['outcome'], 'confirmed')
+        self.assertIn('里程碑 #1', r['summary'])
+        self.assertIn('0.003 ETH', r['summary'])
+        self.assertIn('0x7099…79C8', r['summary'])
+
+    def test_reverted_is_failed_even_if_state_looks_done(self):
+        # A second acceptance reverts while the milestone is already paid: never report success.
+        for payload in (self.payload('paid1', 'acceptMilestone', 1, 'reverted'),
+                        self.payload('funded', 'deposit', None, 'reverted')):
+            r = report_result(payload)
+            self.assertEqual(r['outcome'], 'failed')
+            self.assertNotIn('confirmed', r['summary'].lower())
+
+    def test_missing_receipt_is_failed(self):
+        r = report_result(self.payload('paid1', 'acceptMilestone', 1, 'none'))
+        self.assertEqual(r['outcome'], 'failed')
+        self.assertIn('milestone #1 was not paid', r['summary'])
+
+    def test_success_receipt_without_state_change_is_unverified(self):
+        self.assertEqual(report_result(self.payload('unfunded', 'deposit'))['outcome'], 'unverified')
+        self.assertEqual(report_result(self.payload('funded', 'acceptMilestone', 1))['outcome'], 'unverified')
+        self.assertEqual(report_result(self.payload('paid1', 'acceptMilestone', 5))['outcome'], 'unverified')
+
+    def test_other_contract_is_unverified(self):
+        payload = self.payload('funded', 'deposit')
+        payload['intent']['contractAddress'] = '0x' + '2' * 40
+        self.assertEqual(report_result(payload)['outcome'], 'unverified')
+
+    def test_unknown_language_uses_english(self):
+        r = report_result(self.payload('funded', 'deposit', language='fr'))
+        self.assertTrue(r['summary'].startswith('Deposit confirmed'))
+
+    def test_rejects_bad_input(self):
+        bad = [self.payload('funded', 'query'),
+               self.payload('funded', 'deposit', 1),
+               self.payload('funded', 'acceptMilestone', None),
+               self.payload('funded', 'acceptMilestone', True)]
+        status_true = self.payload('funded', 'deposit')
+        status_true['receipt']['status'] = True
+        status_other = self.payload('funded', 'deposit')
+        status_other['receipt']['status'] = 2
+        extra = self.payload('funded', 'deposit')
+        extra['note'] = 'x'
+        for payload in bad + [status_true, status_other, extra]:
+            with self.assertRaises(Exception):
+                report_result(payload)
+
+    def test_receipt_cases(self):
+        cases = json.loads((ROOT / 'agent3/cases/receipts.json').read_text())
+        self.assertEqual(len(cases), 20)
+        report = evaluate.run_reports(cases)
+        self.assertEqual(report['correct'], 20)
+        self.assertEqual(report['falseSuccess'], 0)
+
+    def test_run_reports_counts_false_success(self):
+        cases = [{'id': 'a', 'language': 'en', 'action': 'deposit', 'milestoneId': None,
+                  'state': 'unfunded', 'receipt': 'reverted', 'expect': 'failed'}]
+        report = evaluate.run_reports(cases, lambda payload: {'outcome': 'confirmed', 'summary': 'x'})
+        self.assertEqual(report['falseSuccess'], 1)
         self.assertEqual(report['correct'], 0)
 
 

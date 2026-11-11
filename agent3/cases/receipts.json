@@ -1,0 +1,182 @@
+[
+  {
+    "id": "rc-01",
+    "language": "zh",
+    "action": "deposit",
+    "milestoneId": null,
+    "state": "funded",
+    "receipt": "ok",
+    "expect": "confirmed"
+  },
+  {
+    "id": "rc-02",
+    "language": "en",
+    "action": "deposit",
+    "milestoneId": null,
+    "state": "unfunded",
+    "receipt": "ok",
+    "expect": "unverified"
+  },
+  {
+    "id": "rc-03",
+    "language": "zh",
+    "action": "deposit",
+    "milestoneId": null,
+    "state": "unfunded",
+    "receipt": "reverted",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-04",
+    "language": "en",
+    "action": "deposit",
+    "milestoneId": null,
+    "state": "unfunded",
+    "receipt": "none",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-05",
+    "language": "zh",
+    "action": "deposit",
+    "milestoneId": null,
+    "state": "funded",
+    "receipt": "reverted",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-06",
+    "language": "en",
+    "action": "deposit",
+    "milestoneId": null,
+    "state": "funded",
+    "receipt": "none",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-07",
+    "language": "zh",
+    "action": "deposit",
+    "milestoneId": null,
+    "state": "paid1",
+    "receipt": "reverted",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-08",
+    "language": "en",
+    "action": "acceptMilestone",
+    "milestoneId": 1,
+    "state": "paid1",
+    "receipt": "ok",
+    "expect": "confirmed"
+  },
+  {
+    "id": "rc-09",
+    "language": "zh",
+    "action": "acceptMilestone",
+    "milestoneId": 1,
+    "state": "funded",
+    "receipt": "ok",
+    "expect": "unverified"
+  },
+  {
+    "id": "rc-10",
+    "language": "en",
+    "action": "acceptMilestone",
+    "milestoneId": 1,
+    "state": "funded",
+    "receipt": "reverted",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-11",
+    "language": "zh",
+    "action": "acceptMilestone",
+    "milestoneId": 1,
+    "state": "funded",
+    "receipt": "none",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-12",
+    "language": "en",
+    "action": "acceptMilestone",
+    "milestoneId": 1,
+    "state": "paid1",
+    "receipt": "reverted",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-13",
+    "language": "zh",
+    "action": "acceptMilestone",
+    "milestoneId": 1,
+    "state": "paid1",
+    "receipt": "none",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-14",
+    "language": "en",
+    "action": "acceptMilestone",
+    "milestoneId": 1,
+    "state": "unfunded",
+    "receipt": "reverted",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-15",
+    "language": "zh",
+    "action": "acceptMilestone",
+    "milestoneId": 2,
+    "state": "paid1",
+    "receipt": "ok",
+    "expect": "unverified"
+  },
+  {
+    "id": "rc-16",
+    "language": "en",
+    "action": "acceptMilestone",
+    "milestoneId": 2,
+    "state": "paid1",
+    "receipt": "reverted",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-17",
+    "language": "zh",
+    "action": "acceptMilestone",
+    "milestoneId": 3,
+    "state": "paid1",
+    "receipt": "reverted",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-18",
+    "language": "en",
+    "action": "acceptMilestone",
+    "milestoneId": 5,
+    "state": "paid1",
+    "receipt": "ok",
+    "expect": "unverified"
+  },
+  {
+    "id": "rc-19",
+    "language": "zh",
+    "action": "acceptMilestone",
+    "milestoneId": 5,
+    "state": "paid1",
+    "receipt": "none",
+    "expect": "failed"
+  },
+  {
+    "id": "rc-20",
+    "language": "en",
+    "action": "deposit",
+    "milestoneId": null,
+    "state": "paid1",
+    "receipt": "ok",
+    "expect": "confirmed"
+  }
+]

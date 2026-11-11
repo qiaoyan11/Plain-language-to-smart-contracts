@@ -6,9 +6,14 @@ import time
 from datetime import datetime, timezone
 from shared.handoff import ROOT
 from agent3.model import call_model
+from agent3.report import report_result
 from agent3.service import plan_action
 
 CASES_PATH = ROOT / 'agent3/cases/cases.json'
+RECEIPTS_PATH = ROOT / 'agent3/cases/receipts.json'
+RECEIPTS = {'ok': {'hash': '0x' + 'ab' * 32, 'blockNumber': 7, 'status': 1},
+            'reverted': {'hash': '0x' + 'cd' * 32, 'blockNumber': 7, 'status': 0},
+            'none': None}
 READY = 'readyForConfirmation'
 
 
@@ -79,9 +84,28 @@ def run(cases, call=None):
             'results': results}
 
 
+def run_reports(cases, report=None):
+    """Score receipt reports. falseSuccess = a report says 'confirmed' when the gold outcome is not."""
+    results = []
+    for case in cases:
+        state = STATES[case['state']]
+        payload = {'projectId': state['projectId'], 'language': case['language'],
+                   'snapshot': copy.deepcopy(state['snapshot']), 'receipt': copy.deepcopy(RECEIPTS[case['receipt']]),
+                   'intent': {'projectId': state['projectId'], 'chainId': state['deployment']['chainId'],
+                              'contractAddress': state['deployment']['contractAddress'],
+                              'action': case['action'], 'milestoneId': case['milestoneId']}}
+        got = (report or report_result)(payload)['outcome']
+        results.append({'id': case['id'], 'expect': case['expect'], 'got': got, 'correct': got == case['expect'],
+                        'falseSuccess': got == 'confirmed' and case['expect'] != 'confirmed'})
+    return {'total': len(results), 'correct': sum(r['correct'] for r in results),
+            'falseSuccess': sum(r['falseSuccess'] for r in results), 'results': results}
+
+
 def main():
     cases = json.loads(CASES_PATH.read_text())
     report = run(cases)
+    receipts = run_reports(json.loads(RECEIPTS_PATH.read_text()))
+    report['receiptReports'] = receipts
     for r in report['results']:
         if not r['correct']:
             note = f" error={r['error']}" if 'error' in r else ''
@@ -92,11 +116,16 @@ def main():
     print(f"total={report['total']} correct={report['correct']} accuracy={report['accuracy']:.1%} "
           f"unsafe={report['unsafe']} critical={report['critical']} "
           f"slowest={report['slowestSeconds']}s over5s={report['over5Seconds']}")
+    for r in receipts['results']:
+        if not r['correct']:
+            print(f"WRONG {r['id']} expected={r['expect']} got={r['got']}")
+    print(f"receipt reports: total={receipts['total']} correct={receipts['correct']} "
+          f"falseSuccess={receipts['falseSuccess']}")
     out = ROOT / 'artifacts/agent3' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     out.mkdir(parents=True, exist_ok=True)
     (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
     print('report:', out / 'report.json')
-    return 1 if report['critical'] > 0 else 0
+    return 1 if report['critical'] > 0 or receipts['falseSuccess'] > 0 else 0
 
 
 if __name__ == '__main__':
