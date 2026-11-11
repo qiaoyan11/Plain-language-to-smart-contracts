@@ -20,7 +20,7 @@ Use LangGraph first for the generation/check/repair loop. No Langflow service is
 
 ## 2. One bridge, before adding services
 
-Initial transport: Node launches a configured Python interpreter with a fixed module entry point (`flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The worker defaults to fixture mode. Explicit AGENT2_MODE=live enables Agent 2 generation/validation/repair; Agent 1/3 remain fixtures. server.cjs now calls the bridge through generation.cjs, which binds immutable confirmed rules to each request and checks the current version before accepting results. The HTTP generation endpoint is disabled unless live mode is explicitly enabled; it does not silently return fixture success. Defaults: 10-second fixture timeout or 210-second smoke timeout or 900 seconds per development attempt (up to 6 attempts), 1 MiB input, 1 MiB combined stdout/stderr, one active process per project per Node process.
+Initial transport: Node launches a configured Python interpreter with a fixed module entry point (`flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The worker defaults to fixture mode. Explicit AGENT2_MODE=live enables Agent 2 generation/validation/repair. Explicit AGENT3_MODE=live enables Agent 3 planning (one model call, 8-second limit). Agent 1 remains a fixture. server.cjs now calls the bridge through generation.cjs, which binds immutable confirmed rules to each request and checks the current version before accepting results. The HTTP generation endpoint is disabled unless live mode is explicitly enabled; it does not silently return fixture success. Defaults: 10-second fixture timeout or 210-second smoke timeout or 900 seconds per development attempt (up to 6 attempts), 1 MiB input, 1 MiB combined stdout/stderr, one active process per project per Node process.
 
 Envelope:
 
@@ -107,11 +107,15 @@ A report passes only when all required checks run and pass. Missing tools or ski
 
 Held-out evaluation is a separate, evaluator-only entry point, not a `mode` exposed to the generation graph. Its tests and findings never enter Agent 2 prompts or development fixtures. Build tools run in a restricted environment; Python calls fixed Node/compiler or Slither adapters, not arbitrary model-specified commands.
 
-## 7. Agent 3 — plan an operation, later
+## 7. Agent 3 — plan an operation, then report the result
 
 Input: `{message, projectId, deployment, snapshot}`. Deployment is trusted Node data `{chainId, contractAddress, abi, sourceHash, specVersion}`. Snapshot is the existing Project API v2 response read from the chain.
 
 Output: `{status, question, intent, summary}`. Status: `needsClarification`, `readyForConfirmation`, or `blocked`. Intent is null unless ready; then `{projectId, chainId, contractAddress, action, milestoneId}`. Allowed action values: `query`, `deposit`, `acceptMilestone`; milestoneId is null except for milestone acceptance. Query only returns read information. The model cannot choose arbitrary functions or addresses.
+
+After a confirmed `deposit` or `acceptMilestone`, Node sends the operation `reportAction`. Input: `{projectId, intent, receipt, snapshot, language}`. `intent` is the confirmed intent. `receipt` is `{hash, blockNumber, status}` from the chain, or `null` if no transaction was confirmed. `snapshot` is read after the transaction. `language` is `zh` or `en`. Output: `{outcome, summary}`. Outcome: `confirmed` (receipt status 1 and the snapshot shows the change), `failed` (no receipt or status 0), or `unverified` (status 1 but the snapshot does not show the change). This step uses fixed rules and no model. Python and Node both reject a `confirmed` result unless the request has a receipt with status 1. See the [report request example](examples/reportAction.request.json).
+
+HTTP: `POST /api/projects/:id/plans` with `{message}` returns `{planId, status, question, summary, intent}`. It needs a deployed project and `AGENT3_MODE=live`; otherwise it returns 409 or 503. `POST /api/projects/:id/plans/:planId/confirmation` with `{approved: true}` executes a ready `deposit` or `acceptMilestone` plan once and returns `{report, project}`. Node keeps the intent; the browser cannot change it. A `query` plan needs no confirmation.
 
 Before a state-changing action, Node checks the trusted deployment and latest state again and requires an explicit UI confirmation. It uses existing local demo execution tools; Python never signs transactions. Browser-wallet integration and public-testnet signing are separate future work. Deployment of generated code is also a later Node integration task: require a trusted passed report, match exact source/version/build settings, deploy the verified artifact with confirmed arguments, and verify the receipt. Existing reference deployment is not evidence that this generated-artifact gate exists today.
 

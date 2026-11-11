@@ -47,6 +47,25 @@ export interface Project extends Omit<ProjectDraft, "milestones"> {
 }
 export type ProjectAction =
   { action: "deploy" } | { action: "deposit" } | { action: "acceptMilestone"; milestoneId: number };
+/** Agent 3 plan. The backend stores the intent; the browser only shows it. */
+export interface OperationPlan {
+  planId: string;
+  status: "needsClarification" | "readyForConfirmation" | "blocked";
+  question: string | null;
+  summary: string;
+  intent: {
+    projectId: string;
+    chainId: number;
+    contractAddress: string;
+    action: "query" | "deposit" | "acceptMilestone";
+    milestoneId: number | null;
+  } | null;
+}
+export interface OperationReport {
+  outcome: "confirmed" | "failed" | "unverified";
+  summary: string;
+}
+const AGENT3_LOCAL_ONLY = "Plain-language operations need local API mode with AGENT3_MODE=live.";
 const MAX_WEI = (1n << 256n) - 1n;
 const UNIT = 10n ** 18n;
 
@@ -262,6 +281,20 @@ export const api = {
     if (!MOCK_MODE) return request<Project>(`/projects/${encodeURIComponent(id)}`);
     await wait(100);
     return readAll()[id] ?? null;
+  },
+  async planOperation(id: string, message: string): Promise<OperationPlan> {
+    if (MOCK_MODE) throw new Error(AGENT3_LOCAL_ONLY);
+    return request(`/projects/${encodeURIComponent(id)}/plans`, { message });
+  },
+  async confirmOperation(
+    id: string,
+    planId: string,
+  ): Promise<{ report: OperationReport; project: Project }> {
+    if (MOCK_MODE) throw new Error(AGENT3_LOCAL_ONLY);
+    return request(
+      `/projects/${encodeURIComponent(id)}/plans/${encodeURIComponent(planId)}/confirmation`,
+      { approved: true },
+    );
   },
   async runAction(id: string, intent: ProjectAction): Promise<Project> {
     if (!MOCK_MODE) return request<Project>(`/projects/${encodeURIComponent(id)}/actions`, intent);

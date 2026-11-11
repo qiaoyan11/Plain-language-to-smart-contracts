@@ -16,6 +16,17 @@ test('stub handoff: clarification -> fixture confirmation -> generation -> block
   assert.equal(plan.result.status, 'blocked');
   assert.equal(plan.result.intent, null);
 });
+test('receipt report crosses the bridge and a forged success is refused', async () => {
+  const { validateResponse } = require('../shared/handoff.cjs');
+  const report = structuredClone(require('../shared/examples/reportAction.request.json'));
+  const ok = await runPython(report);
+  assert.equal(ok.result.outcome, 'confirmed');
+  const reverted = structuredClone(report); reverted.payload.receipt.status = 0;
+  assert.equal((await runPython(reverted)).result.outcome, 'failed');
+  assert.throws(() => validateResponse(reverted, ok), /UNCONFIRMED_SUCCESS/);
+  const missing = structuredClone(report); missing.payload.receipt = null;
+  assert.throws(() => validateResponse(missing, ok), /UNCONFIRMED_SUCCESS/);
+});
 test('development request cannot become passed without validator', async () => {
   const r=clone(); r.payload.runConfig.validationMode='development';
   assert.equal((await runPython(r)).result.status,'toolError');

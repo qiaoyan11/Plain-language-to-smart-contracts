@@ -6,7 +6,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT / 'shared/schemas/handoff.schema.json').read_text())
-OPS = {'clarify': 'Clarify', 'generate': 'Generate', 'planAction': 'Plan'}
+OPS = {'clarify': 'Clarify', 'generate': 'Generate', 'planAction': 'Plan', 'reportAction': 'Report'}
 MAX_UINT = 2**256 - 1
 
 
@@ -87,6 +87,10 @@ def validate(kind, data):
         require((intent is not None) == (data['status'] == 'readyForConfirmation'), 'Intent status mismatch')
         if intent:
             require((intent['milestoneId'] is not None) == (intent['action'] == 'acceptMilestone'), 'Invalid milestone argument')
+    elif kind == 'ReportInput':
+        intent = data['intent']
+        require(intent['projectId'] == data['projectId'], 'Intent project mismatch')
+        require((intent['milestoneId'] is not None) == (intent['action'] == 'acceptMilestone'), 'Invalid milestone argument')
     return data
 
 
@@ -117,3 +121,6 @@ def validate_response(request, response):
         deployment = request['payload']['deployment']
         require(intent['chainId'] == deployment['chainId'] and
                 intent['contractAddress'].lower() == deployment['contractAddress'].lower(), 'Intent deployment mismatch')
+    if request['operation'] == 'reportAction' and response['result']['outcome'] == 'confirmed':
+        receipt = request['payload']['receipt']
+        require(receipt is not None and receipt['status'] == 1, 'Confirmed report needs a successful receipt')
