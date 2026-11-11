@@ -5,7 +5,7 @@ const { createHash } = require('node:crypto');
 const schema = require('./schemas/handoff.schema.json');
 const ajv = new Ajv({ strict: false });
 addFormats(ajv);
-const kinds = ['Response', 'ClarifyResult', 'GenerateResult', 'PlanResult'];
+const kinds = ['Response', 'ClarifyResult', 'GenerateResult', 'PlanResult', 'ReportResult'];
 const validators = Object.fromEntries(kinds.map(kind => [kind, ajv.compile({ ...schema, $ref: `#/$defs/${kind}` })]));
 function requireThat(condition, message) { if (!condition) throw new Error(message); }
 function check(kind, data) { requireThat(validators[kind](data), `INVALID_${kind}: ${ajv.errorsText(validators[kind].errors)}`); }
@@ -22,7 +22,7 @@ function validateResponse(request, response) {
     return;
   }
   requireThat(response.errors.length === 0, 'INVALID_ERRORS');
-  const kind = { clarify: 'ClarifyResult', generate: 'GenerateResult', planAction: 'PlanResult' }[request.operation];
+  const kind = { clarify: 'ClarifyResult', generate: 'GenerateResult', planAction: 'PlanResult', reportAction: 'ReportResult' }[request.operation];
   requireThat(kind, 'INVALID_OPERATION');
   check(kind, response.result);
   const result = response.result;
@@ -62,6 +62,10 @@ function validateResponse(request, response) {
       requireThat(intent.projectId === projectId && intent.chainId === deployment.chainId && intent.contractAddress.toLowerCase() === deployment.contractAddress.toLowerCase(), 'INTENT_DEPLOYMENT_MISMATCH');
       requireThat((intent.milestoneId !== null) === (intent.action === 'acceptMilestone'), 'INVALID_MILESTONE');
     }
+  }
+  if (request.operation === 'reportAction' && result.outcome === 'confirmed') {
+    // A failed or missing receipt can never be reported as a success.
+    requireThat(request.payload.receipt?.status === 1, 'UNCONFIRMED_SUCCESS');
   }
 }
 module.exports = { validateResponse };

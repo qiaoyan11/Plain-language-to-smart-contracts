@@ -504,15 +504,24 @@ class ReportTest(unittest.TestCase):
         payload['intent']['contractAddress'] = '0x' + '2' * 40
         self.assertEqual(report_result(payload)['outcome'], 'unverified')
 
-    def test_unknown_language_uses_english(self):
-        r = report_result(self.payload('funded', 'deposit', language='fr'))
-        self.assertTrue(r['summary'].startswith('Deposit confirmed'))
+    def test_worker_reports_and_node_rule_holds(self):
+        request = json.loads((ROOT / 'shared/examples/reportAction.request.json').read_text())
+        response = dispatch(request)
+        self.assertEqual(response['result']['outcome'], 'confirmed')
+        # The boundary check refuses a success claim for a reverted or missing receipt.
+        for receipt in (None, {**request['payload']['receipt'], 'status': 0}):
+            forged = copy.deepcopy(request)
+            forged['payload']['receipt'] = receipt
+            with self.assertRaises(ValueError):
+                validate_response(forged, response)
+            self.assertEqual(dispatch(forged)['result']['outcome'], 'failed')
 
     def test_rejects_bad_input(self):
         bad = [self.payload('funded', 'query'),
                self.payload('funded', 'deposit', 1),
                self.payload('funded', 'acceptMilestone', None),
-               self.payload('funded', 'acceptMilestone', True)]
+               self.payload('funded', 'acceptMilestone', True),
+               self.payload('funded', 'deposit', language='fr')]
         status_true = self.payload('funded', 'deposit')
         status_true['receipt']['status'] = True
         status_other = self.payload('funded', 'deposit')

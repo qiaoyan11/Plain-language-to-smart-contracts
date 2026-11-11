@@ -1,5 +1,5 @@
 """One request per process. All stdout is a single JSON envelope.
-Agent 2 can explicitly opt into live single-generation LangGraph; other agents are fixtures.
+Agent 2 and Agent 3 can each opt into live mode; Agent 1 is a fixture. Receipt reports use no model.
 """
 import json
 import os
@@ -7,6 +7,7 @@ import sys
 from shared.handoff import validate_request, validate_response
 from agent1.stub import clarify
 from agent2.stub import generate as generate_stub
+from agent3.report import report_result
 from agent3.stub import plan_action
 
 MAX_BYTES = 1024 * 1024
@@ -21,9 +22,14 @@ def dispatch(request):
     if request['operation'] == 'generate' and mode == 'live':
         from agent2.service import generate
         print('LIVE Agent 2: explicit generation/validation budget; no deployment.', file=sys.stderr)
+    elif request['operation'] == 'planAction' and os.getenv('AGENT3_MODE', 'stub') == 'live':
+        print('LIVE Agent 3: plans one operation; no signing and no transaction.', file=sys.stderr)
+    elif request['operation'] == 'reportAction':
+        print('Agent 3 receipt report: fixed rules, no model call, no transaction.', file=sys.stderr)
     else:
         print('STUB MODE: fixtures only; no AI, independent validation, or transactions.', file=sys.stderr)
-    result = {'clarify': clarify, 'generate': generate, 'planAction': plan_action}[request['operation']](request['payload'])
+    result = {'clarify': clarify, 'generate': generate, 'planAction': plan_action,
+              'reportAction': report_result}[request['operation']](request['payload'])
     response = {'interfaceVersion': 1, 'requestId': request['requestId'], 'status': 'ok', 'result': result, 'errors': []}
     validate_response(request, response)
     return response

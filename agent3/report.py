@@ -53,12 +53,13 @@ def _check(payload):
 
 
 def _result(outcome, summary):
-    return {'outcome': outcome, 'summary': summary}
+    return validate('ReportResult', {'outcome': outcome, 'summary': summary})
 
 
 def report_result(payload):
     """Only a receipt with status 1 and a matching contract state gives 'confirmed'."""
     _check(payload)
+    validate('ReportInput', payload)
     intent, receipt, snap = payload['intent'], payload['receipt'], payload['snapshot']
     text = TEXT.get(payload['language'], TEXT['en'])
     action, mid = intent['action'], intent['milestoneId']
