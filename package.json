@@ -11,6 +11,7 @@
     "test:handoff": "node scripts/test-handoff.cjs",
     "e2e": "npm run test:handoff && node --test tests/python-bridge.test.cjs",
     "test:agent2": "node scripts/test-agent2.cjs",
+    "test:agent3": "node scripts/test-agent3.cjs",
     "test:validation": "node scripts/test-validation.cjs"
   },
   "engines": {
