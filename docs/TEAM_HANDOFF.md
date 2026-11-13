@@ -23,7 +23,7 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 
 | 负责人 | 主要编辑位置 | 替换什么 | 第一项完成标准 |
 | --- | --- | --- | --- |
-| A | agent1/ | stub.py 的 clarify(payload) | 接模型，完整、缺信息、超范围三种描述返回合法输出，不替用户确认 |
+| 徐露源 Luyuan Xu | agent1/ | stub.py 的 clarify(payload) | 按[追问与超范围处理说明](../agent1/README.md)接模型，核对完整、缺失、矛盾和含超范围条件的描述 |
 | B | agent2/、flows/ | service.py 的 generate(payload)、flows/generation.py | 生成、可信验证、有限修复已接通；继续完善规则与实验配置 |
 | C + Claude | validation/ | 自己实现 validate_development(spec, sourceBundle) | 编译、静态检查、条款测试组成可信报告；工具没准备好不能报通过 |
 | Jiahao Zhang | backend/、frontend/、Sepolia | 接生成、部署、操作接口和测试钱包签名 | 本地流程已接通。张嘉豪负责在 Sepolia 完成部署、存款和验收付款，并核对公开回执 |

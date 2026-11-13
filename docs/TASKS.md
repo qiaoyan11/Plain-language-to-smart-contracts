@@ -20,11 +20,11 @@
 - 当前已完成：Agent 3 提出操作意图（query、deposit、acceptMilestone），并根据交易回执汇报结果；详见 [agent3/README.md](../agent3/README.md)。
 - 边界：Agent 3 仅提出操作意图，Node 核对并在用户确认后执行。不是重做一套交易系统。
 
-## 组员 A — Agent 1
+## 徐露源 Luyuan Xu — Agent 1
 
 - 目录：agent1/；分支 feature/agent1-python。
-- 第一项任务：Python 的 clarify 输入描述，输出 draftSpec、问题和不支持的条款。
-- 交付：独立运行方式、至少三个样例（完整描述、缺少金额、不支持退款）及模块测试。
+- 第一项任务：用 `clarify` 梳理付款条件，针对缺失或矛盾的信息追问，并解释超出系统能力的条款如何影响资金。
+- 交付：按[追问流程和六个验收场景](../agent1/README.md)实现模型入口、独立运行方式和模块测试。
 - 边界：不猜缺失规则，不替用户确认，不改网页或合约。需要页面变化时交给 Jiahao 集成。
 
 ## 组员 B — Agent 2 与生成修复图
