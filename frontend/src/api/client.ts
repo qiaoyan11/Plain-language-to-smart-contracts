@@ -1,5 +1,5 @@
 /** Project API v2. All page data access stays here; local chain is the default. */
-import type { AgreementContext, GenerationRun } from "./types";
+import type { AgreementContext, ConfirmationRecord, GenerationRun } from "./types";
 import { workspaceStorage } from "./workspace";
 export type { AgreementContext, GenerationRun } from "./types";
 export const MOCK_MODE = import.meta.env["VITE_API_MODE"] === "mock";
@@ -153,8 +153,13 @@ function readAll(): Record<string, Project> {
 function writeAll(all: Record<string, Project>) {
   localStorage.setItem(STORE_KEY, JSON.stringify(all));
 }
+function getProjectSnapshot(id: string): Promise<Project> {
+  if (MOCK_MODE) throw new Error("Open the agreement in local API mode to read its project.");
+  return request(`/projects/${encodeURIComponent(id)}`);
+}
 export const api = {
   ...workspaceStorage,
+  getProjectSnapshot,
   parseEth: ethToWei,
   formatEth: formatWei,
   validateDraft(d: ProjectDraft, requireWallets = true): string | null {
@@ -226,6 +231,21 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/generation-runs/${encodeURIComponent(runId)}`,
     );
   },
+  async deployGeneration(
+    id: string,
+    runId: string,
+    confirmation: ConfirmationRecord,
+  ): Promise<Project> {
+    if (MOCK_MODE) throw new Error("Generated contracts can only be deployed in local API mode.");
+    return request(
+      `/projects/${encodeURIComponent(id)}/generation-runs/${encodeURIComponent(runId)}/deployment`,
+      {
+        approved: true,
+        specVersion: confirmation.specVersion,
+        confirmationId: confirmation.confirmationId,
+      },
+    );
+  },
   async getLocalAccounts(): Promise<{ clientWallet: string; developerWallet: string }> {
     return request("/local-accounts");
   },
@@ -278,7 +298,7 @@ export const api = {
     return project;
   },
   async getProject(id: string): Promise<Project | null> {
-    if (!MOCK_MODE) return request<Project>(`/projects/${encodeURIComponent(id)}`);
+    if (!MOCK_MODE) return getProjectSnapshot(id);
     await wait(100);
     return readAll()[id] ?? null;
   },

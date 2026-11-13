@@ -9,7 +9,7 @@ export function OperationAssistant({
 }: {
   project: Project;
   disabled: boolean;
-  onProject: (project: Project) => void;
+  onProject: (project: Project) => void | Promise<void>;
 }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<"plan" | "confirm" | null>(null);
@@ -39,7 +39,7 @@ export function OperationAssistant({
     try {
       const done = await api.confirmOperation(project.id, plan.planId);
       setReport(done.report);
-      onProject(done.project);
+      await onProject(done.project);
       setMessage("");
     } catch (e) {
       setError((e as Error).message);
@@ -53,8 +53,8 @@ export function OperationAssistant({
     <div className="panel mt-4">
       <h2 className="font-bold">Ask in plain language</h2>
       <p className="mt-1 text-xs text-muted-foreground">
-        Agent 3 can check the escrow, deposit funds, or accept a milestone. It only proposes an
-        operation. Nothing is sent until you confirm.
+        Asking Agent 3 starts a model request. You can check the escrow, deposit test funds or
+        accept a milestone. Deposits and payments each require your confirmation.
       </p>
       <label className="field-label mt-4" htmlFor="operation-message">
         Your request (English or Chinese)

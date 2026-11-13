@@ -68,6 +68,23 @@ describe("generation HTTP boundary", () => {
     await api.confirmAgreement("p", 2);
     expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual({ specVersion: 2, approved: true });
   });
+  it("approves only the chosen generated run with its server confirmation", async () => {
+    const fetcher = fakeFetch();
+    await api.deployGeneration("p/1", "run/1", context.confirmation!);
+    const [url, options] = fetcher.mock.calls[0]!;
+    expect(url).toBe("/api/projects/p%2F1/generation-runs/run%2F1/deployment");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toEqual({
+      approved: true,
+      specVersion: 2,
+      confirmationId: "confirmed-by-server",
+    });
+    fetcher.mockResolvedValueOnce({ ok: false, json: async () => ({ error: "Run is obsolete" }) });
+    await expect(api.deployGeneration("p/1", "run/1", context.confirmation!)).rejects.toThrow(
+      "Run is obsolete",
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
   it("saves a revision with PUT and strips non-payment text from the wire payload", async () => {
     const fetcher = fakeFetch();
     const draft = {
