@@ -32,6 +32,7 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
+| 2026-11-13 | 签约时约定，Alice 或 Bob 任一方可终止后续尚未开工的阶段，相关阶段款退给 Alice；当前阶段的争议款继续托管。 | 组长选定的产品规则。参见[多轮修改时的资金示例](MILESTONE_REVISION_RULES.md)，实现待排期。 |
 | 2026-11-13 | 在本机测试链上，用已确认版本和最新通过独立验证的 Agent 2 运行部署合约，再交给 Agent 3。交易汇报必须对应项目已记录的同一笔操作；没有回执时显示待核实。 | 组长要求修正 PR #1 的四项问题并接入自己的生成模块；两个现有 PR 的提交都保留在新分支的历史里。 |
 | 2026-11-10 | Add the worker operation `reportAction` and two HTTP endpoints for Agent 3 (`POST /plans`, `POST /plans/:planId/confirmation`). Handoff v1 fields for the other operations do not change. Agent 3 owner in the tables is now Xiangyi Zhu. | The proposal and the TA ask that the agent reports only what the receipt confirms. Both Python and Node refuse a `confirmed` report without a status-1 receipt. Needs review by the `shared/`, `backend/`, `frontend/` and `flows/` owners before merge. |
 | 2026-11-04 | 接入导出页面的样式和编辑组件，新增持续对话草稿并连接既有生成 HTTP 接口；补充条款仅存浏览器，不改交接格式 | 用户已授权导入并清理平台开发标记；保留独立参考演示，不把模拟 Agent 1 或 AI 部署当作已实现 |
@@ -70,6 +71,9 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-13 · 确认未开工阶段的退出与退款规则
+- 任一方都可以终止后续尚未开工的阶段。示例中 0.007 退回 Alice，首页的 0.003 继续托管。资金表列出逐步余额，并标明哪些实现细节仍待讨论。
 
 ### 2026-11-13 · Agent 1 追问与超范围条款交接
 - 给徐露源补齐了追问顺序、三种返回状态和六个验收场景。遇到超范围付款条件时保留条款、解释影响，停在草稿，等待用户处理。

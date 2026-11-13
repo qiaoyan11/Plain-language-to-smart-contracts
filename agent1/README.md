@@ -19,6 +19,8 @@
 
 示例回复：“合同写着‘Alice 提出修改意见后暂停放款，直到双方同意结算’。当前版本允许 Alice 按阶段验收付款，但没有双方协商拆款的操作。这会影响首页款 0.003 ETH 的去向，我已保留这条约定，项目停在草稿。若双方另有付款安排，请写明新约定。”
 
+多轮修改与终止退款的产品决定见[资金规则讨论记录](../docs/MILESTONE_REVISION_RULES.md)。只有相应的合约、验证和操作路径上线后，才对用户标记为可执行。
+
 ## 接口怎么用
 
 实现 `clarify(payload)`，沿用输入 `message / history / draftSpec`，输出 `status / draftSpec / questions / unsupportedTerms`。所有路径都要返回合法的 `DraftSpec`。金额使用整数 wei 字符串，可缺失的字段按 schema 填 `null`。项目及版本信息由调用方提供。[接口定义](../shared/INTERFACES.md#4-agent-1--clarify) · [字段定义](../shared/schemas/handoff.schema.json)
