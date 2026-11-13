@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createServer } = require('../backend/server.cjs');
 const { runPython } = require('../backend/python-bridge.cjs');
+const { createOperations } = require('../backend/operations.cjs');
 
 // A worker that answers planAction with a chosen intent and passes reportAction to real Python.
 function worker(choose) {
@@ -144,6 +145,19 @@ test('a failed report service never turns into a success message', async () => {
     assert.match(done.body.report.summary, /Receipt status: 1/);
     assert.equal(done.body.project.funded, true);
   });
+});
+
+test('report fallback leaves a missing receipt unknown and identifies a mined revert', async () => {
+  const operations = createOperations({ runner: async () => { throw new Error('PYTHON_TIMEOUT'); } });
+  const { payload } = require('../shared/examples/reportAction.request.json');
+  const stored = { intent: payload.intent, language: payload.language };
+  const project = { id: payload.projectId };
+  const unknown = await operations.report(project, stored, null, payload.snapshot);
+  assert.equal(unknown.outcome, 'unverified');
+  assert.match(unknown.summary, /No receipt is available/);
+  const failed = await operations.report(project, stored, { ...payload.receipt, status: 0 }, payload.snapshot);
+  assert.equal(failed.outcome, 'failed');
+  assert.match(failed.summary, /Receipt status: 0/);
 });
 
 test('real bridge accepts the real project snapshot (stub Agent 3, no model call)', async () => {

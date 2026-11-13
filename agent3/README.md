@@ -75,12 +75,11 @@ Output: `{outcome, summary}`.
 
 | Outcome | Condition |
 | --- | --- |
-| `confirmed` | The receipt status is 1, and the snapshot shows the change (funded, or the milestone is paid). |
-| `failed` | There is no receipt, or the receipt status is 0. |
-| `unverified` | The receipt status is 1, but the snapshot does not show the change, or the contract address differs. |
+| `confirmed` | For this project and contract, the receipt matches a successful recorded transaction by hash, block, status, action and milestone. The snapshot shows funding and, for acceptance, the paid milestone. |
+| `failed` | A status-0 receipt for this attempt reports a revert. Earlier deposits and payments keep their own outcomes. |
+| `unverified` | The receipt is missing, the project or contract differs, or the successful receipt lacks the matching transaction record or state. |
 
-A failed transaction never gives `confirmed`, even if the snapshot already shows the change.
-An example is a second acceptance of a paid milestone.
+The deposit report shows the current escrow balance, including any later payouts.
 
 ## 5. Run it
 
@@ -121,7 +120,7 @@ HTTP endpoints (see `shared/INTERFACES.md` section 7):
 
 ## 6. Tests
 
-Offline tests (60 tests, no network):
+Offline tests (no network):
 
 1. Run `npm run test:agent3`
 
@@ -131,7 +130,13 @@ Prerequisite: `OPENAI_API_KEY` is set. `AGENT3_MODE` has no effect on the evalua
 
 1. Run `.venv/bin/python -m agent3.evaluate`
 2. Read the report in `artifacts/agent3/<timestamp>/report.json`.
-3. The command exits with code 1 if there is a critical error or a false success.
+3. The command exits with code 1 if the planning evaluation is incomplete, a critical error occurs, or a receipt report gives a false success.
+
+The planning report records the number of model calls attempted (`modelAttempts`), cases
+scored (`validCases`), and cases with a model error (`modelErrors`). A model error keeps
+the planner's safe fallback in the report and leaves the case's `correct` field null.
+An empty case set or any model error marks the run `incomplete` and leaves overall
+`accuracy` null. The `correct` count still shows how many scored cases matched the expected plan.
 
 The command also scores 20 receipt cases in `agent3/cases/receipts.json`. These cases use no model call.
 A false success is a report that says `confirmed` when the expected outcome is `failed` or `unverified`.

@@ -1,5 +1,5 @@
 """Report the outcome of a confirmed action from the transaction receipt. No model call."""
-from shared.handoff import validate
+from shared.handoff import receipt_outcome, validate
 from agent3.rules import format_eth
 
 OUTCOMES = ('confirmed', 'failed', 'unverified')
@@ -7,26 +7,20 @@ ACTIONS = ('deposit', 'acceptMilestone')
 
 TEXT = {
     'en': {
-        'deposit_ok': 'Deposit confirmed: {total} ETH is now in the escrow. Transaction {tx}, block {block}.',
+        'deposit_ok': 'Deposit confirmed. Current escrow balance: {balance} ETH. Transaction {tx}, block {block}.',
         'accept_ok': 'Milestone #{id} "{title}" is paid: {eth} ETH was sent to the developer wallet {wallet}. '
                      'Transaction {tx}, block {block}.',
-        'deposit_none': 'no funds were deposited',
-        'accept_none': 'milestone #{id} was not paid',
-        'reverted': 'The transaction failed, so nothing changed: {what}. Transaction {tx}.',
-        'no_receipt': 'No transaction was confirmed, so nothing changed: {what}.',
-        'unverified': 'The receipt reports success, but the contract state does not show the change. '
-                      'Check the escrow status before you try again. Transaction {tx}.',
-        'mismatch': 'The receipt cannot be matched to this project. Check the escrow status before you try again.',
+        'reverted': 'Transaction {tx} reverted. This attempt failed.',
+        'no_receipt': 'No receipt is available yet. Check the transaction status before retrying.',
+        'unverified': 'The project records and contract state do not verify this operation. '
+                      'Check transaction {tx} before retrying.',
     },
     'zh': {
-        'deposit_ok': '存款已确认：托管合约中现有 {total} ETH。交易 {tx}，区块 {block}。',
+        'deposit_ok': '存款已确认。托管合约当前余额为 {balance} ETH。交易 {tx}，区块 {block}。',
         'accept_ok': '里程碑 #{id}「{title}」已支付：已向开发者钱包 {wallet} 转入 {eth} ETH。交易 {tx}，区块 {block}。',
-        'deposit_none': '没有存入任何资金',
-        'accept_none': '里程碑 #{id} 没有支付',
-        'reverted': '交易失败，状态没有变化：{what}。交易 {tx}。',
-        'no_receipt': '没有任何交易被确认，状态没有变化：{what}。',
-        'unverified': '回执显示成功，但合约状态中看不到这次变化。请先查询托管状态，再决定是否重试。交易 {tx}。',
-        'mismatch': '回执无法与本项目对应。请先查询托管状态，再决定是否重试。',
+        'reverted': '交易 {tx} 已回滚，本次操作失败。',
+        'no_receipt': '暂未取得交易回执。请先查询交易状态，再决定是否重试。',
+        'unverified': '根据项目交易记录和合约状态，暂时无法确认本次操作。请先核对交易 {tx}，再决定是否重试。',
     },
 }
 
@@ -57,30 +51,24 @@ def _result(outcome, summary):
 
 
 def report_result(payload):
-    """Only a receipt with status 1 and a matching contract state gives 'confirmed'."""
+    """Describe the transaction evidence and, for deposits, the observed balance."""
     _check(payload)
     validate('ReportInput', payload)
     intent, receipt, snap = payload['intent'], payload['receipt'], payload['snapshot']
     text = TEXT.get(payload['language'], TEXT['en'])
     action, mid = intent['action'], intent['milestoneId']
-    what = text['deposit_none'] if action == 'deposit' else text['accept_none'].format(id=mid)
     if receipt is None:
-        return _result('failed', text['no_receipt'].format(what=what))
+        return _result('unverified', text['no_receipt'])
     tx = receipt['hash'][:10] + '…' + receipt['hash'][-6:]
-    if receipt['status'] != 1:
-        return _result('failed', text['reverted'].format(what=what, tx=tx))
-    address = snap['contractAddress']
-    if (payload['projectId'] != snap['id'] or intent.get('projectId') != snap['id']
-            or address is None or address.lower() != intent['contractAddress'].lower()):
-        return _result('unverified', text['mismatch'])
-    if action == 'deposit':
-        if not snap['funded']:
-            return _result('unverified', text['unverified'].format(tx=tx))
-        return _result('confirmed', text['deposit_ok'].format(
-            total=format_eth(snap['totalAmountWei']), tx=tx, block=receipt['blockNumber']))
-    target = next((m for m in snap['milestones'] if m['id'] == mid), None)
-    if target is None or not target['paid']:
+    outcome = receipt_outcome(payload)
+    if outcome == 'failed':
+        return _result('failed', text['reverted'].format(tx=tx))
+    if outcome == 'unverified':
         return _result('unverified', text['unverified'].format(tx=tx))
+    if action == 'deposit':
+        return _result('confirmed', text['deposit_ok'].format(
+            balance=format_eth(snap['escrowBalanceWei']), tx=tx, block=receipt['blockNumber']))
+    target = next(m for m in snap['milestones'] if m['id'] == mid and m['paid'])
     wallet = snap['developerWallet']
     return _result('confirmed', text['accept_ok'].format(
         id=mid, title=target['title'], eth=format_eth(target['amountWei']),

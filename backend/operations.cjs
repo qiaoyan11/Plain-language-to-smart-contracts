@@ -2,7 +2,7 @@
 // Python only plans and words the report: it never signs, and the browser cannot change a stored intent.
 const { randomUUID } = require('node:crypto');
 const { runPython } = require('./python-bridge.cjs');
-const { validateResponse } = require('../shared/handoff.cjs');
+const { validateResponse, receiptOutcome } = require('../shared/handoff.cjs');
 const { fields } = require('./generation.cjs');
 const PLAN_TIMEOUT_MS = 12000, REPORT_TIMEOUT_MS = 10000, PLAN_TTL_MS = 10 * 60 * 1000, MAX_MESSAGE = 2000;
 const copy = value => structuredClone(value);
@@ -59,9 +59,10 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
       payload: { projectId: p.id, intent: copy(stored.intent), receipt, snapshot, language: stored.language } };
     try { return await ask(request, REPORT_TIMEOUT_MS); }
     catch {
-      // Never claim success without the checked report; show the raw receipt status instead.
-      return { outcome: receipt?.status === 1 ? 'unverified' : 'failed',
-        summary: `The report service did not answer. ${receipt ? `Receipt status: ${receipt.status}, transaction ${receipt.hash}.` : 'No transaction was confirmed.'} Check the project state.` };
+      const failed = receipt?.status === 0 && receiptOutcome(request.payload) === 'failed';
+      const detail = receipt ? `Receipt status: ${receipt.status}, transaction ${receipt.hash}.` : 'No receipt is available yet.';
+      return { outcome: failed ? 'failed' : 'unverified',
+        summary: `The report service could not verify the result. ${detail} Check the transaction status before retrying.` };
     }
   }
   return { plan, take, recheck, report, enabled };

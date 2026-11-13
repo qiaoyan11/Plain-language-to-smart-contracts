@@ -21,6 +21,27 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def receipt_outcome(payload):
+    """Classify a trusted receipt against the project's recorded action and current state."""
+    intent, receipt, snapshot = payload['intent'], payload['receipt'], payload['snapshot']
+    address = snapshot['contractAddress']
+    if (receipt is None or payload['projectId'] != snapshot['id'] or intent['projectId'] != snapshot['id']
+            or address is None or address.lower() != intent['contractAddress'].lower()):
+        return 'unverified'
+    if receipt['status'] == 0:
+        return 'failed'
+    recorded = any(tx['hash'].lower() == receipt['hash'].lower()
+                   and tx['blockNumber'] == receipt['blockNumber'] and tx['status'] == receipt['status']
+                   and tx['action'] == intent['action'] and tx.get('milestoneId') == intent['milestoneId']
+                   for tx in snapshot['transactions'])
+    if not recorded or not snapshot['funded']:
+        return 'unverified'
+    if intent['action'] == 'acceptMilestone' and not any(
+            m['id'] == intent['milestoneId'] and m['paid'] for m in snapshot['milestones']):
+        return 'unverified'
+    return 'confirmed'
+
+
 def validate(kind, data):
     schema = {**SCHEMA, '$ref': '#/$defs/' + kind}
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(data)
@@ -121,6 +142,6 @@ def validate_response(request, response):
         deployment = request['payload']['deployment']
         require(intent['chainId'] == deployment['chainId'] and
                 intent['contractAddress'].lower() == deployment['contractAddress'].lower(), 'Intent deployment mismatch')
-    if request['operation'] == 'reportAction' and response['result']['outcome'] == 'confirmed':
-        receipt = request['payload']['receipt']
-        require(receipt is not None and receipt['status'] == 1, 'Confirmed report needs a successful receipt')
+    if request['operation'] == 'reportAction':
+        require(response['result']['outcome'] == receipt_outcome(request['payload']),
+                'Report outcome does not match the receipt, recorded operation and state')

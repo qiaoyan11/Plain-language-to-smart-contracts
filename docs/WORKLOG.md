@@ -32,6 +32,7 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
+| 2026-11-13 | 在本机测试链上，用已确认版本和最新通过独立验证的 Agent 2 运行部署合约，再交给 Agent 3。交易汇报必须对应项目已记录的同一笔操作；没有回执时显示待核实。 | 组长要求修正 PR #1 的四项问题并接入自己的生成模块；两个现有 PR 的提交都保留在新分支的历史里。 |
 | 2026-11-10 | Add the worker operation `reportAction` and two HTTP endpoints for Agent 3 (`POST /plans`, `POST /plans/:planId/confirmation`). Handoff v1 fields for the other operations do not change. Agent 3 owner in the tables is now Xiangyi Zhu. | The proposal and the TA ask that the agent reports only what the receipt confirms. Both Python and Node refuse a `confirmed` report without a status-1 receipt. Needs review by the `shared/`, `backend/`, `frontend/` and `flows/` owners before merge. |
 | 2026-11-04 | 接入导出页面的样式和编辑组件，新增持续对话草稿并连接既有生成 HTTP 接口；补充条款仅存浏览器，不改交接格式 | 用户已授权导入并清理平台开发标记；保留独立参考演示，不把模拟 Agent 1 或 AI 部署当作已实现 |
 | 2026-11-03 | 在 Node 增加独立的协议版本、用户确认和异步生成 HTTP 接口，沿用 Project API v2 与 Agent 交接 v1；前端暂不改 | 与 Replit 并行准备真实连接；只返回生成结果，不部署 AI 合约；live 必须显式开启，测试不调用收费模型 |

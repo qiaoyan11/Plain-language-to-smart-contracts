@@ -460,8 +460,10 @@ class EvaluateTest(unittest.TestCase):
 
 
 class ReportTest(unittest.TestCase):
-    def payload(self, state, action, milestone_id=None, receipt='ok', language='en'):
+    def payload(self, state, action, milestone_id=None, receipt=None, language='en'):
         base = evaluate.STATES[state]
+        if receipt is None:
+            receipt = 'accept1' if action == 'acceptMilestone' else 'deposit'
         return {'projectId': base['projectId'], 'language': language,
                 'snapshot': copy.deepcopy(base['snapshot']), 'receipt': copy.deepcopy(evaluate.RECEIPTS[receipt]),
                 'intent': {'projectId': base['projectId'], 'chainId': 31337,
@@ -481,18 +483,24 @@ class ReportTest(unittest.TestCase):
         self.assertIn('0.003 ETH', r['summary'])
         self.assertIn('0x7099…79C8', r['summary'])
 
+    def test_deposit_after_partial_payout_reports_the_observed_balance(self):
+        r = report_result(self.payload('paid1', 'deposit'))
+        self.assertEqual(r['outcome'], 'confirmed')
+        self.assertIn('Current escrow balance: 0.007 ETH', r['summary'])
+
     def test_reverted_is_failed_even_if_state_looks_done(self):
         # A second acceptance reverts while the milestone is already paid: never report success.
         for payload in (self.payload('paid1', 'acceptMilestone', 1, 'reverted'),
                         self.payload('funded', 'deposit', None, 'reverted')):
             r = report_result(payload)
             self.assertEqual(r['outcome'], 'failed')
-            self.assertNotIn('confirmed', r['summary'].lower())
+            self.assertIn('This attempt failed', r['summary'])
+            self.assertNotIn('was not paid', r['summary'])
 
-    def test_missing_receipt_is_failed(self):
+    def test_missing_receipt_leaves_outcome_unknown(self):
         r = report_result(self.payload('paid1', 'acceptMilestone', 1, 'none'))
-        self.assertEqual(r['outcome'], 'failed')
-        self.assertIn('milestone #1 was not paid', r['summary'])
+        self.assertEqual(r['outcome'], 'unverified')
+        self.assertIn('Check the transaction status', r['summary'])
 
     def test_success_receipt_without_state_change_is_unverified(self):
         self.assertEqual(report_result(self.payload('unfunded', 'deposit'))['outcome'], 'unverified')
@@ -508,13 +516,37 @@ class ReportTest(unittest.TestCase):
         request = json.loads((ROOT / 'shared/examples/reportAction.request.json').read_text())
         response = dispatch(request)
         self.assertEqual(response['result']['outcome'], 'confirmed')
-        # The boundary check refuses a success claim for a reverted or missing receipt.
-        for receipt in (None, {**request['payload']['receipt'], 'status': 0}):
+        for receipt, outcome in ((None, 'unverified'), ({**request['payload']['receipt'], 'status': 0}, 'failed')):
             forged = copy.deepcopy(request)
             forged['payload']['receipt'] = receipt
             with self.assertRaises(ValueError):
                 validate_response(forged, response)
-            self.assertEqual(dispatch(forged)['result']['outcome'], 'failed')
+            self.assertEqual(dispatch(forged)['result']['outcome'], outcome)
+
+    def test_report_requires_record_and_state_for_this_exact_operation(self):
+        request = json.loads((ROOT / 'shared/examples/reportAction.request.json').read_text())
+        response = dispatch(request)
+        for field, value in [('hash', '0x' + '42' * 32), ('blockNumber', 99), ('status', 0),
+                             ('action', 'deposit'), ('milestoneId', 2)]:
+            with self.subTest(field=field):
+                mismatched = copy.deepcopy(request)
+                mismatched['payload']['snapshot']['transactions'][-1][field] = value
+                self.assertEqual(dispatch(mismatched)['result']['outcome'], 'unverified')
+                with self.assertRaises(ValueError):
+                    validate_response(mismatched, response)
+        for state in ('missing_record', 'unpaid', 'unfunded'):
+            with self.subTest(state=state):
+                mismatched = copy.deepcopy(request)
+                snapshot = mismatched['payload']['snapshot']
+                if state == 'missing_record':
+                    snapshot['transactions'].clear()
+                elif state == 'unpaid':
+                    snapshot['milestones'][0]['paid'] = False
+                else:
+                    snapshot['funded'] = False
+                self.assertEqual(dispatch(mismatched)['result']['outcome'], 'unverified')
+                with self.assertRaises(ValueError):
+                    validate_response(mismatched, response)
 
     def test_rejects_bad_input(self):
         bad = [self.payload('funded', 'query'),
