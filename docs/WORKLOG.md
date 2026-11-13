@@ -20,8 +20,8 @@
 
 | 人 | 主要目录 | 第一项交付 |
 | --- | --- | --- |
-| Jiahao | frontend/、backend/；协调 flows/、shared/ | 维护现有演示，负责 Node 与 Python 的单一连接入口及最终集成 |
-| Xiangyi Zhu | agent3/；部署和链上交互 | Python：把自然语言请求变成待确认的操作，并根据交易回执汇报结果 |
+| Jiahao Zhang | frontend/、backend/、Sepolia；协调 flows/、shared/ | 负责模块集成、测试钱包签名、公共测试网部署和交易验证 |
+| Xiangyi Zhu | agent3/ | 把自然语言请求变成待确认的操作，并根据交易回执汇报结果 |
 | 组员 A | agent1/ | Python：描述变规则、缺信息时追问；先输出 JSON，不重写网页 |
 | 组员 B | agent2/；负责 flows/ 的生成修复图 | Python：按确认规则生成合约；LangGraph 调用验证并有限修复 |
 | 组员 C | validation/，与 Claude 协作 | 独立检查、开发反馈和 A/B/C 实验；隐藏评测结果不进入修复流程 |
@@ -70,6 +70,9 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-13 · Sepolia 分工
+- 张嘉豪接手 Sepolia 接入、测试钱包签名和公共测试网交易验证。朱湘怡负责 Agent 3 的操作规划与回执汇报。
 
 ### 2026-11-13 · Codex · Agent 2 生成合约接入 Agent 3 的本地付款流程
 - 用户在项目页确认部署最新通过验证的版本后，可查询余额、确认存款和分阶段付款；刷新可查看同一合约的地址和交易。
