@@ -71,6 +71,14 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-13 · Codex · Agent 2 生成合约接入 Agent 3 的本地付款流程
+- 用户在项目页确认部署最新通过验证的版本后，可查询余额、确认存款和分阶段付款；刷新可查看同一合约的地址和交易。
+- 汇报成功前核对项目、合约、交易哈希、区块、操作和阶段；缺少回执显示待核实，存款后的余额从链上读取。模型服务出错的评测标为未完成。
+- 218 项自动测试通过：合约 26、HTTP 25、模块交接 31、Agent 2 共 24、Agent 3 共 65、验证器 14、前端 33。前端类型检查和生产构建通过。
+- 本地 Hardhat 回放了 11 月 4 日保存的模型源码：新报告通过编译、Slither 和 24/24 条款测试，部署交易的代码及参数与验证产物相符；0.010 测试 ETH 分两次付清，开发者实收 0.010，托管余额为零。本次操作分类使用固定输入，模型调用为零。
+- 可单独回退的提交依次为 `0d2bbc5`（回执与评测）、`8011485`（本地部署后端）、`6ab482b`（网页）。集成前的 PR #2 版本为 `e0cf493`。
+- 下一步：验证 Sepolia 钱包签名和公共测试网交易。需要老板决定：无。
+
 ### 2026-11-10 · Xiangyi Zhu（Claude 协助）· Agent 3 receipt report and web connection
 - Built: `agent3/report.py` words the result of a deposit or acceptance from the receipt (no model). New worker operation `reportAction`.
 - Built: `backend/operations.cjs` with `POST /plans` and `POST /plans/:planId/confirmation`. Node keeps the intent, checks the chain state again, executes once, then reports.
