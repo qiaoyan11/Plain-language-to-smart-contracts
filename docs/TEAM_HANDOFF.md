@@ -23,10 +23,11 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 
 | 负责人 | 主要编辑位置 | 替换什么 | 第一项完成标准 |
 | --- | --- | --- | --- |
-| A | agent1/ | stub.py 的 clarify(payload) | 接模型，完整、缺信息、超范围三种描述返回合法输出，不替用户确认 |
+| 徐露源 Luyuan Xu | agent1/ | stub.py 的 clarify(payload) | 按[追问与超范围处理说明](../agent1/README.md)接模型，核对完整、缺失、矛盾和含超范围条件的描述 |
 | B | agent2/、flows/ | service.py 的 generate(payload)、flows/generation.py | 生成、可信验证、有限修复已接通；继续完善规则与实验配置 |
 | C + Claude | validation/ | 自己实现 validate_development(spec, sourceBundle) | 编译、静态检查、条款测试组成可信报告；工具没准备好不能报通过 |
-| Jiahao | backend/、frontend/、agent3/ | 接 generation.cjs 的 HTTP 接口；agent3/stub.py | 网页确认、版本和生成查询已接入；Agent 1/3 的真实模型与 AI 部署后做 |
+| Jiahao Zhang | backend/、frontend/、Sepolia | 接生成、部署、操作接口和测试钱包签名 | 本地流程已接通。张嘉豪负责在 Sepolia 完成部署、存款和验收付款，并核对公开回执 |
+| Xiangyi Zhu | agent3/ | service.py 的 plan_action(payload)、report.py 的 report_result(payload) | 已接模型并接入网页；需以 AGENT3_MODE=live 启动后端 |
 
 模拟函数的文件名以后可改为 service.py，届时只调整 flows/worker.py 中对应 import。
 业务模块不互相 import；flows 统一调用它们。shared 仅放格式和共用校验。

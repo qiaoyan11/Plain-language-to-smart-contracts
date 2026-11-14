@@ -1,23 +1,30 @@
 # 四人协作与第一批任务
 
-当前共同起点：网页、Node 后端和 1–5 阶段参考合约已跑通。Python 模拟模块和 Node 连接已实现；Agent 2 已接通生成、独立验证和有限修复；网页已接确认和生成结果；其余 Agent 和正式评测尚未完成。先读 [接手说明](TEAM_HANDOFF.md)。本轮先把模块接起来，不重写前后端，不加入钱包、退款、RAG 或数据库。
+当前共同起点：网页、Node 后端和 1–5 阶段参考合约已跑通。Python 模拟模块和 Node 连接已实现；Agent 2 已接通生成、独立验证和有限修复；网页已接确认和生成结果；Agent 3 已接本地部署和操作，Agent 1 与正式评测仍待完成。先读 [接手说明](TEAM_HANDOFF.md)。本轮先把模块接起来，不重写前后端，不加入钱包、退款、RAG 或数据库。
 
 每人先按 [运行说明](FRONTEND_INTEGRATION.md) 完成创建、部署、存款、付款。之后读 [模块交接 v1](../shared/INTERFACES.md)。A/B/C 是待认领岗位，不是已确认的成员姓名。
 
-## Jiahao — 集成及后续 Agent 3
+## Jiahao Zhang — 集成和 Sepolia
 
-- 目录：frontend/、backend/、agent3/；协调 shared/，与 B 协调 flows/。
-- 分支：feature/python-bridge；后续 feature/agent3。
+- 目录：frontend/、backend/；协调 shared/，与 B 协调 flows/。
+- 张嘉豪负责 Sepolia 测试网接入、测试钱包签名，以及部署、存款和验收付款的公开回执验证。
+- 分支：feature/python-bridge。
 - 当前已完成：generation.cjs 提供确认、版本管理、异步运行和查询接口，复用 python-bridge.cjs；详见 [生成 HTTP 接口](../shared/GENERATION_API_V1.md)。
-- 网页已接入：持续对话草稿、版本确认、生成查询和最终结果；刷新不重复启动模型。下一项任务：接真实 Agent 1，把描述可靠地变成待确认规则；AI 部署另立任务。
-- 交付：能发送样例并显示生成结果或明确错误；原有手写合约演示仍能运行。第一轮不部署 AI 生成代码。
-- 后续任务：Agent 3 仅提出操作意图，Node 核对并在用户确认后执行。不是重做一套交易系统。
+- 网页已接入：持续对话草稿、版本确认、生成查询和最终结果；刷新不重复启动模型。下一项任务：接真实 Agent 1，把描述可靠地变成待确认规则。用户现在可以显式部署当前已验证版本并用 Agent 3 操作。
+- 交付：能发送样例并显示生成结果或明确错误；原有手写合约演示仍能运行。生成项目和参考演示各有自己的部署入口。
 
-## 组员 A — Agent 1
+## Xiangyi Zhu — Agent 3 操作规划与交易汇报
+
+- 目录：agent3/；接入 backend/、frontend/ 时与 Jiahao 协调。
+- 分支：feature/agent3、feature/agent3-integration。
+- 当前已完成：Agent 3 提出操作意图（query、deposit、acceptMilestone），并根据交易回执汇报结果；详见 [agent3/README.md](../agent3/README.md)。
+- 边界：Agent 3 仅提出操作意图，Node 核对并在用户确认后执行。不是重做一套交易系统。
+
+## 徐露源 Luyuan Xu — Agent 1
 
 - 目录：agent1/；分支 feature/agent1-python。
-- 第一项任务：Python 的 clarify 输入描述，输出 draftSpec、问题和不支持的条款。
-- 交付：独立运行方式、至少三个样例（完整描述、缺少金额、不支持退款）及模块测试。
+- 第一项任务：用 `clarify` 梳理付款条件，针对缺失或矛盾的信息追问，并解释超出系统能力的条款如何影响资金。
+- 交付：按[追问流程和六个验收场景](../agent1/README.md)实现模型入口、独立运行方式和模块测试。
 - 边界：不猜缺失规则，不替用户确认，不改网页或合约。需要页面变化时交给 Jiahao 集成。
 
 ## 组员 B — Agent 2 与生成修复图
@@ -41,6 +48,6 @@
 1. 所有人先复现共同版本；确认认领岗位。
 2. A 用样例开发，B 做一次生成，C 做开发验证适配；Jiahao 对接唯一入口。
 3. 合并“规则 → 单次生成 → 检查”，再合并有限修复；生成结果暂不自动部署。
-4. 后续再接自然语言页面与 Agent 3。上线另立任务，不混进这批。
+4. 本地生成项目已接自然语言操作页面和 Agent 3。后续推进 Sepolia 测试网和钱包签名。
 
 每项 PR 包含输入、输出、运行命令、测试结果和限制。main 保持可演示；个人分支提交，不等所有模块写完才集成。contracts/ 和 tests/ 是共同基线，修改需单独说明。shared/ 变动先记 WORKLOG 决策；REVIEW.md 和 validation/ 仍按 AI 工具分工由 Claude 负责，Codex 不修改。

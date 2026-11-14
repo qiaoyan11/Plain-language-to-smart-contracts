@@ -20,8 +20,9 @@
 
 | 人 | 主要目录 | 第一项交付 |
 | --- | --- | --- |
-| Jiahao | frontend/、backend/、agent3/；协调 flows/、shared/ | 维护现有演示，负责 Node 与 Python 的单一连接入口及最终集成；Agent 3 后做 |
-| 组员 A | agent1/ | Python：描述变规则、缺信息时追问；先输出 JSON，不重写网页 |
+| Jiahao Zhang | frontend/、backend/、Sepolia；协调 flows/、shared/ | 负责模块集成、测试钱包签名、公共测试网部署和交易验证 |
+| Xiangyi Zhu | agent3/ | 把自然语言请求变成待确认的操作，并根据交易回执汇报结果 |
+| 徐露源 Luyuan Xu | agent1/ | Python 需求理解、澄清和付款条款的支持范围判断，见[实现及验收说明](../agent1/README.md) |
 | 组员 B | agent2/；负责 flows/ 的生成修复图 | Python：按确认规则生成合约；LangGraph 调用验证并有限修复 |
 | 组员 C | validation/，与 Claude 协作 | 独立检查、开发反馈和 A/B/C 实验；隐藏评测结果不进入修复流程 |
 
@@ -31,6 +32,10 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
+| 2026-11-13 | 每个阶段由 Bob 申请，Alice 对该阶段确认成功时才记为开工。 | 给“未开工阶段可退出退款”一个双方可查的判断依据。见[阶段开工与资金规则](MILESTONE_REVISION_RULES.md)。 |
+| 2026-11-13 | 签约时约定，Alice 或 Bob 任一方可终止后续尚未开工的阶段，相关阶段款退给 Alice；当前阶段的争议款继续托管。 | 组长选定的产品规则。参见[多轮修改时的资金示例](MILESTONE_REVISION_RULES.md)，实现待排期。 |
+| 2026-11-13 | 在本机测试链上，用已确认版本和最新通过独立验证的 Agent 2 运行部署合约，再交给 Agent 3。交易汇报必须对应项目已记录的同一笔操作；没有回执时显示待核实。 | 组长要求修正 PR #1 的四项问题并接入自己的生成模块；两个现有 PR 的提交都保留在新分支的历史里。 |
+| 2026-11-10 | Add the worker operation `reportAction` and two HTTP endpoints for Agent 3 (`POST /plans`, `POST /plans/:planId/confirmation`). Handoff v1 fields for the other operations do not change. Agent 3 owner in the tables is now Xiangyi Zhu. | The proposal and the TA ask that the agent reports only what the receipt confirms. Both Python and Node refuse a `confirmed` report without a status-1 receipt. Needs review by the `shared/`, `backend/`, `frontend/` and `flows/` owners before merge. |
 | 2026-11-04 | 接入导出页面的样式和编辑组件，新增持续对话草稿并连接既有生成 HTTP 接口；补充条款仅存浏览器，不改交接格式 | 用户已授权导入并清理平台开发标记；保留独立参考演示，不把模拟 Agent 1 或 AI 部署当作已实现 |
 | 2026-11-03 | 在 Node 增加独立的协议版本、用户确认和异步生成 HTTP 接口，沿用 Project API v2 与 Agent 交接 v1；前端暂不改 | 与 Replit 并行准备真实连接；只返回生成结果，不部署 AI 合约；live 必须显式开启，测试不调用收费模型 |
 | 2026-11-03 | 老板确认保持 High/Medium 阻断；接可信开发验证和 B/C 有限修复，保留原始 A 输出；修复手写参考合约的显式初始化 | 不改变验证标准或交接 v1，不把手写参考合约算作实验 A；先做一次最多 1 轮的接通演练，正式预算另定 |
@@ -67,6 +72,48 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-13 · 确认阶段开工条件
+- Bob 提出申请后，Alice 确认同一阶段才算开工。申请和确认均不动钱；后续阶段在待确认期间仍适用未开工退款规则。
+- 已核对开工与终止两种执行顺序及示例金额。首页争议款的双边结算流程记为待确认提议，以上内容属于下一版设计。
+
+### 2026-11-13 · 确认未开工阶段的退出与退款规则
+- 任一方都可以终止后续尚未开工的阶段。示例中 0.007 退回 Alice，首页的 0.003 继续托管。资金表列出逐步余额，并标明哪些实现细节仍待讨论。
+
+### 2026-11-13 · Agent 1 追问与超范围条款交接
+- 给徐露源补齐了追问顺序、三种返回状态和六个验收场景。遇到超范围付款条件时保留条款、解释影响，停在草稿，等待用户处理。
+- 多轮返工在产品讨论中采用“提出修改意见”的表述；轮次、资金处理和终止方式仍待双方规则定稿。现有 v1 合约支持范围见 Agent 1 说明。
+- 核对共享格式、链接和模拟入口。当前交付是团队开发说明，真实模型接入与正式评测由模块负责人后续完成。
+
+### 2026-11-13 · Sepolia 分工
+- 张嘉豪接手 Sepolia 接入、测试钱包签名和公共测试网交易验证。朱湘怡负责 Agent 3 的操作规划与回执汇报。
+
+### 2026-11-13 · Codex · Agent 2 生成合约接入 Agent 3 的本地付款流程
+- 用户在项目页确认部署最新通过验证的版本后，可查询余额、确认存款和分阶段付款；刷新可查看同一合约的地址和交易。
+- 汇报成功前核对项目、合约、交易哈希、区块、操作和阶段；缺少回执显示待核实，存款后的余额从链上读取。模型服务出错的评测标为未完成。
+- 218 项自动测试通过：合约 26、HTTP 25、模块交接 31、Agent 2 共 24、Agent 3 共 65、验证器 14、前端 33。前端类型检查和生产构建通过。
+- 本地 Hardhat 回放了 11 月 4 日保存的模型源码：新报告通过编译、Slither 和 24/24 条款测试，部署交易的代码及参数与验证产物相符；0.010 测试 ETH 分两次付清，开发者实收 0.010，托管余额为零。本次操作分类使用固定输入，模型调用为零。
+- 可单独回退的提交依次为 `0d2bbc5`（回执与评测）、`8011485`（本地部署后端）、`6ab482b`（网页）。集成前的 PR #2 版本为 `e0cf493`。
+- 下一步：验证 Sepolia 钱包签名和公共测试网交易。需要老板决定：无。
+
+### 2026-11-10 · Xiangyi Zhu（Claude 协助）· Agent 3 receipt report and web connection
+- Built: `agent3/report.py` words the result of a deposit or acceptance from the receipt (no model). New worker operation `reportAction`.
+- Built: `backend/operations.cjs` with `POST /plans` and `POST /plans/:planId/confirmation`. Node keeps the intent, checks the chain state again, executes once, then reports.
+- Built: a plain-language panel on the reference project page (`frontend/src/components/OperationAssistant.tsx`).
+- Fixed: `flows/worker.py` no longer prints "STUB MODE" for live Agent 3.
+- Measured: 20 receipt cases, 20 correct, 0 false success. Sentence evaluation run 4 (32 sentences): 31/32, 0 unsafe, 0 critical.
+- Found in a live test and fixed: "先付第一阶段" on an unfunded escrow was sometimes read as a deposit. The rules now ask a question.
+- Tests: `test:agent3` 60, `e2e` 18 + 13, `test:api` 22, frontend 21, all pass. One live browser run is recorded in the PR.
+- Changes in other owners' folders (`shared/`, `flows/`, `backend/`, `frontend/`, `docs/`) are in a separate branch for review: `feature/agent3-integration`.
+- Limits: local Hardhat and the reference contract only. Start the backend with `AGENT3_MODE=live`. Sepolia is not done.
+
+### 2026-11-10 · Xiangyi Zhu（Claude 协助）· Agent 3 operation planner
+- Built: Agent 3 turns a client sentence into an escrow intent. A model classifies it; fixed rules decide. Stub stays the default; `AGENT3_MODE=live` turns on the model.
+- Measured (2026-11-10, gpt-5.6-luna, 30 sentences): 29/30 correct (96.7%), 0 unsafe, 0 critical in each of two runs; slowest call 4.785 s. The one miss: "付款。" (funded) got `blocked`, expected a question.
+- Baseline: added `tests/agent3_test.py` (49 offline tests) and the `test:agent3` script line in `package.json`.
+- For Jiahao: set `AGENT3_MODE=live` for the planAction call. The model call has a hard limit of 8 s; the bridge stops Python after 10 s by default.
+- For the owner of `flows/`: `flows/worker.py` prints a "STUB MODE" line to stderr in live mode. The result is correct.
+- Limits: no multi-turn memory; checked only against the reference contract on local Hardhat. See `agent3/README.md`.
 
 ### 2026-11-09 · Xiangyi Zhu（Claude 协助）· 新增 data/ 数据来源记录
 - 做了什么：新增 data/README.md、manifest.csv、ATTRIBUTION.md，登记 5 个合同来源（Common Paper 2 份、Bonterms、SEC EDGAR 2 份）。

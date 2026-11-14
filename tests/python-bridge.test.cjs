@@ -16,6 +16,37 @@ test('stub handoff: clarification -> fixture confirmation -> generation -> block
   assert.equal(plan.result.status, 'blocked');
   assert.equal(plan.result.intent, null);
 });
+test('receipt report crosses the bridge and a forged success is refused', async () => {
+  const { validateResponse } = require('../shared/handoff.cjs');
+  const report = structuredClone(require('../shared/examples/reportAction.request.json'));
+  const ok = await runPython(report);
+  assert.equal(ok.result.outcome, 'confirmed');
+  const reverted = structuredClone(report); reverted.payload.receipt.status = 0;
+  assert.equal((await runPython(reverted)).result.outcome, 'failed');
+  assert.throws(() => validateResponse(reverted, ok), /REPORT_OUTCOME_MISMATCH/);
+  const missing = structuredClone(report); missing.payload.receipt = null;
+  const unknown = await runPython(missing);
+  assert.equal(unknown.result.outcome, 'unverified');
+  for (const claimed of ['confirmed', 'failed']) {
+    assert.throws(() => validateResponse(missing, { ...ok, result: { ...ok.result, outcome: claimed } }), /REPORT_OUTCOME_MISMATCH/);
+  }
+  for (const change of [
+    p => { p.snapshot.transactions.length = 0; },
+    p => { p.snapshot.transactions.at(-1).hash = p.snapshot.transactions[0].hash; },
+    p => { p.snapshot.transactions.at(-1).blockNumber++; },
+    p => { p.snapshot.transactions.at(-1).status = 0; },
+    p => { p.snapshot.transactions.at(-1).action = 'deposit'; },
+    p => { p.snapshot.transactions.at(-1).milestoneId = 2; },
+    p => { p.snapshot.id = 'another-project'; },
+    p => { p.snapshot.contractAddress = '0x' + '2'.repeat(40); },
+    p => { p.snapshot.milestones[0].paid = false; },
+    p => { p.snapshot.funded = false; },
+  ]) {
+    const mismatched = structuredClone(report);
+    change(mismatched.payload);
+    assert.throws(() => validateResponse(mismatched, ok), /REPORT_OUTCOME_MISMATCH/);
+  }
+});
 test('development request cannot become passed without validator', async () => {
   const r=clone(); r.payload.runConfig.validationMode='development';
   assert.equal((await runPython(r)).result.status,'toolError');

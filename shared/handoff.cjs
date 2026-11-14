@@ -5,7 +5,7 @@ const { createHash } = require('node:crypto');
 const schema = require('./schemas/handoff.schema.json');
 const ajv = new Ajv({ strict: false });
 addFormats(ajv);
-const kinds = ['Response', 'ClarifyResult', 'GenerateResult', 'PlanResult'];
+const kinds = ['Response', 'ClarifyResult', 'GenerateResult', 'PlanResult', 'ReportInput', 'ReportResult'];
 const validators = Object.fromEntries(kinds.map(kind => [kind, ajv.compile({ ...schema, $ref: `#/$defs/${kind}` })]));
 function requireThat(condition, message) { if (!condition) throw new Error(message); }
 function check(kind, data) { requireThat(validators[kind](data), `INVALID_${kind}: ${ajv.errorsText(validators[kind].errors)}`); }
@@ -13,6 +13,17 @@ function canonical(x) {
   if (Array.isArray(x)) return x.map(canonical);
   if (x && typeof x === 'object') return Object.fromEntries(Object.keys(x).sort().map(k => [k, canonical(x[k])]));
   return x;
+}
+function receiptOutcome({ projectId, intent, receipt, snapshot }) {
+  if (!receipt || projectId !== snapshot.id || intent.projectId !== snapshot.id ||
+      snapshot.contractAddress?.toLowerCase() !== intent.contractAddress.toLowerCase()) return 'unverified';
+  if (receipt.status === 0) return 'failed';
+  const recorded = snapshot.transactions.some(tx =>
+    tx.hash.toLowerCase() === receipt.hash.toLowerCase() && tx.blockNumber === receipt.blockNumber &&
+    tx.status === receipt.status && tx.action === intent.action && (tx.milestoneId ?? null) === intent.milestoneId);
+  if (!recorded || !snapshot.funded) return 'unverified';
+  if (intent.action === 'acceptMilestone' && !snapshot.milestones.some(m => m.id === intent.milestoneId && m.paid)) return 'unverified';
+  return 'confirmed';
 }
 function validateResponse(request, response) {
   check('Response', response);
@@ -22,7 +33,7 @@ function validateResponse(request, response) {
     return;
   }
   requireThat(response.errors.length === 0, 'INVALID_ERRORS');
-  const kind = { clarify: 'ClarifyResult', generate: 'GenerateResult', planAction: 'PlanResult' }[request.operation];
+  const kind = { clarify: 'ClarifyResult', generate: 'GenerateResult', planAction: 'PlanResult', reportAction: 'ReportResult' }[request.operation];
   requireThat(kind, 'INVALID_OPERATION');
   check(kind, response.result);
   const result = response.result;
@@ -63,5 +74,11 @@ function validateResponse(request, response) {
       requireThat((intent.milestoneId !== null) === (intent.action === 'acceptMilestone'), 'INVALID_MILESTONE');
     }
   }
+  if (request.operation === 'reportAction') {
+    check('ReportInput', request.payload);
+    const { intent } = request.payload;
+    requireThat((intent.milestoneId !== null) === (intent.action === 'acceptMilestone'), 'INVALID_MILESTONE');
+    requireThat(result.outcome === receiptOutcome(request.payload), 'REPORT_OUTCOME_MISMATCH');
+  }
 }
-module.exports = { validateResponse };
+module.exports = { validateResponse, receiptOutcome };

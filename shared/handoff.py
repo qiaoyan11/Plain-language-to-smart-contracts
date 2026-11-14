@@ -6,7 +6,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT / 'shared/schemas/handoff.schema.json').read_text())
-OPS = {'clarify': 'Clarify', 'generate': 'Generate', 'planAction': 'Plan'}
+OPS = {'clarify': 'Clarify', 'generate': 'Generate', 'planAction': 'Plan', 'reportAction': 'Report'}
 MAX_UINT = 2**256 - 1
 
 
@@ -19,6 +19,27 @@ def source_hash(bundle):
 def require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def receipt_outcome(payload):
+    """Classify a trusted receipt against the project's recorded action and current state."""
+    intent, receipt, snapshot = payload['intent'], payload['receipt'], payload['snapshot']
+    address = snapshot['contractAddress']
+    if (receipt is None or payload['projectId'] != snapshot['id'] or intent['projectId'] != snapshot['id']
+            or address is None or address.lower() != intent['contractAddress'].lower()):
+        return 'unverified'
+    if receipt['status'] == 0:
+        return 'failed'
+    recorded = any(tx['hash'].lower() == receipt['hash'].lower()
+                   and tx['blockNumber'] == receipt['blockNumber'] and tx['status'] == receipt['status']
+                   and tx['action'] == intent['action'] and tx.get('milestoneId') == intent['milestoneId']
+                   for tx in snapshot['transactions'])
+    if not recorded or not snapshot['funded']:
+        return 'unverified'
+    if intent['action'] == 'acceptMilestone' and not any(
+            m['id'] == intent['milestoneId'] and m['paid'] for m in snapshot['milestones']):
+        return 'unverified'
+    return 'confirmed'
 
 
 def validate(kind, data):
@@ -87,6 +108,10 @@ def validate(kind, data):
         require((intent is not None) == (data['status'] == 'readyForConfirmation'), 'Intent status mismatch')
         if intent:
             require((intent['milestoneId'] is not None) == (intent['action'] == 'acceptMilestone'), 'Invalid milestone argument')
+    elif kind == 'ReportInput':
+        intent = data['intent']
+        require(intent['projectId'] == data['projectId'], 'Intent project mismatch')
+        require((intent['milestoneId'] is not None) == (intent['action'] == 'acceptMilestone'), 'Invalid milestone argument')
     return data
 
 
@@ -117,3 +142,6 @@ def validate_response(request, response):
         deployment = request['payload']['deployment']
         require(intent['chainId'] == deployment['chainId'] and
                 intent['contractAddress'].lower() == deployment['contractAddress'].lower(), 'Intent deployment mismatch')
+    if request['operation'] == 'reportAction':
+        require(response['result']['outcome'] == receipt_outcome(request['payload']),
+                'Report outcome does not match the receipt, recorded operation and state')

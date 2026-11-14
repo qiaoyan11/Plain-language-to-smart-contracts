@@ -105,8 +105,7 @@ export function GenerationResultView({
       )}
       {passed && (
         <p className="mt-4 text-sm text-muted-foreground">
-          These are development checks, not a production security audit. This contract has not been
-          deployed.
+          Production use requires a separate security review.
         </p>
       )}
     </section>

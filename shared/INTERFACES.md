@@ -10,7 +10,7 @@ The existing [Project API v2](PROJECT_API_V2.md) continues to serve the current 
 Existing UI -> existing Node backend -> one JSON bridge -> Python workflow
                                                         Agent 1 (later)
                                                         Agent 2 -> development validation -> repair
-                                                        Agent 3 (later, proposes operations)
+                                                        Agent 3 -> plan operations and report receipts
 Existing Node backend -> existing contract tools -> local chain
 ```
 
@@ -20,13 +20,13 @@ Use LangGraph first for the generation/check/repair loop. No Langflow service is
 
 ## 2. One bridge, before adding services
 
-Initial transport: Node launches a configured Python interpreter with a fixed module entry point (`flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The worker defaults to fixture mode. Explicit AGENT2_MODE=live enables Agent 2 generation/validation/repair; Agent 1/3 remain fixtures. server.cjs now calls the bridge through generation.cjs, which binds immutable confirmed rules to each request and checks the current version before accepting results. The HTTP generation endpoint is disabled unless live mode is explicitly enabled; it does not silently return fixture success. Defaults: 10-second fixture timeout or 210-second smoke timeout or 900 seconds per development attempt (up to 6 attempts), 1 MiB input, 1 MiB combined stdout/stderr, one active process per project per Node process.
+Initial transport: Node launches a configured Python interpreter with a fixed module entry point (`flows.worker`), sends one JSON request on stdin, and receives one JSON response on stdout. Diagnostics go to stderr. No model-produced shell commands. The worker defaults to fixture mode. Explicit AGENT2_MODE=live enables Agent 2 generation/validation/repair. Explicit AGENT3_MODE=live enables Agent 3 planning (one model call, 8-second limit). Agent 1 remains a fixture. server.cjs now calls the bridge through generation.cjs, which binds immutable confirmed rules to each request and checks the current version before accepting results. The HTTP generation endpoint is disabled unless live mode is explicitly enabled; it does not silently return fixture success. Defaults: 10-second fixture timeout or 210-second smoke timeout or 900 seconds per development attempt (up to 6 attempts), 1 MiB input, 1 MiB combined stdout/stderr, one active process per project per Node process.
 
 Envelope:
 
 - Request: `{interfaceVersion: 1, requestId, operation, payload}`.
 - Response: `{interfaceVersion: 1, requestId, status, result, errors}`.
-- `operation`: `clarify`, `generate`, or `planAction`.
+- `operation`: `clarify`, `generate`, `planAction`, or `reportAction`.
 - `status`: `ok` or `error`. `ok` means the operation returned normally, not that code passed validation.
 - `errors`: array of `{code, message, field}`; `field` is a string or null. `result` is null on errors.
 - Missing required fields, unknown operations or an incompatible interface version return `error`; no automatic execution fallback.
@@ -107,13 +107,19 @@ A report passes only when all required checks run and pass. Missing tools or ski
 
 Held-out evaluation is a separate, evaluator-only entry point, not a `mode` exposed to the generation graph. Its tests and findings never enter Agent 2 prompts or development fixtures. Build tools run in a restricted environment; Python calls fixed Node/compiler or Slither adapters, not arbitrary model-specified commands.
 
-## 7. Agent 3 — plan an operation, later
+## 7. Agent 3 — plan an operation, then report the result
 
 Input: `{message, projectId, deployment, snapshot}`. Deployment is trusted Node data `{chainId, contractAddress, abi, sourceHash, specVersion}`. Snapshot is the existing Project API v2 response read from the chain.
 
 Output: `{status, question, intent, summary}`. Status: `needsClarification`, `readyForConfirmation`, or `blocked`. Intent is null unless ready; then `{projectId, chainId, contractAddress, action, milestoneId}`. Allowed action values: `query`, `deposit`, `acceptMilestone`; milestoneId is null except for milestone acceptance. Query only returns read information. The model cannot choose arbitrary functions or addresses.
 
-Before a state-changing action, Node checks the trusted deployment and latest state again and requires an explicit UI confirmation. It uses existing local demo execution tools; Python never signs transactions. Browser-wallet integration and public-testnet signing are separate future work. Deployment of generated code is also a later Node integration task: require a trusted passed report, match exact source/version/build settings, deploy the verified artifact with confirmed arguments, and verify the receipt. Existing reference deployment is not evidence that this generated-artifact gate exists today.
+After a confirmed `deposit` or `acceptMilestone`, Node sends the operation `reportAction` with `{projectId, intent, receipt, snapshot, language}`. Node checks the chain and contract before execution and records successful transactions before taking the snapshot. The receipt is `{hash, blockNumber, status}` or `null` when unavailable. The result is `{outcome, summary}` in the requested language (`zh` or `en`).
+
+Python and Node independently check the receipt outcome. For `confirmed`, the intent and snapshot must identify the same project and contract. A status-1 receipt must match an entry in `snapshot.transactions` by hash, block number, status, action and milestone ID. The snapshot must show funding and, for acceptance, payment of the specified milestone. A status-0 receipt for this attempt yields `failed`. A missing receipt, mismatched project or contract, or incomplete evidence for a successful transaction yields `unverified`. Deposit summaries use the current `escrowBalanceWei`. See the [report request example](examples/reportAction.request.json).
+
+HTTP: `POST /api/projects/:id/plans` with `{message}` returns `{planId, status, question, summary, intent}`. It needs a deployed project and `AGENT3_MODE=live`; otherwise it returns 409 or 503. `POST /api/projects/:id/plans/:planId/confirmation` with `{approved: true}` executes a ready `deposit` or `acceptMilestone` plan once and returns `{report, project}`. Node keeps the intent; the browser cannot change it. A `query` plan needs no confirmation.
+
+Before a state-changing action, Node checks the trusted deployment and latest state again and requires an explicit UI confirmation. It uses existing local demo execution tools; Python never signs transactions. Browser-wallet integration and public-testnet signing are separate future work. The local backend deploys the latest confirmed, independently validated build on explicit approval. It supplies Agent 3 with that deployment’s address, ABI, source hash and spec version. See [local deployment](GENERATION_API_V1.md).
 
 ## 8. Shared fixtures and acceptance
 
@@ -129,6 +135,6 @@ Both the Python worker and Node receiver validate operation-specific result shap
 
 On cancellation, the bridge keeps the project lock until the worker closes. On macOS/Linux it sends TERM to the process group, waits 200 ms, then KILLs the group including ordinary compiler children. On Windows it uses taskkill /T /F; this branch has not been exercised on the current Mac. Tools must not detach themselves from the managed process group.
 
-The trusted workflow calls C's validate_development directly and attaches that returned report and artifact. Model output may supply only source/repair content, never validation evidence. A self-consistent JSON report is not proof that tests ran. No deployment path may trust model-authored passed reports. This provenance boundary is implemented in flows/generation.py; generated-artifact deployment remains a separate integration task.
+The trusted workflow calls C's validate_development directly and attaches that returned report and artifact. Model output may supply only source/repair content, never validation evidence. A self-consistent JSON report is not proof that tests ran. No deployment path may trust model-authored passed reports. The Python generation graph obtains the trusted report. The Node deployment endpoint consumes its exact artifact from the stored run.
 
 Agent 2 live progress and usage are documented in ../agent2/README.md and ../docs/AGENT2_VALIDATION_RUN.md. Its compilation.json is a smoke-check record, never a ValidationReport. Development mode separately obtains the independent report; neither mode grants deployment authority. Full proposal features (refunds, cancellation, deadlines, OpenZeppelin) are still outside this v1 subset, not removed from the project goal.

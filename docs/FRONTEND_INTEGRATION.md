@@ -25,6 +25,8 @@ Open http://127.0.0.1:5173/reference-demo for the preserved handwritten-contract
 
 The backend runs a real local EVM inside its process, automatically signing with disposable test accounts. It is not connected to Ethereum mainnet or Sepolia. Only the designated client/provider demo accounts are accepted; arbitrary addresses from the earlier mock example will be rejected. Project records and the chain are in memory and reset together on backend restart.
 
+For the generated-contract flow, configure [Agent 2](../agent2/README.md) and [Agent 3](../agent3/README.md), and run `AGENT2_MODE=live AGENT3_MODE=live npm run backend` in terminal 1. Open the home page, confirm payment terms, generate, then click **Deploy generated contract locally** on a validated run. In the same project, ask to deposit or accept a milestone and click **Confirm and send**. Refresh to check the recorded address, receipt and current balance.
+
 ## API
 
 | Method | Path | Purpose |

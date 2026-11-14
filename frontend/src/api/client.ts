@@ -1,5 +1,5 @@
 /** Project API v2. All page data access stays here; local chain is the default. */
-import type { AgreementContext, GenerationRun } from "./types";
+import type { AgreementContext, ConfirmationRecord, GenerationRun } from "./types";
 import { workspaceStorage } from "./workspace";
 export type { AgreementContext, GenerationRun } from "./types";
 export const MOCK_MODE = import.meta.env["VITE_API_MODE"] === "mock";
@@ -47,6 +47,25 @@ export interface Project extends Omit<ProjectDraft, "milestones"> {
 }
 export type ProjectAction =
   { action: "deploy" } | { action: "deposit" } | { action: "acceptMilestone"; milestoneId: number };
+/** Agent 3 plan. The backend stores the intent; the browser only shows it. */
+export interface OperationPlan {
+  planId: string;
+  status: "needsClarification" | "readyForConfirmation" | "blocked";
+  question: string | null;
+  summary: string;
+  intent: {
+    projectId: string;
+    chainId: number;
+    contractAddress: string;
+    action: "query" | "deposit" | "acceptMilestone";
+    milestoneId: number | null;
+  } | null;
+}
+export interface OperationReport {
+  outcome: "confirmed" | "failed" | "unverified";
+  summary: string;
+}
+const AGENT3_LOCAL_ONLY = "Plain-language operations need local API mode with AGENT3_MODE=live.";
 const MAX_WEI = (1n << 256n) - 1n;
 const UNIT = 10n ** 18n;
 
@@ -134,8 +153,13 @@ function readAll(): Record<string, Project> {
 function writeAll(all: Record<string, Project>) {
   localStorage.setItem(STORE_KEY, JSON.stringify(all));
 }
+function getProjectSnapshot(id: string): Promise<Project> {
+  if (MOCK_MODE) throw new Error("Open the agreement in local API mode to read its project.");
+  return request(`/projects/${encodeURIComponent(id)}`);
+}
 export const api = {
   ...workspaceStorage,
+  getProjectSnapshot,
   parseEth: ethToWei,
   formatEth: formatWei,
   validateDraft(d: ProjectDraft, requireWallets = true): string | null {
@@ -207,6 +231,21 @@ export const api = {
       `/projects/${encodeURIComponent(id)}/generation-runs/${encodeURIComponent(runId)}`,
     );
   },
+  async deployGeneration(
+    id: string,
+    runId: string,
+    confirmation: ConfirmationRecord,
+  ): Promise<Project> {
+    if (MOCK_MODE) throw new Error("Generated contracts can only be deployed in local API mode.");
+    return request(
+      `/projects/${encodeURIComponent(id)}/generation-runs/${encodeURIComponent(runId)}/deployment`,
+      {
+        approved: true,
+        specVersion: confirmation.specVersion,
+        confirmationId: confirmation.confirmationId,
+      },
+    );
+  },
   async getLocalAccounts(): Promise<{ clientWallet: string; developerWallet: string }> {
     return request("/local-accounts");
   },
@@ -259,9 +298,23 @@ export const api = {
     return project;
   },
   async getProject(id: string): Promise<Project | null> {
-    if (!MOCK_MODE) return request<Project>(`/projects/${encodeURIComponent(id)}`);
+    if (!MOCK_MODE) return getProjectSnapshot(id);
     await wait(100);
     return readAll()[id] ?? null;
+  },
+  async planOperation(id: string, message: string): Promise<OperationPlan> {
+    if (MOCK_MODE) throw new Error(AGENT3_LOCAL_ONLY);
+    return request(`/projects/${encodeURIComponent(id)}/plans`, { message });
+  },
+  async confirmOperation(
+    id: string,
+    planId: string,
+  ): Promise<{ report: OperationReport; project: Project }> {
+    if (MOCK_MODE) throw new Error(AGENT3_LOCAL_ONLY);
+    return request(
+      `/projects/${encodeURIComponent(id)}/plans/${encodeURIComponent(planId)}/confirmation`,
+      { approved: true },
+    );
   },
   async runAction(id: string, intent: ProjectAction): Promise<Project> {
     if (!MOCK_MODE) return request<Project>(`/projects/${encodeURIComponent(id)}/actions`, intent);
