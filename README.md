@@ -15,6 +15,7 @@
 | 把现有网页跑起来 | [本地运行说明](docs/FRONTEND_INTEGRATION.md) |
 | 领取任务、交给新的 GPT 开始开发 | [接手步骤和提示词](docs/TEAM_HANDOFF.md) · [四人分工](docs/TASKS.md) |
 | 了解最新进度和已经定下的规则 | [工作日志](docs/WORKLOG.md) |
+| 了解如何逐步支持不同合同条款 | [灵活合同架构规划](docs/FLEXIBLE_CONTRACT_ARCHITECTURE.md)，v2 设计阶段，保留现有演示 |
 
 ## 文件夹地图
 
