@@ -25,7 +25,7 @@ function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MOD
     return agreements.get(p.id);
   }
   function context(p) {
-    return copy({ interfaceVersion: 1, ...state(p), generationEnabled: enabled, generatedDeploymentEnabled: false });
+    return copy({ interfaceVersion: 1, ...state(p), generationEnabled: enabled, generatedDeploymentEnabled: true });
   }
   function version(s, value) {
     if (!Number.isInteger(value) || value < 1) fail(400, 'specVersion must be a positive integer');
@@ -56,7 +56,25 @@ function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MOD
   function getRun(p, id) {
     const run = runs.get(id);
     if (!run || run.projectId !== p.id) fail(404, 'Generation run not found');
-    return copy(run);
+    return copy({ ...run, generatedDeploymentEnabled: !p.contractAddress && isDeployable(state(p), run) });
+  }
+  function isDeployable(s, run) {
+    return s.latestRunId === run.id && run.specVersion === s.spec.specVersion &&
+      run.confirmationId === s.confirmation?.confirmationId && run.status === 'completed' &&
+      run.result?.status === 'validated' && run.result.validationReport?.status === 'passed' &&
+      Boolean(run.result.validationReport.artifact);
+  }
+  function deploymentCandidate(p, id, body) {
+    fields(body, ['approved', 'specVersion', 'confirmationId']);
+    if (body.approved !== true) fail(400, 'Explicit deployment approval is required');
+    const s = state(p);
+    version(s, body.specVersion);
+    const run = runs.get(id);
+    if (!run || run.projectId !== p.id) fail(404, 'Generation run not found');
+    if (body.confirmationId !== s.confirmation?.confirmationId || !isDeployable(s, run))
+      fail(409, 'Deployment requires the latest independently validated run for these confirmed rules');
+    // The stored response passed the worker boundary checks for source, report, build and attempts.
+    return { artifact: run.result.validationReport.artifact, spec: s.spec };
   }
   function start(p, body) {
     fields(body, ['specVersion', 'confirmationId', 'idempotencyKey']);
@@ -106,6 +124,6 @@ function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MOD
     });
     return { replay: false, run: copy(run) };
   }
-  return { context, confirm, replaceTerms, getRun, start };
+  return { context, confirm, replaceTerms, getRun, start, deploymentCandidate };
 }
 module.exports = { createGeneration, fields, RUN_CONFIG };

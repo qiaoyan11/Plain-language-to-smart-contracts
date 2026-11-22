@@ -10,7 +10,7 @@
 
 项目、确认及运行查询记录都在内存里，重启清空；Python 的逐轮产物另存在本地 `artifacts/agent2/`。修改规则会撤销旧确认，并标记旧结果过期。重复请求不会重启同一任务；失败后需用户主动重试。
 
-本轮只返回生成结果，AI 合约部署未开放。原 `/actions` 的 deploy 始终部署手写参考合约，不能用作新页面的“部署 AI 合约”按钮。仅提供本地服务。
+生成项目通过 `POST /api/projects/:id/generation-runs/:runId/deployment` 显式部署验证器提供的合约。启用 `AGENT3_MODE=live` 后，`/plans` 和确认接口使用该次部署的地址、ABI 和源码标识；手写演示使用原有 `/actions`。本地 Hardhat 网络编号为 31337。
 
 运行现有版本见 [本地演示说明](../docs/FRONTEND_INTEGRATION.md)。
 

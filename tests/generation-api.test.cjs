@@ -33,8 +33,8 @@ function controlledWorker() {
   const calls = [];
   return { calls, runner: (request, options) => new Promise((resolve, reject) => calls.push({ request, options, resolve, reject })) };
 }
-async function withAPI(generation, run) {
-  const server = await createServer({ generation });
+async function withAPI(generation, run, operations) {
+  const server = await createServer({ generation, operations });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}/api`;
   const call = async (path, data, method = data === undefined ? 'GET' : 'POST') => {
@@ -81,7 +81,8 @@ test('generation HTTP requires explicit current confirmation and rejects caller-
     assert.equal('paid' in context.spec.milestones[0], false);
     assert.equal('contractAddress' in context.spec, false);
     assert.equal(context.spec.projectId, project.id);
-    assert.equal(context.generatedDeploymentEnabled, false);
+    assert.equal(context.generatedDeploymentEnabled, true);
+    assert.equal(context.deployment, null);
     for (const approved of [false, 'true', 1, null]) {
       assert.equal((await call(path + '/confirmation', { specVersion: 1, approved })).status, 400);
     }
@@ -127,7 +128,7 @@ test('generation HTTP returns a run immediately, deduplicates clicks and never d
     const result = await finished(call, path, started.body.id);
     assert.equal(result.status, 'completed');
     assert.equal(result.result.status, 'validated');
-    assert.equal(result.generatedDeploymentEnabled, false);
+    assert.equal(result.generatedDeploymentEnabled, true);
     assert.equal((await call(path + '/agreement')).body.latestRunId, result.id);
     assert.deepEqual((await call(path)).body, project); // No transaction or project API field changes.
     assert.deepEqual((await call(path + '/generation-runs', body)).body, result);
@@ -283,6 +284,82 @@ test('run lookups are scoped to their project and unknown routes fail explicitly
     assert.equal((await call('/projects/unknown/agreement')).status, 404);
     assert.equal((await call(path + '/agreement', {})).status, 405);
     assert.equal((await call(path + '/confirmation/extra')).status, 404);
+  });
+});
+
+test('a confirmed generation deploys the report bytecode once, then Agent 3 operates that contract', async () => {
+  const { runPython } = require('../backend/python-bridge.cjs');
+  const { network } = require('hardhat');
+  let action = 'deposit';
+  const plans = [];
+  const operations = { enabled: true, runner: async (request, options) => {
+    if (request.operation === 'reportAction') return runPython(request, options);
+    const { projectId, deployment } = request.payload;
+    plans.push(deployment);
+    return { interfaceVersion: 1, requestId: request.requestId, status: 'ok', errors: [],
+      result: { status: 'readyForConfirmation', question: null, summary: 'Test plan',
+        intent: { projectId, chainId: deployment.chainId, contractAddress: deployment.contractAddress,
+          action, milestoneId: action === 'acceptMilestone' ? 1 : null } } };
+  } };
+  await withAPI({ enabled: true, runner: async req => envelope(req, 'validated') }, async ({ call, path, draft }) => {
+    const confirmation = await confirm(call, path);
+    const run = (await call(path + '/generation-runs', startBody(confirmation))).body;
+    const { result } = await finished(call, path, run.id);
+    const url = path + '/generation-runs/' + run.id + '/deployment';
+    const approval = { approved: true, specVersion: 1, confirmationId: confirmation.confirmationId };
+    for (const invalid of [{ ...approval, approved: false }, { ...approval, bytecode: '0x00' }])
+      assert.equal((await call(url, invalid)).status, 400);
+    assert.equal((await call(url, { ...approval, confirmationId: 'different' })).status, 409);
+    const initial = await call(url, approval);
+    assert.equal(initial.status, 201);
+    const address = initial.body.contractAddress;
+    const receipt = initial.body.transactions[0];
+    const artifact = result.validationReport.artifact;
+    const { Interface } = require('ethers');
+    const args = new Interface(artifact.abi).encodeDeploy([draft.clientWallet, draft.developerWallet,
+      draft.milestones.map(m => BigInt(m.amountWei))]);
+    const actual = await network.provider.send('eth_getTransactionByHash', [receipt.hash]);
+    assert.equal(actual.input, artifact.bytecode + args.slice(2));
+    assert.deepEqual((await call(path + '/agreement')).body.deployment,
+      { kind: 'generated', runId: run.id, chainId: 31337, contractAddress: address,
+        specVersion: 1, sourceHash: result.sourceBundle.sourceHash });
+    const replay = await call(url, approval);
+    assert.equal(replay.status, 200);
+    assert.deepEqual(replay.body.transactions, initial.body.transactions);
+    assert.equal((await call(path + '/actions', { action: 'deposit' })).status, 409);
+    for (action of ['deposit', 'acceptMilestone']) {
+      const plan = (await call(path + '/plans', { message: action })).body;
+      const { status, body } = await call(path + '/plans/' + plan.planId + '/confirmation', { approved: true });
+      assert.equal(status, 200);
+      assert.equal(body.report.outcome, 'confirmed');
+      assert.equal(body.project.contractAddress, address);
+      assert.deepEqual(plans.at(-1).abi, artifact.abi);
+      assert.equal(plans.at(-1).sourceHash, artifact.sourceHash);
+      assert.equal(plans.at(-1).contractAddress, address);
+      assert.equal(body.project.escrowBalanceWei, action === 'deposit' ? initial.body.totalAmountWei : draft.milestones[1].amountWei);
+    }
+  }, operations);
+});
+
+test('deployment rejects historical, foreign, failed and superseded runs', async () => {
+  let resultStatus = 'validated';
+  await withAPI({ enabled: true, runner: async req => envelope(req, resultStatus) }, async ({ call, path, draft }) => {
+    const confirmation = await confirm(call, path);
+    const approval = { approved: true, specVersion: 1, confirmationId: confirmation.confirmationId };
+    const old = (await call(path + '/generation-runs', startBody(confirmation))).body;
+    await finished(call, path, old.id);
+    const url = (base, id) => base + '/generation-runs/' + id + '/deployment';
+    const other = '/projects/' + (await call('/projects', draft)).body.id;
+    assert.equal((await call(url(other, old.id), approval)).status, 404);
+    resultStatus = 'failed';
+    const next = (await call(path + '/generation-runs', startBody(confirmation, 'second-run'))).body;
+    await finished(call, path, next.id);
+    assert.equal((await call(path + '/generation-runs/' + old.id)).body.generatedDeploymentEnabled, false);
+    assert.equal((await call(url(path, old.id), approval)).status, 409);
+    assert.equal((await call(url(path, next.id), approval)).status, 409);
+    await call(path + '/terms', { expectedSpecVersion: 1, draft }, 'PUT');
+    assert.equal((await call(url(path, old.id), approval)).status, 409);
+    assert.deepEqual((await call(path)).body.transactions, []);
   });
 });
 

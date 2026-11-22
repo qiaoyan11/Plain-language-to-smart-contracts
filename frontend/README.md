@@ -19,7 +19,7 @@ Start the Node backend separately from the repository root with `npm run backend
 ## Two distinct flows
 
 - `/`: describe an agreement, keep adding details, expand the editable payment draft, then review it at `/confirm`. Wallets are collected during review. An explicit scope acknowledgement and confirmation are required.
-- `/projects/:id`: server-owned rule version and confirmation, generation request, polling, final checks, attempt references and source. Editing rules or adding a note creates a new revision and requires confirmation again. AI deployment is unavailable.
+- `/projects/:id`: server-owned rule version and confirmation, generation request, polling, final checks, attempt references and source. Editing rules or adding a note creates a new revision and requires confirmation again. After the latest confirmed run passes the backend's checks, choose **Deploy generated contract locally**. Deployment is a separate click and uses the local test chain.
 - `/reference-demo`, `/reference-review`, `/reference-projects/:id`: the preserved handwritten-contract demonstration: create, deploy locally, deposit and pay in order. These are not AI-generated contracts.
 
 ## Current limits
@@ -30,6 +30,8 @@ Agent 2 generation is real when the backend is explicitly launched with `AGENT2_
 
 The generation view shows actual returned outcomes. `completed` does not mean `validated`; tool failures and outdated results remain distinct. There is no fabricated progress percentage or streaming tool status. Full earlier-round reports remain backend artifacts, not browser results.
 
+After local deployment, the project page displays the contract address, balance, funding state, milestones and transaction history returned by the backend. With `AGENT3_MODE=live` in the backend environment, **Ask in plain language** can query the escrow or propose a deposit or milestone payment. Asking can incur model costs. A proposed write has its own **Confirm and send** button. Refreshing the page restores the deployment and payment state from the backend. Both paid steps can be enabled together with `AGENT2_MODE=live AGENT3_MODE=live npm run backend` from the repository root after both agents are configured.
+
 The reference demo can separately use `VITE_API_MODE=mock`; the AI flow does not fall back to those simulations after an HTTP error. Restarting the backend resets server projects, confirmations, runs and the local chain. Browser notes are not a backup of those records.
 
 ## Code map
@@ -39,6 +41,7 @@ The reference demo can separately use `VITE_API_MODE=mock`; the AI flow does not
 - `src/api/workspace.ts`: browser-only conversation and supplemental notes; scripted sample.
 - `src/components/AgreementEditor.tsx`: editable 1–5 milestone fields; optional wallet fields.
 - `src/components/GenerationResultView.tsx`: final validation/source/attempt presentation.
+- `src/components/OperationAssistant.tsx`: plan, confirm and display a receipt-based report for a deployed local escrow.
 - `src/routes/`: new agreement flow and separate reference flow.
 
 Contract definitions: [Project API v2](../shared/PROJECT_API_V2.md), [Generation HTTP v1](../shared/GENERATION_API_V1.md), [Agent handoff v1](../shared/INTERFACES.md).

@@ -11,4 +11,4 @@ A 必须零修复；B 不看条款反馈，C 可看开发条款反馈。留出�
 
 可信程序直接调用 `validation.validate_development`，不会让模型填写验证报告。
 每轮模型输出和检查结果由 agent2/records.py 保存；sourceHash、reportId 和预算通过共享格式校验。
-运行方法和边界见 [Agent 2](../agent2/README.md)。网页尚未接入这个入口。
+运行方法和边界见 [Agent 2](../agent2/README.md)。网页确认后通过 Node 的生成接口进入此流程。

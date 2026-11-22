@@ -201,7 +201,14 @@ export interface AgreementContext {
   confirmation: ConfirmationRecord | null;
   latestRunId: string | null;
   generationEnabled: boolean;
-  generatedDeploymentEnabled: false;
+  generatedDeploymentEnabled: boolean;
+  operationsEnabled?: boolean;
+  deployment?:
+    | (Omit<DeploymentRecord, "abi"> & {
+        kind: "generated" | "reference";
+        runId: string | null;
+      })
+    | null;
 }
 export interface GenerationRun {
   schemaVersion: 1;
@@ -214,5 +221,5 @@ export interface GenerationRun {
   finishedAt: string | null;
   result: GenerateResult | null;
   error: { code: "GENERATION_TIMEOUT" | "GENERATION_TOOL_ERROR"; message: string } | null;
-  generatedDeploymentEnabled: false;
+  generatedDeploymentEnabled: boolean;
 }

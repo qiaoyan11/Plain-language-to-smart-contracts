@@ -20,6 +20,8 @@ class HandoffTests(unittest.TestCase):
     def test_all_examples(self):
         for filename, kind in [('confirmed-spec.json','ConfirmedSpec'), ('agreement.draft.json','DraftSpec'), ('source-bundle.json','SourceBundle'), ('validation-report.json','ValidationReport'), ('deployment-record.json','DeploymentRecord')]:
             validate(kind, json.loads((ROOT/'shared/examples'/filename).read_text()))
+        for filename in ('planAction.request.json', 'reportAction.request.json'):
+            validate('Request', json.loads((ROOT/'shared/examples'/filename).read_text()))
 
     def test_generate_is_not_validated(self):
         response = dispatch(self.request)

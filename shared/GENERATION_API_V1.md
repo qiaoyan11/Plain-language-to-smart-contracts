@@ -11,7 +11,7 @@ Project API v2 and Python handoff v1 are unchanged. A generation run is a separa
 - Server-owned configuration: development validation, feedback setting C, `maxRepairs=3`, model `gpt-5.4-mini-2026-03-17`. This means at most one initial generation plus three repairs, with early stop on success or tool error. This is the current development configuration, not a formal A/B/C experiment budget.
 - Browser requests cannot set a model, budget, source bundle, validation report, signing key or confirmation timestamp.
 - Rules, confirmations, run lookup and duplicate-request keys are held in Node memory and reset on restart. Python's live run artifacts remain on disk under `artifacts/agent2/`; there is no HTTP restoration/import of these artifacts yet.
-- Generation never deploys. `/actions` with `deploy` still deploys the handwritten reference contract, even after an AI run passes. Keep this demo action separate from the AI flow.
+- After a successful generation, a user can deploy the validated artifact to the local Hardhat chain (31337). The reference demo uses its own deployment action. Set both `AGENT2_MODE=live` and `AGENT3_MODE=live` to enable generation and natural-language operation planning.
 
 ## Resources
 
@@ -24,6 +24,7 @@ All paths below start with `/api/projects/:projectId`. Missing projects return 4
 | POST | `/confirmation` | `{specVersion, approved: true}` | 200 AgreementContext |
 | POST | `/generation-runs` | `{specVersion, confirmationId, idempotencyKey}` | 202 GenerationRun, or 200 for a replay |
 | GET | `/generation-runs/:runId` | None | 200 GenerationRun |
+| POST | `/generation-runs/:runId/deployment` | `{approved:true,specVersion,confirmationId}` | 201 Project, or 200 for the same deployment |
 
 The write bodies require exactly the listed keys. `draft` has exactly `{name, clientWallet, developerWallet, milestones}`; use the existing ProjectDraft format. The backend assigns sequential milestone IDs and computes the exact total from positive integer wei strings. It never copies payment state into generation rules.
 
@@ -40,7 +41,9 @@ type AgreementContext = {
   confirmation: ConfirmationRecord | null;
   latestRunId: string | null;
   generationEnabled: boolean;
-  generatedDeploymentEnabled: false;
+  generatedDeploymentEnabled: boolean; // capability of this local backend
+  operationsEnabled: boolean;
+  deployment: null | {kind: "generated" | "reference"; runId: string | null; contractAddress: string; chainId: number; sourceHash: string; specVersion: number};
 };
 
 type GenerationRun = {
@@ -57,7 +60,7 @@ type GenerationRun = {
     code: 'GENERATION_TIMEOUT' | 'GENERATION_TOOL_ERROR';
     message: string;
   } | null;
-  generatedDeploymentEnabled: false;
+  generatedDeploymentEnabled: boolean; // eligible to deploy now
 };
 ```
 
@@ -95,7 +98,7 @@ Only one worker per project may run at a time. Editing rules invalidates its res
 | Run status | Display and behavior |
 | --- | --- |
 | `running` | “Generating and checking your contract.” Continue polling; result is null. |
-| `completed` + result.status `validated` | All required development checks passed. Show final report; generated-code deployment remains unavailable. |
+| `completed` + result.status `validated` | Show the report and enable explicit local deployment if this run is current, confirmed and eligible. |
 | `completed` + result.status `failed` | Checks failed. Show the failed checks and stop; no automatic deployment or retry. |
 | `completed` + result.status `toolError` | A model/tool step could not finish. Show a tool problem, not a successful contract. |
 | `error` | Transport, timeout or invalid worker response. Show the safe error message and offer an explicit retry. |
@@ -109,6 +112,8 @@ The current response contains the **final** source and report plus attempts (att
 
 HTTP errors use the existing `{error: "message"}` body: 400 malformed input, 403 foreign host/origin, 404 missing project/run, 405 wrong method, 409 stale rules/busy/deployed project, 413 oversized body, 503 generation disabled. A worker failure after a run was accepted is reported in the polled run, not as a retroactive HTTP error.
 
-Agent 1 and Agent 3 do not have HTTP endpoints in this step. Keep their scripted prototype behavior explicitly labelled, or use the manual-rules flow for real integration. The Replit-hosted mock should not connect directly to this local auto-signing backend; import the frontend and use the existing local `/api` proxy for integration.
+Deployment resolves the latest validated run in server memory, checks its confirmation and version, and submits the trusted artifact's bytecode with the confirmed client, provider and milestone amounts. GET `/agreement` supplies its address and source identity. Repeating the same successful deployment returns the current project. Superseded runs and a second, different deployment return 409. Project snapshots keep the Project API v2 format.
+
+For Agent 3 the project page calls `/plans` and `/plans/:planId/confirmation`. The backend supplies the ABI and address recorded at deployment. Generated-project payments use these plan endpoints. See [operation planning and receipts](INTERFACES.md#7-agent-3--plan-an-operation-then-report-the-result).
 
 Verification: `npm run test:api` covers the original reference lifecycle and these generation endpoints. Controlled worker outputs are fixtures, not claims that AI or independent validation ran. One test also crosses the actual Node→Python boundary in stub mode and checks that its refusal is surfaced. No API test calls a paid model.
