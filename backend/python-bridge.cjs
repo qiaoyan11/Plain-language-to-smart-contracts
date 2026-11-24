@@ -9,6 +9,7 @@ const active = new Set();
 const LIMIT = 1024 * 1024;
 
 function defaultTimeout(request) {
+  if (request.operation === 'clarify' && process.env.AGENT1_MODE === 'live') return 60000;
   if (process.env.AGENT2_MODE !== 'live') return 10000;
   const config = request.payload?.runConfig;
   if (request.operation !== 'generate' || config?.validationMode !== 'development') return 210000;
