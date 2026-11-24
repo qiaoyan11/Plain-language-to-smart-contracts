@@ -1,0 +1,68 @@
+{
+  "request": {
+    "interfaceVersion": 1,
+    "requestId": "revisions",
+    "operation": "clarify",
+    "payload": {
+      "message": "Project: Website. Client 0x1111111111111111111111111111111111111111 and provider 0x2222222222222222222222222222222222222222. Escrow 1 ETH. Client approves in order: Homepage matches approved mockup (30%), Checkout passes the agreed test suite (70%). The client can request changes until satisfied.",
+      "history": [],
+      "draftSpec": null
+    }
+  },
+  "exampleExtraction": {
+    "separateTerms": [],
+    "name": "Website",
+    "clientWallet": "0x1111111111111111111111111111111111111111",
+    "developerWallet": "0x2222222222222222222222222222222222222222",
+    "total": "1 ETH",
+    "milestones": [
+      {
+        "title": "Homepage matches approved mockup",
+        "amount": "30%"
+      },
+      {
+        "title": "Checkout passes the agreed test suite",
+        "amount": "70%"
+      }
+    ],
+    "revisionRiskOpen": false,
+    "withdrawals": [],
+    "questions": [],
+    "unsupportedTerms": [],
+    "revisionResolutionQuote": null
+  },
+  "expectedResult": {
+    "status": "needsClarification",
+    "draftSpec": {
+      "schemaVersion": 1,
+      "projectId": "example-project",
+      "specVersion": 1,
+      "name": "Website",
+      "approvalRole": "client",
+      "refundPolicy": "none",
+      "deadline": null,
+      "clientWallet": "0x1111111111111111111111111111111111111111",
+      "developerWallet": "0x2222222222222222222222222222222222222222",
+      "milestones": [
+        {
+          "id": 1,
+          "title": "Homepage matches approved mockup",
+          "amountWei": "300000000000000000"
+        },
+        {
+          "id": 2,
+          "title": "Checkout passes the agreed test suite",
+          "amountWei": "700000000000000000"
+        }
+      ],
+      "totalAmountWei": "1000000000000000000"
+    },
+    "questions": [
+      {
+        "field": "acceptance.openEndedRevisions",
+        "question": "“until satisfied” could leave the milestone payment waiting indefinitely. Which agreed mockup or test determines acceptance? If the parties already settled this, give their replacement wording."
+      }
+    ],
+    "unsupportedTerms": []
+  }
+}
