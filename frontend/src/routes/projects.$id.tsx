@@ -15,7 +15,7 @@ import {
   RefreshHelp,
   TransactionHistory,
 } from "@/components/EscrowLedger";
-import { approximately, rateText, singleRate } from "@/lib/money";
+import { amountText, rateText, singleRate } from "@/lib/money";
 import { takeAutoDeploy } from "@/lib/autoDeploy";
 import {
   api,
@@ -361,15 +361,12 @@ export function DetailPage({ id }: { id: string }) {
             </section>
           ) : (
             <div className="my-7">
-              <Row
-                label="Total"
-                value={`${formatWei(spec.totalAmountWei)} ${currency}${approximately(spec.totalAmountWei, rate)}`}
-              />
+              <Row label="Total" value={amountText(spec.totalAmountWei, rate)} />
               {spec.milestones.map((m) => (
                 <Row
                   key={m.id}
                   label={`${m.id}. ${m.title}`}
-                  value={`${formatWei(m.amountWei)} ${currency}${approximately(m.amountWei, rate)}`}
+                  value={amountText(m.amountWei, rate)}
                 />
               ))}
               {rate && <p className="mt-3 text-xs text-muted-foreground">{rateText(rate)}</p>}

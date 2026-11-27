@@ -183,9 +183,11 @@ describe("payment buttons", () => {
     const approve = await screen.findByRole("button", { name: "Confirm deposit" });
     const preview = screen.getByLabelText("Payment confirmation details");
     expect(preview).toHaveTextContent("0.01 test ETH");
-    expect(preview).toHaveTextContent(schedule.contractAddress!);
-    expect(preview).toHaveTextContent("no refund or timeout release");
-    expect(preview).toHaveTextContent("this transfer cannot be reversed");
+    expect(preview).toHaveTextContent(
+      `${schedule.contractAddress!.slice(0, 6)}…${schedule.contractAddress!.slice(-4)}`,
+    );
+    expect(preview).toHaveTextContent("stays in escrow until the client approves each payment");
+    expect(preview).toHaveTextContent("This cannot be undone.");
     expect(
       preview.compareDocumentPosition(screen.getByLabelText("Your request")) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -224,13 +226,10 @@ describe("payment buttons", () => {
     );
     const approve = await screen.findByRole("button", { name: "Confirm acceptance and payment" });
     expect(screen.getByLabelText("Payment confirmation details")).toHaveTextContent(
-      schedule.developerWallet,
+      `${schedule.developerWallet.slice(0, 6)}…${schedule.developerWallet.slice(-4)}`,
     );
     expect(screen.getByLabelText("Payment confirmation details")).toHaveTextContent(
-      'accepts milestone #1 "Homepage"',
-    );
-    expect(screen.getByLabelText("Payment confirmation details")).toHaveTextContent(
-      "this transfer cannot be reversed",
+      "Accepts milestone #1 “Homepage”. This cannot be undone.",
     );
     expect(confirm).not.toHaveBeenCalled();
     fireEvent.click(approve);

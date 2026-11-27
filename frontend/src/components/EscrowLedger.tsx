@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatWei, type Project } from "@/api/client";
 import type { ExchangeRate } from "@/api/types";
-import { approximately } from "@/lib/money";
+import { amountText } from "@/lib/money";
 
 const UNIT = "test ETH";
 type Transaction = Project["transactions"][number];
@@ -67,10 +67,7 @@ export function MilestoneLedger({
         <li className="border-b border-border py-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="text-sm font-medium">Deposit from the client</span>
-            <span className="text-sm font-medium">
-              {formatWei(project.totalAmountWei)} {UNIT}
-              {approximately(project.totalAmountWei, rate)}
-            </span>
+            <span className="text-sm font-medium">{amountText(project.totalAmountWei, rate)}</span>
           </div>
           <p className="mt-1 text-sm">
             {project.funded
@@ -92,10 +89,7 @@ export function MilestoneLedger({
                 <span className="break-words text-sm font-medium">
                   {m.id}. {m.title}
                 </span>
-                <span className="text-sm font-medium">
-                  {formatWei(m.amountWei)} {UNIT}
-                  {approximately(m.amountWei, rate)}
-                </span>
+                <span className="text-sm font-medium">{amountText(m.amountWei, rate)}</span>
               </div>
               <p className={`mt-1 text-sm ${m.paid ? "font-medium text-success" : ""}`}>
                 {milestoneStatus(project, m)}

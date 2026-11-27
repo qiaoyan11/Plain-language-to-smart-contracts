@@ -585,9 +585,9 @@ test('replies explain converted amounts, conditions the contract will not enforc
     assert.equal(body.result.draftSpec.clientWallet, local.clientWallet);
     assert.equal(body.result.draftSpec.developerWallet, local.developerWallet);
     assert.equal(body.turns[0].question, null);
-    assert.match(reply, /\nRate: 1 test ETH = 1,667\.36 USD \(live rate, CoinGecko 17:40 UTC\)\. Tell me if you agreed a different rate\./);
-    assert.match(reply, /\nNot enforced by the contract \(it stays in your written agreement and is listed on the review page\): “refund if delivery is late”\./);
-    assert.match(reply, /Payments use the built-in test accounts/);
+    assert.match(reply, /\nRate: 1 test ETH = 1,667\.36 USD \(live rate, CoinGecko 17:40 UTC\)\.\n/);
+    assert.match(reply, /\nNot enforced by the contract: “refund if delivery is late”\.\n/);
+    assert.doesNotMatch(reply, /test accounts|0xf39F/); // shown in the summary, not repeated in chat
     assert.deepEqual(body.settledTerms, ['refund if delivery is late']);
   });
 });

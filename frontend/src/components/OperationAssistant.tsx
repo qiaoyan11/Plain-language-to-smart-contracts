@@ -7,7 +7,7 @@ import {
   type Project,
 } from "@/api/client";
 import type { ExchangeRate } from "@/api/types";
-import { approximately } from "@/lib/money";
+import { amountText, inCurrency } from "@/lib/money";
 
 /** Payment buttons and plain-language operations (Agent 3). The backend keeps the intent; this panel only shows it and asks for approval. */
 export function OperationAssistant({
@@ -29,6 +29,9 @@ export function OperationAssistant({
   naturalLanguageEnabled?: boolean;
 }) {
   const unit = "test ETH";
+  // Buttons name the amount the way it was agreed: "Deposit 800 USD", or test ETH without a rate.
+  const short = (wei: string) =>
+    rate ? `${inCurrency(wei, rate)} ${rate.currency}` : `${formatWei(wei)} ${unit}`;
   const active = useRef(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<"plan" | "confirm" | null>(null);
@@ -129,27 +132,17 @@ export function OperationAssistant({
           aria-label="Payment confirmation details"
         >
           <p>
-            Amount:{" "}
-            <strong>
-              {formatWei(plan.payment.amountWei)} {unit}
-              {approximately(plan.payment.amountWei, rate)}
-            </strong>
+            Amount: <strong>{amountText(plan.payment.amountWei, rate)}</strong>
           </p>
-          <p className="break-all">
+          <p className="break-all" title={plan.payment.to}>
+            {plan.intent?.action === "deposit" ? "Into the escrow" : "To the provider"}:{" "}
+            {`${plan.payment.to.slice(0, 6)}…${plan.payment.to.slice(-4)}`}
+          </p>
+          <p>
             {plan.intent?.action === "deposit"
-              ? "Into the escrow contract"
-              : "Recipient (provider)"}
-            : {plan.payment.to}
+              ? "It stays in escrow until the client approves each payment. This cannot be undone."
+              : `Accepts milestone #${plan.intent?.milestoneId} “${plan.payment.milestoneTitle}”. This cannot be undone.`}
           </p>
-          {plan.intent?.action === "acceptMilestone" ? (
-            <p>{`Confirming accepts milestone #${plan.intent?.milestoneId} "${plan.payment.milestoneTitle}" and releases its payment to the provider.`}</p>
-          ) : (
-            <p>
-              Funds enter escrow. This version has no refund or timeout release; funds may remain
-              locked if the client does not approve.
-            </p>
-          )}
-          <p>Once confirmed, this transfer cannot be reversed.</p>
         </div>
       )}
       {executable && (
@@ -185,8 +178,7 @@ export function OperationAssistant({
         <section aria-label="Payment actions">
           <h2 className="font-bold">Payment actions</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Each deposit or payment is shown for review before anything is sent. These buttons do
-            not use the AI model.
+            You review each step before anything is sent.
           </p>
           {!project.funded ? (
             <button
@@ -196,7 +188,7 @@ export function OperationAssistant({
                 prepare("button", () => api.planKnownOperation(project.id, { action: "deposit" }))
               }
             >
-              Deposit {formatWei(project.totalAmountWei)} {unit}
+              Deposit {short(project.totalAmountWei)}
             </button>
           ) : nextMilestone ? (
             <>
@@ -212,8 +204,7 @@ export function OperationAssistant({
                   )
                 }
               >
-                {`Accept milestone ${nextMilestone.id} and pay`}{" "}
-                {formatWei(nextMilestone.amountWei)} {unit}
+                {`Accept milestone ${nextMilestone.id} and pay ${short(nextMilestone.amountWei)}`}
               </button>
               <p className="mt-2 text-sm">{nextMilestone.title}</p>
             </>
@@ -227,8 +218,7 @@ export function OperationAssistant({
         <section className={quickActions ? "mt-6 border-t border-border pt-4" : ""}>
           <h2 className="font-bold">Ask in plain language</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            The assistant uses an AI model, which may cost money. It can check the escrow or prepare
-            a deposit or milestone payment. You still confirm each one before it is sent.
+            Or just say what happened. You still confirm before anything is sent.
           </p>
           <label className="field-label mt-4" htmlFor="operation-message">
             Your request

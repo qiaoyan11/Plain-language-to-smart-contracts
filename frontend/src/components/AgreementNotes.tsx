@@ -74,8 +74,7 @@ export function PaymentRules({
       </ol>
       <p className="mt-3 text-sm font-medium leading-relaxed">
         If the client never approves a payment, that money can remain locked in the contract
-        forever. The client cannot take it back and the provider cannot claim it, even if both
-        agree.
+        forever, even if both sides agree to release it.
       </p>
     </section>
   );
@@ -98,10 +97,9 @@ export function ScopeAcknowledgement({
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        I confirm these payment rules and understand that deposits cannot be refunded and unpaid
-        funds may remain locked forever.
-        {notEnforced &&
-          " The conditions listed under “Not enforced by the contract” are not part of these rules."}
+        I agree to these payments. I understand the deposit cannot be refunded, and money the client
+        never approves stays locked.
+        {notEnforced && " The conditions the contract does not enforce are not part of them."}
       </span>
     </label>
   );

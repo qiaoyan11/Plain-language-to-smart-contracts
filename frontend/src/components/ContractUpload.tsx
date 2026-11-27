@@ -111,12 +111,12 @@ export function ContractUpload({
       </Button>
       <p className="mt-2 text-xs text-muted-foreground" aria-live="polite">
         {state.kind === "read"
-          ? `Read ${state.contract.name}${state.contract.pages ? `: ${state.contract.pages} page${state.contract.pages === 1 ? "" : "s"}` : ""}. ${
+          ? `Read ${state.contract.name}${state.contract.pages ? ` (${state.contract.pages} page${state.contract.pages === 1 ? "" : "s"})` : ""}. ${
               state.contract.condensed
-                ? `It is long, so the message keeps the opening and every clause about money, delivery and acceptance (${state.contract.text.length.toLocaleString("en-US")} of ${state.contract.fullLength.toLocaleString("en-US")} characters). `
+                ? "It is long, so only the parts about money, delivery and acceptance are kept. "
                 : ""
-            }Check the text below, add anything else you agreed, then send it.`
-          : "Or drop a file on the message box. The file stays on this computer; only its text is sent."}
+            }Check the text below, then send it.`
+          : "Or drop a file on the box. Only its text is sent."}
       </p>
       {state.kind === "error" && (
         <p role="alert" className="mt-2 text-sm text-destructive">

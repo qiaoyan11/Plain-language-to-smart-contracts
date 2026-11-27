@@ -551,14 +551,12 @@ describe("explicit agreement confirmation", () => {
     });
     openPage(<ConfirmPage />);
     expect(
-      await screen.findByText(
-        "Converted from USD at the live rate: 1 test ETH = 1,667.36 USD (CoinGecko, 17:40 UTC).",
-      ),
+      await screen.findByText("Rate: 1 test ETH = 1,667.36 USD (live rate, CoinGecko 17:40 UTC)."),
     ).toBeVisible();
-    // 1 test ETH at that rate is about 1,667.36 USD.
+    // 1 test ETH at that rate is 1,667.36 USD, shown in the agreed currency first.
     // Total and the single milestone both show it.
-    expect(screen.getAllByText("1 test ETH (≈ 1,667.36 USD)").length).toBeGreaterThan(0);
-    expect(screen.getByText(/are not part of these rules/)).toBeVisible();
+    expect(screen.getAllByText("1,667.36 USD (1 test ETH)").length).toBeGreaterThan(0);
+    expect(screen.getByText(/does not enforce are not part of them/)).toBeVisible();
   });
   it("clears acknowledgement after a revision conflict and requires reviewing again", async () => {
     await openReady();

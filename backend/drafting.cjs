@@ -63,16 +63,15 @@ function primaryQuestion(result) {
   }
   return { field: q.field, question: text };
 }
-const short = address => `${address.slice(0, 6)}\u2026${address.slice(-4)}`;
 // "1667.36" -> "1,667.36": the rate exactly as recorded, grouped for reading.
 const grouped = value => { const [whole, part] = value.split('.'); return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (part ? '.' + part : ''); };
 function rateLine(rate) {
   const at = `1 test ETH = ${grouped(rate.unitsPerEth)} ${rate.currency}`;
   const when = rate.asOf ? ` ${rate.asOf.slice(11, 16)} UTC` : '';
-  if (rate.source === 'stated') return `Rate: ${at}, the rate you gave.`;
-  if (rate.source === 'reference') return `Rate: ${at}, a reference rate because no live rate was available. Tell me if you agreed a different rate.`;
+  if (rate.source === 'stated') return `Rate: ${at}, as you stated.`;
+  if (rate.source === 'reference') return `Rate: ${at}, a reference rate (no live rate was available). Tell me if you agreed a different one.`;
   const label = rate.source === 'cached' ? 'last available rate' : 'live rate';
-  return `Rate: ${at} (${label}${rate.provider ? `, ${rate.provider}${when}` : ''}). Tell me if you agreed a different rate.`;
+  return `Rate: ${at} (${label}${rate.provider ? `, ${rate.provider}${when}` : ''}).`;
 }
 // One assistant turn: a one-line conclusion, then one short line per point, so the reply can be
 // scanned. The payment summary beside the conversation holds the full detail.
@@ -118,10 +117,9 @@ function conversationTurn(previous, result, revision, previousTurn, demoWallets 
     const old = (previous?.exchangeRates ?? []).find(r => r.currency === rate.currency);
     if (!old || old.unitsPerEth !== rate.unitsPerEth || old.source !== rate.source) lines.push(rateLine(rate));
   }
+  // The demo's built-in test accounts are named in the summary and the page banner, not here.
   const demo = demoWallets && after.clientWallet === demoWallets.clientWallet && after.developerWallet === demoWallets.developerWallet;
-  if (demo && (before?.clientWallet !== after.clientWallet || before?.developerWallet !== after.developerWallet))
-    lines.push(`Payments use the built-in test accounts: client ${short(after.clientWallet)}, provider ${short(after.developerWallet)}.`);
-  else for (const [field, label] of [['clientWallet', 'client funding address'],
+  if (!demo) for (const [field, label] of [['clientWallet', 'client funding address'],
     ['developerWallet', 'provider payment address']]) {
     if (after[field] !== before?.[field] && after[field])
       lines.push(`The ${label} is recorded.`);
@@ -130,7 +128,7 @@ function conversationTurn(previous, result, revision, previousTurn, demoWallets 
   const known = [...(previous?.notEnforced ?? []), ...(previous?.unsupportedTerms ?? [])];
   const moved = (result.notEnforced ?? []).filter(t => !known.includes(t));
   if (moved.length)
-    lines.push(`Not enforced by the contract (${moved.length === 1 ? 'it stays' : 'they stay'} in your written agreement and ${moved.length === 1 ? 'is' : 'are'} listed on the review page): ${moved.slice(0, 3).map(t => `“${t}”`).join('; ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}.`);
+    lines.push(`Not enforced by the contract: ${moved.slice(0, 3).map(t => `“${t}”`).join('; ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}.`);
   // Say what happened to terms the user dealt with, so they are not silently dropped.
   const cleared = (previous?.unsupportedTerms ?? []).filter(t => !result.unsupportedTerms.includes(t)
     && !(result.notEnforced ?? []).includes(t));

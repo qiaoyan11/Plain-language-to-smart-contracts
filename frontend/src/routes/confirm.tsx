@@ -61,10 +61,7 @@ export function ConfirmPage() {
   return (
     <Shell step="Review & confirm" progress={2}>
       <h1>Review your agreement</h1>
-      <p className="intro">
-        Check the payments and the conditions the contract will not enforce. Confirming saves this
-        version and starts writing and checking its contract.
-      </p>
+      <p className="intro">Check the payments, then confirm. Accord then prepares the contract.</p>
       {session ? (
         <>
           <DraftSummary result={session.result} settledTerms={session.settledTerms} />
@@ -97,8 +94,7 @@ export function ConfirmPage() {
                 {busy ? "Confirming…" : "Confirm agreement"}
               </Button>
               <p className="mt-3 text-xs text-muted-foreground">
-                Next, Accord writes the contract, checks it and sets it up on the local test chain.
-                No money moves until you choose to deposit.
+                Preparing takes about a minute. No money moves until you deposit.
               </p>
               {!draftReady(session) && (
                 <p className="mt-3 text-sm">

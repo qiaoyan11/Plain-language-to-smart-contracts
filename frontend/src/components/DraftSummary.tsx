@@ -1,6 +1,5 @@
-import { formatWei } from "@/api/client";
 import type { ClarifyResult, DraftSession } from "@/api/types";
-import { approximately, rateText } from "@/lib/money";
+import { amountText, rateText } from "@/lib/money";
 import { Row } from "./Shell";
 
 export function draftReady(session: DraftSession | undefined) {
@@ -27,11 +26,7 @@ export function DraftSummary({
   settledTerms?: string[] | undefined;
 }) {
   if (!result)
-    return (
-      <p className="text-sm text-muted-foreground">
-        Your payment summary will appear here after you send a description.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">The payments will appear here.</p>;
   const spec = result.draftSpec;
   const rates = result.exchangeRates ?? [];
   const rate = rates.length === 1 ? rates[0] : undefined;
@@ -79,9 +74,7 @@ export function DraftSummary({
           stacked
           label="Total"
           value={
-            spec.totalAmountWei === null
-              ? "Amount needed"
-              : `${formatWei(spec.totalAmountWei)} test ETH${approximately(spec.totalAmountWei, rate)}`
+            spec.totalAmountWei === null ? "Amount needed" : amountText(spec.totalAmountWei, rate)
           }
         />
         {spec.milestones.map((m) => (
@@ -89,11 +82,7 @@ export function DraftSummary({
             stacked
             key={m.id}
             label={`${m.id}. ${m.title}`}
-            value={
-              m.amountWei === null
-                ? "Amount needed"
-                : `${formatWei(m.amountWei)} test ETH${approximately(m.amountWei, rate)}`
-            }
+            value={m.amountWei === null ? "Amount needed" : amountText(m.amountWei, rate)}
           />
         ))}
         <Row
@@ -114,7 +103,7 @@ export function DraftSummary({
           </p>
         ))}
         <p className="mt-4 text-sm text-muted-foreground">
-          The client deposits the total, then approves each milestone in order.
+          The client deposits the total, then approves each payment in order.
         </p>
       </div>
       {compactIssues
@@ -149,8 +138,7 @@ export function SettledTerms({ terms }: { terms: string[] }) {
     <section>
       <h2>Not enforced by the contract</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        The contract only holds the deposit and releases the payments above. These conditions from
-        your agreement stay with your written agreement, which governs them if they still apply.
+        Your written agreement still covers these. The contract does not.
       </p>
       <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">
         {terms.slice(0, SHOWN_TERMS).map(item)}

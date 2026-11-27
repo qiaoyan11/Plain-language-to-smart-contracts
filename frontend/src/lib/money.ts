@@ -1,4 +1,5 @@
 import type { ExchangeRate } from "@/api/types";
+import { formatWei } from "@/api/client";
 
 /** "1667.36" -> "1,667.36": the recorded rate, grouped for reading. */
 const grouped = (value: string) => {
@@ -14,13 +15,12 @@ export function singleRate(rates: ExchangeRate[] | undefined) {
 /** One line saying how amounts in another currency became test ETH. */
 export function rateText(rate: ExchangeRate) {
   const at = `1 test ETH = ${grouped(rate.unitsPerEth)} ${rate.currency}`;
-  const time = rate.asOf ? `, ${rate.asOf.slice(11, 16)} UTC` : "";
-  if (rate.source === "stated")
-    return `Converted from ${rate.currency} at the rate you gave: ${at}.`;
+  const time = rate.asOf ? ` ${rate.asOf.slice(11, 16)} UTC` : "";
+  if (rate.source === "stated") return `Rate: ${at}, as you stated.`;
   if (rate.source === "reference")
-    return `Converted from ${rate.currency} at a reference rate because no live rate was available: ${at}.`;
-  const label = rate.source === "cached" ? "the last available rate" : "the live rate";
-  return `Converted from ${rate.currency} at ${label}: ${at}${rate.provider ? ` (${rate.provider}${time})` : ""}.`;
+    return `Rate: ${at}, a reference rate (no live rate was available).`;
+  const label = rate.source === "cached" ? "last available rate" : "live rate";
+  return `Rate: ${at} (${label}${rate.provider ? `, ${rate.provider}${time}` : ""}).`;
 }
 
 /**
@@ -41,6 +41,15 @@ export function inCurrency(wei: string, rate: ExchangeRate) {
   const part = cents % 100n;
   const decimals = part ? `.${part.toString().padStart(2, "0").replace(/0$/, "")}` : "";
   return (cents / 100n).toLocaleString("en-US") + decimals;
+}
+
+/**
+ * An amount for people: in the agreed currency first when the agreement has one, with the exact
+ * test ETH the contract holds after it ("800 USD (0.482742 test ETH)").
+ */
+export function amountText(wei: string, rate: ExchangeRate | undefined) {
+  const eth = `${formatWei(wei)} test ETH`;
+  return rate ? `${inCurrency(wei, rate)} ${rate.currency} (${eth})` : eth;
 }
 
 /** " (≈ 500 USD)" after an amount in wei, at the agreement's recorded rate; "" without one. */

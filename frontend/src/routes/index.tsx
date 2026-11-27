@@ -145,26 +145,26 @@ export function CreatePage() {
   return (
     <Shell step="Describe & refine" progress={1}>
       <h1>What would you like to agree on?</h1>
-      <p className="intro">
-        Describe the work and how you will pay, in your own words, or upload the contract you
-        already have. Answer any questions, then review the agreement before confirming.
-      </p>
-      <p className="-mt-5 mb-8 text-sm text-muted-foreground">
-        Returning to earlier work?{" "}
-        <Link to="/projects" className="text-primary underline underline-offset-4">
-          Open your saved projects and conversations
-        </Link>
-        .
-      </p>
+      {!session?.messages.length && (
+        <>
+          <p className="intro">
+            Say what the work is and how you will pay, in your own words, or upload a contract you
+            already have.
+          </p>
+          <p className="-mt-5 mb-8 text-sm text-muted-foreground">
+            Coming back?{" "}
+            <Link to="/projects" className="text-primary underline underline-offset-4">
+              Your projects
+            </Link>
+          </p>
+        </>
+      )}
       <div className="grid items-start gap-8 md:grid-cols-2">
         <div>
           <DraftConversation session={session} />
           {session?.confirmedProjectId ? (
             <div className="mt-5 space-y-4">
-              <p className="text-sm">
-                This agreement is confirmed. Open the project to generate its contract, or start a
-                new agreement to change the terms.
-              </p>
+              <p className="text-sm">This agreement is confirmed.</p>
               <Button
                 onClick={() =>
                   nav({ to: "/projects/$id", params: { id: session.confirmedProjectId! } })
@@ -221,8 +221,7 @@ export function CreatePage() {
                 <ArrowUp />
               </Button>
               <p className="mt-3 text-xs text-muted-foreground">
-                Messages may use a paid AI model. Your conversation and draft are saved on this
-                local backend.
+                Saved as you go. An AI model reads your messages.
               </p>
               {context.data?.clarificationEnabled && !session?.pendingMessage && walletQuestion && (
                 <p className="mt-4 text-sm">
