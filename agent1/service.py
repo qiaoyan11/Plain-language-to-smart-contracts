@@ -450,6 +450,47 @@ def fill_natural_amounts(rows, milestones, total, sources):
     return {mid for mid in resolved if int(milestones[mid - 1]['amountWei']) > 0}
 
 
+# "支付至审定价的 97%", "bringing total payments to 90%": the share of the total paid so far,
+# not the size of this payment alone.
+CUMULATIVE_BEFORE = (r'(?:(?:\u7d2f\u8ba1)?(?:\u652f\u4ed8|\u4ed8\u6b3e|\u4ed8)(?:\u81f3|\u5230)|\u7d2f\u8ba1(?:\u652f\u4ed8|\u4ed8\u6b3e)?(?:\u8fbe\u5230)?'
+                     r'|bring(?:s|ing)?\s+(?:the\s+)?(?:total|cumulative)[\w\s]{0,24}?\s+to'
+                     r'|cumulative(?:ly)?(?:\s+paid)?\s+(?:up\s+)?to|up\s+to\s+a\s+total\s+of)')
+
+
+def cumulative_share(quote, sources):
+    """The percentage in an amount quote, when the user's text states it as a running total."""
+    if not isinstance(quote, str):
+        return None
+    found = re.match(r'\s*([0-9]+(?:\.[0-9]+)?)\s*[%\uff05]', quote)
+    if not found:
+        return None
+    number = re.escape(found[1])
+    # The marker and the percentage stay within one clause: no other figure or clause break between.
+    pattern = re.compile(CUMULATIVE_BEFORE + r'[^\d%\uff05\u3002\uff1b\uff0c;,.]{0,14}?(?<![0-9.])' + number
+                         + r'\s*[%\uff05]', re.I)
+    return Fraction(found[1]) if any(pattern.search(source) for source in sources) else None
+
+
+def fill_cumulative_amounts(rows, milestones, total, sources):
+    """Turn running-total percentages into the payment each milestone adds; returns their ids."""
+    if not total:
+        return set()
+    resolved = set()
+    for row, milestone in zip(rows, milestones):
+        share = cumulative_share(row['amount'], sources)
+        if share is None or share > 100:
+            continue
+        before = milestones[:milestone['id'] - 1]
+        if not before or any(not m['amountWei'] for m in before):
+            continue
+        paid = sum(int(m['amountWei']) for m in before)
+        amount = round_step(Fraction(int(total)) * share / 100) - paid
+        milestone['amountWei'] = str(amount) if amount > 0 else None
+        if amount > 0:
+            resolved.add(milestone['id'])
+    return resolved
+
+
 def converted(quote):
     return isinstance(quote, str) and not AMOUNT.fullmatch(quote.strip()) and bool(currency.parse(quote))
 
@@ -708,8 +749,10 @@ def reconcile(payload, extractor):
         if not row['title']:
             ask(f'milestones.{index}.title', f'What deliverable must be accepted for milestone {index}?')
         milestones.append(dict(id=index, title=shorten(row['title']) or f'Milestone {index}', amountWei=amount))
+    # "支付至合同价的97%": a running total, so this payment is what it adds to the earlier ones.
+    cumulative = fill_cumulative_amounts(rows, milestones, total, sources)
     # "Half now and the rest on delivery": shares of the agreed total need no exact figure from the user.
-    natural = fill_natural_amounts(rows, milestones, total, sources)
+    natural = fill_natural_amounts(rows, milestones, total, sources) | cumulative
     for milestone in milestones:
         if not milestone['amountWei']:
             ask(f'milestones.{milestone["id"]}.amountWei', f'What exact amount is payable for milestone {milestone["id"]}?')

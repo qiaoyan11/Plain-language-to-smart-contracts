@@ -81,11 +81,16 @@ function conversationTurn(previous, result, revision, previousTurn, demoWallets 
   const question = primaryQuestion(result);
   const ready = result.status === 'readyForConfirmation';
   const rate = (result.exchangeRates ?? []).length === 1 ? result.exchangeRates[0] : null;
-  // ETH amounts are rounded to 6 decimals; within that rounding of a whole unit, show it whole.
+  // Cents by exact integer arithmetic, as the web page computes them. ETH amounts are rounded to
+  // 6 decimals; within that rounding of a whole unit, show it whole.
   const local = wei => {
-    const units = Number(rate.unitsPerEth), value = Number(BigInt(wei) / 10n ** 12n) / 1e6 * units;
-    const whole = Math.round(value);
-    return (Math.abs(value - whole) <= units * 3e-6 ? whole : value).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    const [whole = '0', fraction = ''] = rate.unitsPerEth.split('.');
+    const scale = 10n ** BigInt(fraction.length), units = BigInt(whole + fraction), denominator = 10n ** 18n * scale;
+    let cents = (BigInt(wei) * units * 100n + denominator / 2n) / denominator;
+    const slack = units * 300n / (1000000n * scale), nearest = (cents + 50n) / 100n * 100n;
+    if (cents - nearest <= slack && nearest - cents <= slack) cents = nearest;
+    const part = cents % 100n;
+    return (cents / 100n).toLocaleString('en-US') + (part ? '.' + part.toString().padStart(2, '0').replace(/0$/, '') : '');
   };
   // Amounts agreed in another currency lead with it: "500 GBP (0.39228 ETH)".
   const amount = wei => rate ? `${local(wei)} ${rate.currency} (${eth(wei)})` : eth(wei);

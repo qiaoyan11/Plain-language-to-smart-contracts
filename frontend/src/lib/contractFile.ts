@@ -220,9 +220,20 @@ async function readPdf(bytes: Uint8Array, load: () => Promise<PdfLibrary>) {
       }
     }
     if (line) lines.push(line);
-    pages.push(unwrapLines(lines).join("\n"));
+    pages.push(unwrapLines(withoutPageNumbers(lines)).join("\n"));
   }
   return { text: joinPages(pages), pages: document.numPages };
+}
+
+const PAGE_NUMBER =
+  /^\s*(?:(?:page\s+)?\d{1,3}(?:\s+of\s+\d{1,3})?|[-\u2014]\s*\d{1,3}\s*[-\u2014]|\u7b2c\s*\d{1,3}\s*\u9875(?:\s*\u5171\s*\d{1,3}\s*\u9875)?)\s*$/i;
+
+/** A page's lines without the page number printed at its top or bottom. */
+export function withoutPageNumbers(lines: string[]) {
+  const kept = [...lines];
+  while (kept.length && (!kept[0]!.trim() || PAGE_NUMBER.test(kept[0]!))) kept.shift();
+  while (kept.length && (!kept.at(-1)!.trim() || PAGE_NUMBER.test(kept.at(-1)!))) kept.pop();
+  return kept;
 }
 
 /** Pages joined by a blank line, except where a sentence runs on to the next page. */
@@ -240,6 +251,8 @@ const CJK = /[\u3000-\u9fff\uff00-\uffef]/;
 const ENDS_SENTENCE = /[.!?;:。！？；：)）\]】"”]$/;
 const STARTS_BLOCK =
   /^(?:[0-9]+[.、)]|\(?[0-9a-zA-Z]\)|[ivxIVX]+\.|第[一二三四五六七八九十百0-9]+[章条节款]|[•·\-*])/;
+/** A form field that starts its own line: "地址：", "联系人：", "Phone:". */
+const LABEL = /^[^\s:：，。,.]{1,8}[：:]/;
 /** A capitals-only line, such as a clause heading ("PAYMENT TERMS"). */
 const HEADING = /^[A-Z][A-Z .&'-]{4,}$/;
 
@@ -250,19 +263,23 @@ const HEADING = /^[A-Z][A-Z .&'-]{4,}$/;
  */
 export function unwrapLines(lines: string[]) {
   const out: string[] = [];
+  // The line as the PDF printed it: only a line that ran to the margin can continue on the next.
+  let printed = "";
   for (const raw of lines) {
     const line = raw.trimEnd();
     const previous = out[out.length - 1];
     const next = line.trimStart();
-    if (
+    const wrapped =
       previous &&
       next &&
       !ENDS_SENTENCE.test(previous) &&
       !STARTS_BLOCK.test(next) &&
+      !LABEL.test(next) &&
       !HEADING.test(next) &&
       !HEADING.test(previous) &&
-      previous.length > 25
-    ) {
+      printed.trim().length > 25;
+    printed = line;
+    if (wrapped) {
       const joiner = CJK.test(previous.slice(-1)) && CJK.test(next[0]!) ? "" : " ";
       out[out.length - 1] = previous + joiner + next;
     } else {

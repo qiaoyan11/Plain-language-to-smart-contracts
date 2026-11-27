@@ -201,6 +201,27 @@ class EverydayRequestTests(unittest.TestCase):
         self.assertEqual(result['status'], 'needsClarification')  # only the wallets are left
         self.assertEqual({q['field'] for q in result['questions']}, {'clientWallet', 'developerWallet'})
 
+    def test_running_total_percentages_from_a_procurement_contract(self):
+        # Shanghai government procurement contract (public record), payment clause as printed.
+        message = ('2.2 \u5408\u540c\u91d1\u989d\uff1a\u4eba\u6c11\u5e01 7270988\u3002\n5.2 \u4ed8\u6b3e\u65b9\u5f0f\n'
+                   '1\uff09\u81ea\u5408\u540c\u7b7e\u8ba2\u540e\uff0c\u7532\u65b9\u5411\u4e59\u65b9\u652f\u4ed8\u672c\u5408\u540c\u4ef7\u7684 10%\uff1b\n'
+                   '2\uff09\u9879\u76ee\u5b8c\u5de5\u9a8c\u6536\u5408\u683c\u540e\uff0c\u7532\u65b9\u5411\u4e59\u65b9\u652f\u5408\u540c\u4ef7 50% \uff1b\n'
+                   '3\uff09\u9879\u76ee\u5b8c\u6210\u5ba1\u4ef7\u540e\uff0c\u7532\u65b9\u5411\u4e59\u65b9\u652f\u4ed8\u81f3\u5ba1\u5b9a\u4ef7\u7684 97% \uff1b\n'
+                   '4\uff09\u8d28\u4fdd\u671f\u6ee1\u540e\uff0c\u7532\u65b9\u5411\u4e59\u65b9\u652f\u4ed8\u5269\u4f59\u5c3e\u6b3e\u3002')
+        result = self.run_case(message, '\u4eba\u6c11\u5e01 7270988', ['10%', '50%', '97%', '\u5269\u4f59\u5c3e\u6b3e'])
+        amounts = self.amounts(result)
+        total = int(result['draftSpec']['totalAmountWei'])
+        self.assertEqual(sum(amounts), total)
+        # "\u652f\u4ed8\u81f3 ... 97%" brings payments to 97%: this milestone adds 37%; the final 3% is the rest.
+        self.assertAlmostEqual(amounts[2] / total, 0.37, places=5)
+        self.assertAlmostEqual(amounts[3] / total, 0.03, places=5)
+
+    def test_running_totals_in_english_and_a_plain_percentage_that_is_not_one(self):
+        from agent1.service import cumulative_share
+        self.assertEqual(cumulative_share('90%', ['Pay 30% on signing; on acceptance, bringing total payments to 90%.']), 90)
+        self.assertIsNone(cumulative_share('30%', ['\u5408\u540c\u7b7e\u8ba2\u540e\u81f3\u5f00\u5de5\u524d\u652f\u4ed830%']))
+        self.assertIsNone(cumulative_share('50%', ['Pay 50% on delivery.']))
+
     def test_a_share_word_counts_only_as_a_whole_word_the_user_wrote(self):
         from agent1.service import natural_word
         self.assertIsNone(natural_word('the rest', ['Redo my restaurant website for $2,400.']))

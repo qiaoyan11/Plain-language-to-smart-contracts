@@ -24,15 +24,23 @@ export function rateText(rate: ExchangeRate) {
 }
 
 /**
- * An amount in wei, in the agreement's own currency. Test ETH amounts are rounded to 6 decimals,
- * so a value within that rounding of a whole unit is shown whole: "20,000", not "19,999.99".
+ * An amount in wei, in the agreement's own currency, rounded to cents with exact integer
+ * arithmetic (the backend's replies use the same steps, so both show the same figure). Test ETH
+ * amounts are rounded to 6 decimals, so a value within that rounding of a whole unit is shown
+ * whole: "20,000", not "19,999.99".
  */
 export function inCurrency(wei: string, rate: ExchangeRate) {
-  const units = Number(rate.unitsPerEth);
-  const value = (Number(BigInt(wei) / 1_000_000n) / 1e12) * units;
-  const whole = Math.round(value);
-  const shown = Math.abs(value - whole) <= units * 3e-6 ? whole : value;
-  return shown.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const [whole = "0", fraction = ""] = rate.unitsPerEth.split(".");
+  const scale = 10n ** BigInt(fraction.length);
+  const units = BigInt(whole + fraction);
+  const denominator = 10n ** 18n * scale;
+  let cents = (BigInt(wei) * units * 100n + denominator / 2n) / denominator;
+  const slack = (units * 300n) / (1_000_000n * scale);
+  const nearest = ((cents + 50n) / 100n) * 100n;
+  if (cents - nearest <= slack && nearest - cents <= slack) cents = nearest;
+  const part = cents % 100n;
+  const decimals = part ? `.${part.toString().padStart(2, "0").replace(/0$/, "")}` : "";
+  return (cents / 100n).toLocaleString("en-US") + decimals;
 }
 
 /** " (≈ 500 USD)" after an amount in wei, at the agreement's recorded rate; "" without one. */

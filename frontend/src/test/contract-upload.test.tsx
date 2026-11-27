@@ -10,6 +10,7 @@ import {
   condense,
   contractMessage,
   joinPages,
+  withoutPageNumbers,
   readContractFile,
   unwrapLines,
   type PdfLibrary,
@@ -190,6 +191,23 @@ describe("reading contract files", () => {
     expect(joinPages(["The Sublessee will", "be liable for damages.", "VI. Disputes."])).toBe(
       "The Sublessee will be liable for damages.\n\nVI. Disputes.",
     );
+  });
+  it("keeps form fields on their own lines and drops printed page numbers", () => {
+    expect(
+      unwrapLines([
+        "甲方：上海市金山区亭林镇人民政府 乙方：联通（上海）产业互联网有限公司",
+        "法定代表人：堵炜炜",
+        "地址：上海市金山区亭林镇华亭路 25 号 地址：上海市长宁区长宁路 1033 号 7 楼",
+        "邮政编码：201513 邮政编码：200050",
+      ]),
+    ).toHaveLength(4);
+    expect(withoutPageNumbers(["2", "1.3 定义", "第二条 合同金额", "- 3 -"])).toEqual([
+      "1.3 定义",
+      "第二条 合同金额",
+    ]);
+    expect(withoutPageNumbers(["Page 4 of 12", "The fee is $500.", "4"])).toEqual([
+      "The fee is $500.",
+    ]);
   });
   it("keeps every payment clause of a long contract within one message", () => {
     const clauses = Array.from(

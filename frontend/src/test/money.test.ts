@@ -16,6 +16,12 @@ describe("amounts in the agreement's currency", () => {
     expect(approximately("1797741000000000000", cny)).toBe(" (≈ 20,000 CNY)");
     expect(approximately("9869600000000000000", cny)).toBe(" (≈ 109,800 CNY)");
   });
+  it("rounds to the nearest cent exactly, like the assistant's replies", () => {
+    // 37% of 7,270,988 CNY at 11,033.69 CNY per test ETH is 2,690,265.5557 CNY.
+    expect(approximately("243822833400000000000", { ...cny, unitsPerEth: "11033.69" })).toBe(
+      " (≈ 2,690,265.56 CNY)",
+    );
+  });
   it("keeps cents that are really there", () => {
     expect(
       approximately("1000000000000000000", { ...cny, unitsPerEth: "1667.36", currency: "USD" }),
