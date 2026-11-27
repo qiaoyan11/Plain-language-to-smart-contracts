@@ -80,6 +80,15 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-27 · Jiahao Zhang · Main-flow polish after a real restart
+
+- After the user restarted `npm run demo:web`, the same URLs restored every project: 工作室官网 kept its address, receipts (blocks 26, 27) and 0.007 balance with 3 transactions; milestone 2 was then paid (block 31, balance 0). The photography project was unchanged (blocks 17–21). Your projects listed all projects and both unfinished conversations; a conversation whose tab closed mid-reply was resumed from that list.
+- A five-step progress bar (Describe, Confirm, Generate & check, Deploy, Fund & pay) replaces the breadcrumb. Passed checks are summarized in one plain sentence ("24/24 payment-rule tests passed"); check cards stay open only when something failed. A finished escrow says the agreement is complete.
+- Home offers a fill-in example. When the assistant asks for a wallet it points to **Use local test accounts**. The confirm page says what happens next. Internal names (Agent 2/3, worker) left the UI; the reference demo link moved to the footer.
+- Agent 1 no longer drops "half now": a live message flagged it, and the next answer turned it into a 0.005/0.005 schedule. The unsupported-term question now suggests a milestone or a separate written agreement (Node text; live after the next restart). Agent 3 receipts say "test ETH".
+- Optional `AGENT2_BASE_URL`/`AGENT3_BASE_URL` (like Agent 1's) let a locally served fine-tuned model replace the hosted API later; defaults are unchanged. See [LOCAL_MODELS.md](LOCAL_MODELS.md).
+- Tests: contracts 26, HTTP 55, handoff 18+13, Agent 1/2/3 28/28/70, frontend 85; tsc and build pass. Three Agent 1 messages were sent for this check; no generation call. Needs a decision: none.
+
 ### 2026-11-27 · Jiahao Zhang · Find saved work, clearer milestone receipts and demo limits
 
 - First-time-user browser review (two new reference projects, the validated 工作室官网 generated project, photography project read-only). Top problems: a lost URL meant a lost project; recipient and receipt per milestone were buried; after checks passed the paid "Start another generation" was the primary button; reference deposit and payments were sent on one click; the banner did not say that test accounts sign automatically.
