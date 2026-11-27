@@ -133,23 +133,38 @@ export function DraftSummary({
   );
 }
 
+/** How many conditions show before the rest are folded away; long contracts produce many. */
+const SHOWN_TERMS = 5;
+
 /** Conditions from the user's agreement that came up and were moved out of the payment rules. */
 export function SettledTerms({ terms }: { terms: string[] }) {
   if (!terms.length) return null;
+  const item = (term: string, i: number) => (
+    <li key={i} className="whitespace-pre-wrap break-words">
+      {term}
+    </li>
+  );
+  const rest = terms.slice(SHOWN_TERMS);
   return (
     <section>
       <h2>Not enforced by the contract</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        These conditions from your agreement came up in the conversation and were moved out of the
-        contract's payment rules. If they still apply, your written agreement governs them.
+        The contract only holds the deposit and releases the payments above. These conditions from
+        your agreement stay with your written agreement, which governs them if they still apply.
       </p>
       <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">
-        {terms.map((term, i) => (
-          <li key={i} className="whitespace-pre-wrap break-words">
-            {term}
-          </li>
-        ))}
+        {terms.slice(0, SHOWN_TERMS).map(item)}
       </ul>
+      {rest.length > 0 && (
+        <details className="mt-2 text-sm">
+          <summary className="cursor-pointer text-muted-foreground">
+            Show {rest.length} more condition{rest.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-2 list-disc space-y-2 pl-5">
+            {rest.map((term, i) => item(term, i + SHOWN_TERMS))}
+          </ul>
+        </details>
+      )}
     </section>
   );
 }

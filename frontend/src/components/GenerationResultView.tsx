@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { GenerationRun } from "@/api/types";
+import { progressText } from "@/lib/generationProgress";
 const labels = {
   compilation: "Compilation",
   staticAnalysis: "Static analysis",
@@ -81,10 +82,15 @@ export function GenerationResultView({
     <section aria-live="polite" className="mt-8 border-t border-border pt-7">
       <h2>{title}</h2>
       {run.status === "running" && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          {elapsed(run.createdAt)}This usually takes a few minutes. You can refresh or leave this
-          page without restarting it; results appear here when the checks finish.
-        </p>
+        <>
+          <p className="mt-3 text-sm font-medium" data-testid="generation-progress">
+            {progressText(run.progress)}
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {elapsed(run.createdAt)}This usually takes a few minutes. You can refresh or leave this
+            page without restarting it; results appear here when the checks finish.
+          </p>
+        </>
       )}
       {obsolete && (
         <p className="mt-3 text-sm text-muted-foreground">

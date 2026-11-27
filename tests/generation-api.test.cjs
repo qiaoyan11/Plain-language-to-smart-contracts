@@ -160,8 +160,15 @@ test('generation HTTP returns a run immediately, deduplicates clicks and never d
     assert.deepEqual(request.payload.confirmation, confirmation);
     assert.equal(request.payload.spec.projectId, project.id);
     assert.equal(options.isCurrent(), true);
+    // The worker's stages show on the run while it is in progress, and are gone once it ends.
+    options.onProgress({ stage: 'repairing', attempt: 2, failedChecks: ['staticAnalysis'] });
+    const running = (await call(path + '/generation-runs/' + started.body.id)).body;
+    assert.equal(running.status, 'running');
+    assert.deepEqual({ ...running.progress, at: undefined },
+      { stage: 'repairing', attempt: 2, failedChecks: ['staticAnalysis'], maxAttempts: RUN_CONFIG.maxRepairs + 1, at: undefined });
     resolve(envelope(request, 'validated'));
     const result = await finished(call, path, started.body.id);
+    assert.equal(result.progress, undefined);
     assert.equal(result.status, 'completed');
     assert.equal(result.result.status, 'validated');
     assert.equal(result.generatedDeploymentEnabled, true);

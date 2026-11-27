@@ -132,7 +132,11 @@ function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MOD
     // Return a run ID immediately. The browser polls; reloading never restarts a model call.
     Promise.resolve().then(async () => {
       try {
-        const response = await runner(request, { isCurrent });
+        // The worker reports each stage (writing, checking, repairing); the browser polls the run.
+        const onProgress = progress => {
+          if (run.status === 'running') run.progress = { ...progress, maxAttempts: RUN_CONFIG.maxRepairs + 1, at: new Date().toISOString() };
+        };
+        const response = await runner(request, { isCurrent, onProgress });
         validateResponse(request, response);
         if (!isCurrent()) { run.status = 'obsolete'; return; }
         if (response.status !== 'ok' || response.result.status === 'generated') throw new Error('INVALID_GENERATION_RESPONSE');
@@ -147,6 +151,7 @@ function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MOD
             message: timeout ? 'Generation timed out. Review this run before starting a new one.' : 'Generation could not complete. Check the local worker and tools before retrying.' };
         }
       } finally {
+        delete run.progress;
         run.finishedAt = new Date().toISOString();
         if (active.get(p.id) === id) active.delete(p.id);
         onChange();

@@ -146,3 +146,14 @@ test('live timeout accounts for validation and bounded repair rounds', () => {
     else process.env.AGENT2_MODE = previous;
   }
 });
+
+test('progress lines from the worker are reduced to known stages and checks', () => {
+  const { readProgress } = require('../backend/python-bridge.cjs');
+  assert.deepEqual(readProgress('ACCORD_PROGRESS {"stage":"checking","attempt":1}'),
+    { stage: 'checking', attempt: 1, failedChecks: [] });
+  assert.deepEqual(readProgress('ACCORD_PROGRESS {"stage":"repairing","attempt":2,"failedChecks":["clauseTests","<b>"]}'),
+    { stage: 'repairing', attempt: 2, failedChecks: ['clauseTests'] });
+  assert.equal(readProgress('ACCORD_PROGRESS {"stage":"deploying","attempt":1}'), null);
+  assert.equal(readProgress('ACCORD_PROGRESS not json'), null);
+  assert.equal(readProgress('LIVE Agent 2: explicit generation/validation budget; no deployment.'), null);
+});

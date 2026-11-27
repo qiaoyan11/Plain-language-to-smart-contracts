@@ -86,8 +86,10 @@ about it. A booking deposit kept by the provider is milestone 1; if it is refund
 cancels, that refund is an unsupportedTerms entry.
 Name each unsupportedTerms entry the way the user described it ("booking deposit refunded if she
 cancels", "security deposit returned if nothing is damaged"), not with a generic category.
-Combine closely related conditions into one entry instead of one entry per item, for example
-"sublessee pays utilities (amenity, internet, electricity and water fees)".
+Keep the list short, normally five entries or fewer, because the user reads every entry before confirming.
+Merge conditions of the same kind into one entry instead of one entry per clause: all refund rules become
+one entry ("refunds of 35\u2013100% of the basic fee depending on timing, results and services used"), all
+fees paid to others become one ("sublessee pays utilities: amenity, internet, electricity and water").
 Only payment conditions belong in unsupportedTerms: clauses that change when, whether, how much or to whom
 money moves. Do not flag ordinary legal clauses that move no money (scope, intellectual property,
 confidentiality, warranties, liability caps, governing law, notices, the term of the agreement, or
@@ -109,7 +111,9 @@ An ordinary agreement to pay after the client checks that each named function or
 completed is supported v1 acceptance. Do not invent a need for revision limits, review deadlines,
 arbitration, escalation or dispute handling merely because the client will check the work.
 If the user wants open-ended revisions ("until I'm happy", "\u6539\u5230\u6ee1\u610f\u4e3a\u6b62"), set revisionRiskOpen to true
-and do not ask about it: the program records a note for the review page. If the user names concrete
+and do not ask about it: the program records a note for the review page. Unlimited revisions offered as part
+of the service ("unlimited resume edits", "\u4e0d\u9650\u6b21\u6570\u7684\u4fee\u6539") describe what is delivered, not when payment is
+released: leave revisionRiskOpen false for them. If the user names concrete
 acceptance criteria ("matches the shot list", "passes the checkout tests"), use them in milestone titles.
 revisionResolutionQuote is null unless the current user explicitly withdraws or replaces the
 open-ended condition with a clear agreement; then quote their exact words.

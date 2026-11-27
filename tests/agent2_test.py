@@ -349,4 +349,43 @@ class LocalModelServerTests(unittest.TestCase):
         self.assertNotEqual(run['response']['status'], 'error')
 
 
+class ProgressTests(unittest.TestCase):
+    """The stages shown while a generation runs, derived from its recorded events."""
+    config = {'maxRepairs': 3, 'feedbackSetting': 'C'}
+
+    def failed(self, attempt, *names):
+        checks = [{'name': n, 'status': 'failed', 'findings': []} for n in names]
+        return {'kind': 'validation', 'attempt': attempt, 'status': 'failed', 'validationReport': {'checks': checks}}
+
+    def test_stages_follow_writing_checking_and_repairs(self):
+        from agent2.records import progress_for
+        self.assertEqual(progress_for({'kind': 'source', 'attempt': 0}, self.config), {'stage': 'checking', 'attempt': 1})
+        self.assertEqual(progress_for(self.failed(0, 'staticAnalysis'), self.config),
+                         {'stage': 'repairing', 'attempt': 2, 'failedChecks': ['staticAnalysis']})
+        self.assertEqual(progress_for({'kind': 'validation', 'attempt': 1, 'status': 'validated'}, self.config),
+                         {'stage': 'finishing', 'attempt': 2})
+        self.assertIsNone(progress_for({'kind': 'modelCall', 'attempt': 0}, self.config))
+
+    def test_no_repair_is_announced_once_the_budget_is_spent(self):
+        from agent2.records import progress_for
+        self.assertIsNone(progress_for(self.failed(3, 'clauseTests'), self.config))
+        self.assertIsNone(progress_for(self.failed(0, 'clauseTests'), {'maxRepairs': 3, 'feedbackSetting': 'A'}))
+
+    def test_a_saved_run_reports_each_stage_in_order(self):
+        from agent2 import records
+        seen = []
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as temp, patch('agent2.records.run_generation') as run, \
+                patch.object(records, 'ROOT', Path(temp)):
+            def fake(request, initial_bundle=None, on_record=None):
+                on_record({'kind': 'source', 'attempt': 0, 'sourceBundle': None})
+                on_record({'kind': 'validation', 'attempt': 0, 'status': 'validated', 'validationReport': None})
+                raise RuntimeError('stop after the events')
+            run.side_effect = fake
+            with self.assertRaises(RuntimeError):
+                records.run_and_save(copy.deepcopy(REQUEST), on_progress=seen.append)
+        self.assertEqual([s['stage'] for s in seen], ['writing', 'checking', 'finishing'])
+
+
 if __name__=='__main__':unittest.main()

@@ -265,4 +265,16 @@ export interface GenerationRun {
   result: GenerateResult | null;
   error: { code: "GENERATION_TIMEOUT" | "GENERATION_TOOL_ERROR"; message: string } | null;
   generatedDeploymentEnabled: boolean;
+  /** While running: the stage the worker last reported. */
+  progress?: GenerationProgress;
+}
+
+export interface GenerationProgress {
+  stage: "writing" | "checking" | "repairing" | "finishing";
+  /** Counts from 1; each repair is a new attempt. */
+  attempt: number;
+  maxAttempts: number;
+  /** For a repair: the checks the previous attempt failed. */
+  failedChecks: Array<"compilation" | "staticAnalysis" | "clauseTests">;
+  at: string;
 }

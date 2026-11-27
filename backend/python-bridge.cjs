@@ -17,7 +17,22 @@ function defaultTimeout(request) {
   return 900000 * (1 + repairs);
 }
 
-function runPython(request, { timeoutMs = defaultTimeout(request), maxBytes = LIMIT, isCurrent = () => true } = {}) {
+const PROGRESS_PREFIX = 'ACCORD_PROGRESS ';
+const STAGES = new Set(['writing', 'checking', 'repairing', 'finishing']);
+const CHECKS = new Set(['compilation', 'staticAnalysis', 'clauseTests']);
+// A progress line from the worker, reduced to known fields; anything else is ignored.
+function readProgress(line) {
+  if (!line.startsWith(PROGRESS_PREFIX)) return null;
+  try {
+    const item = JSON.parse(line.slice(PROGRESS_PREFIX.length));
+    if (!STAGES.has(item.stage) || !Number.isInteger(item.attempt) || item.attempt < 1 || item.attempt > 10) return null;
+    const failedChecks = Array.isArray(item.failedChecks) ? item.failedChecks.filter(name => CHECKS.has(name)) : [];
+    return { stage: item.stage, attempt: item.attempt, failedChecks };
+  } catch { return null; }
+}
+
+function runPython(request, { timeoutMs = defaultTimeout(request), maxBytes = LIMIT, isCurrent = () => true,
+  onProgress = null } = {}) {
   const key = request.payload?.spec?.projectId ?? request.payload?.projectId ?? request.payload?.draftSpec?.projectId ?? request.requestId;
   if (active.has(key)) return Promise.reject(new Error('PROJECT_BUSY'));
   const input = JSON.stringify(request);
@@ -26,7 +41,7 @@ function runPython(request, { timeoutMs = defaultTimeout(request), maxBytes = LI
   return new Promise((resolve, reject) => {
     const child = spawn(process.env.PYTHON_BIN || (fs.existsSync(localPython) ? localPython : 'python3'),
       ['-m', 'flows.worker'], { cwd: ROOT, shell: false, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '', size = 0, settled = false, stopping = false, closed = false;
+    let stdout = '', stderr = '', size = 0, settled = false, stopping = false, closed = false, pending = '';
     let failure, cleanupDone = false;
     const timer = setTimeout(() => stop(new Error('PYTHON_TIMEOUT')), timeoutMs);
     function finish(error, value) {
@@ -72,7 +87,16 @@ function runPython(request, { timeoutMs = defaultTimeout(request), maxBytes = LI
       stream.on('data', chunk => {
         size += Buffer.byteLength(chunk);
         if (size > maxBytes) return stop(new Error('PYTHON_OUTPUT_LIMIT'));
-        if (isOut) stdout += chunk; else stderr += chunk;
+        if (isOut) { stdout += chunk; return; }
+        stderr += chunk;
+        if (!onProgress) return;
+        pending += chunk;
+        const lines = pending.split('\n');
+        pending = lines.pop();
+        for (const line of lines) {
+          const progress = readProgress(line);
+          if (progress) { try { onProgress(progress); } catch { /* Progress is advisory. */ } }
+        }
       });
     }
     child.on('close', code => {
@@ -91,4 +115,4 @@ function runPython(request, { timeoutMs = defaultTimeout(request), maxBytes = LI
     child.stdin.end(input);
   });
 }
-module.exports = { runPython, defaultTimeout };
+module.exports = { runPython, defaultTimeout, readProgress };

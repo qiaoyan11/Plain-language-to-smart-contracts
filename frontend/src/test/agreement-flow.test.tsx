@@ -488,6 +488,16 @@ describe("explicit agreement confirmation", () => {
     expect(await screen.findByText("Not enforced by the contract")).toBeVisible();
     expect(screen.getByText("payment due June 30, 2026")).toBeVisible();
   });
+  it("folds a long list of conditions from an uploaded contract after the first five", async () => {
+    api.setActiveDraftId(ready.id);
+    const terms = Array.from({ length: 8 }, (_, n) => `condition ${n + 1}`);
+    vi.mocked(api.getDraft).mockResolvedValue({ ...ready, settledTerms: terms });
+    openPage(<ConfirmPage />);
+    expect(await screen.findByText("condition 5")).toBeVisible();
+    expect(screen.getByText("condition 6")).not.toBeVisible();
+    fireEvent.click(screen.getByText("Show 3 more conditions"));
+    expect(screen.getByText("condition 8")).toBeVisible();
+  });
   it("shows how amounts in another currency became test ETH", async () => {
     api.setActiveDraftId(ready.id);
     vi.mocked(api.getDraft).mockResolvedValue({
