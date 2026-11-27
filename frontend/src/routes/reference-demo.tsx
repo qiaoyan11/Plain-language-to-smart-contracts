@@ -36,8 +36,8 @@ function CreatePage() {
     e.preventDefault();
     if (!form.name.trim()) return setError("Please enter a project name");
     if (!isValidAddress(form.clientWallet)) return setError("Invalid client wallet address (0x + 40 hex characters)");
-    if (!isValidAddress(form.developerWallet)) return setError("Invalid developer wallet address");
-    if (form.clientWallet.trim().toLowerCase() === form.developerWallet.trim().toLowerCase()) return setError("Client and developer must be different");
+    if (!isValidAddress(form.developerWallet)) return setError("Invalid provider wallet address");
+    if (form.clientWallet.trim().toLowerCase() === form.developerWallet.trim().toLowerCase()) return setError("Client and provider must be different");
     try {
       const terms = milestones.map((m, i) => {
         if (!m.title.trim()) throw new Error(`Milestone ${i + 1}: enter a title`);
@@ -63,7 +63,7 @@ function CreatePage() {
   return (
     <Shell step="01 / Create">
       <h1 className="font-display text-4xl font-bold">Create an escrow project</h1>
-      <p className="mt-2 text-muted-foreground">Funds are locked in the contract and released to the developer milestone by milestone. This handwritten contract needs no AI model.</p>
+      <p className="mt-2 text-muted-foreground">Funds are locked in the contract and released to the provider milestone by milestone. This handwritten contract needs no AI model.</p>
       <form onSubmit={submit} className="panel mt-8 space-y-5">
         {!MOCK_MODE && <button type="button" className="btn btn-outline" onClick={async () => {
           try { const accounts = await api.getLocalAccounts(); setForm(f => ({ ...f, ...accounts })); setError(""); }
@@ -71,7 +71,7 @@ function CreatePage() {
         }}>Use local demo accounts</button>}
         {field("name", "Project name", "e.g. Company website")}
         {field("clientWallet", "Client wallet address", "0x...")}
-        {field("developerWallet", "Developer wallet address", "0x...")}
+        {field("developerWallet", "Provider wallet address", "0x...")}
         <fieldset className="space-y-4">
           <legend className="font-bold">Payment milestones</legend>
           <p className="text-sm text-muted-foreground">Add 1–5 milestones in payment order. Each milestone needs a positive amount.</p>

@@ -52,6 +52,11 @@ def model_allowed(model):
     return model == server['model'] if server else model in ALLOWED_MODELS
 
 
+# Reasoning tokens count against this budget. Contracts with several milestones used up to ~8.9k
+# tokens in one call, so 8192 cut realistic agreements off before any source was returned.
+MAX_OUTPUT_TOKENS = 16384
+
+
 def call_model(system, user, model):
     server = local_server()
     if not model_allowed(model):
@@ -60,14 +65,14 @@ def call_model(system, user, model):
     if server:
         url = server['endpoint'] + '/chat/completions'
         key = server['key']
-        body = chat_request(model, system, user, 'solidity_source', OUTPUT_SCHEMA, 8192)
+        body = chat_request(model, system, user, 'solidity_source', OUTPUT_SCHEMA, MAX_OUTPUT_TOKENS)
     else:
         url = 'https://api.openai.com/v1/responses'
         key = os.getenv('OPENAI_API_KEY', '').strip()
         if not key:
             raise ModelError('MODEL_CONFIG: OPENAI_API_KEY is missing from the local environment/.env.')
         body = {'model': model, 'instructions': system, 'input': user, 'store': False,
-                'reasoning': {'effort': 'medium'}, 'max_output_tokens': 8192,
+                'reasoning': {'effort': 'medium'}, 'max_output_tokens': MAX_OUTPUT_TOKENS,
                 'text': {'format': {'type': 'json_schema', 'name': 'solidity_source',
                                     'strict': True, 'schema': OUTPUT_SCHEMA}}}
     headers = {'Authorization': 'Bearer ' + key} if key else {}
@@ -96,7 +101,7 @@ def call_model(system, user, model):
                 'requestedModel': model, 'returnedModel': data.get('model'),
                 'responseId': data.get('id'), 'usage': data.get('usage'),
                 'elapsedSeconds': round(time.monotonic() - start, 3),
-                'reasoningEffort': None if server else 'medium', 'maxOutputTokens': 8192, 'apiCalls': 1}
+                'reasoningEffort': None if server else 'medium', 'maxOutputTokens': MAX_OUTPUT_TOKENS, 'apiCalls': 1}
     try:
         source = read_output(data)
     except ModelError as error:

@@ -12,6 +12,17 @@ AMOUNT = re.compile(r'([0-9]+(?:\.[0-9]+)?)\s*(?:(?:test|Sepolia|\u6d4b\u8bd5)\s
 NUMBER = re.compile(r'[0-9]+(?:\.[0-9]+)?')
 PERCENT_OF = re.compile(r'([0-9]+(?:\.[0-9]+)?)\s*[%\uff05]\s+of\s+(.+)', re.I)
 TOTAL_BASIS = re.compile(r'(?:the\s+)?(?:(?:agreed|contract)\s+)?total(?:\s+(?:amount|price|budget))?\b', re.I)
+WALLET = re.compile(r'0x[0-9a-fA-F]{40}')
+PAYMENT_TERMS = re.compile(
+    r'\b(?:half|halves|thirds?|quarters?|percent(?:age)?|split|share|price|amount|budget|cost|fee|'
+    r'pay|paid|payment|payable|deposit|refund|total|eth|wei)\b|[%\uff05$\u20ac\u00a3\u00a5]'
+    r'|[\u4ed8\u6b3e\u4ef7\u989d\u534a]|\u767e\u5206|\u5206\u4e4b', re.I)
+
+
+def mentions_payment(message):
+    """Whether a message could change a payment value. Wallet addresses alone cannot."""
+    text = WALLET.sub(' ', message)
+    return bool(re.search(r'\d', text) or PAYMENT_TERMS.search(text))
 
 
 OPEN_ENDED = re.compile(
@@ -51,13 +62,13 @@ def previous_result(history):
 
 def resolved_question_fields(terms, message):
     resolutions = terms.get('resolvedQuestions', [])
-    if not isinstance(resolutions, list) or not all(
-            isinstance(item, dict) and isinstance(item.get('field'), str)
-            and item['field'].strip() and isinstance(item.get('userQuote'), str)
-            for item in resolutions):
-        raise ValueError('Question resolutions require a field and a current user quote.')
+    if not isinstance(resolutions, list):
+        return set()
+    # Entries without a field and an exact current quote are not evidence; ignore them.
     return {canonical_field(item['field']) for item in resolutions
-            if item['userQuote'].strip() and item['userQuote'] in message}
+            if isinstance(item, dict) and isinstance(item.get('field'), str) and item['field'].strip()
+            and isinstance(item.get('userQuote'), str) and item['userQuote'].strip()
+            and item['userQuote'] in message}
 
 
 def revision_question(message, previous, terms):
@@ -112,10 +123,13 @@ def value_of(quote, sources, old_amounts, total=None, unit=None):
     bare = NUMBER.fullmatch(quote.strip())
     expression = PERCENT_OF.fullmatch(quote.strip())
     if quote not in old_amounts and not quote_in(quote, sources, bool(bare)):
+        # "25% of 0.02 ETH" may restate a percentage the user listed ("25%, 25% and 50% of
+        # 0.02 ETH"); the expression's basis is still checked against the agreed total below.
+        stated_percent = expression and any(quote_in(expression[1] + sign, sources) for sign in ('%', '\uff05'))
         # The model may add the known unit to an otherwise exact user quote.
         # Check the number without a unit in the source before accepting that formatting.
-        if not (match and unit in ('eth', 'wei') and match[2].lower() == unit
-                and quote_in(match[1], sources, bare=True)):
+        if not stated_percent and not (match and unit in ('eth', 'wei') and match[2].lower() == unit
+                                       and quote_in(match[1], sources, bare=True)):
             return None
     if expression:
         basis = total if TOTAL_BASIS.fullmatch(expression[2].strip()) else value_of(expression[2], sources, set())
@@ -253,6 +267,18 @@ def repeats_payment(message, spec):
                                for row in spec['milestones']))
 
 
+def shorten(text, limit=120):
+    """Keep the user's words but fit the 120-character name and title limit at a word boundary."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    text = ' '.join(text.split())
+    if len(text) <= limit:
+        return text
+    cut = text[:limit - 1]
+    space = cut.rfind(' ')
+    return (cut[:space] if space > limit // 2 else cut).rstrip(' ,;:') + '\u2026'
+
+
 def title_key(title):
     return ' '.join(title.split()).casefold()
 
@@ -278,17 +304,22 @@ def draft_agreement(payload, extractor=extract):
         raise ValueError('Expected lists of questions and unsupported terms.')
     missing_fields = {canonical_field(q['field']) for q in questions if q.get('kind') == 'missing'}
     protected_fields = {canonical_field(q['field']) for q in questions if q.get('kind') in ('conflict', 'semantic')}
+    # A message without any payment terms (for example, only wallet addresses) cannot change or
+    # dispute an amount, whatever the model reports for this turn.
+    payment_message = mentions_payment(payload['message'])
+    if not payment_message:
+        protected_fields = {f for f in protected_fields
+                            if f != 'totalAmountWei' and not re.fullmatch(r'milestones\.\d+\.amountWei', f)}
     questions = [dict(field=canonical_field(q['field']),
                       question=standard_missing_question(canonical_field(q['field']), q['question'])
                       if q.get('kind') == 'missing' else q['question']) for q in questions]
     changes = terms.get('changedFields')
     changed_fields = None
-    if changes is not None:
-        if not isinstance(changes, list) or not all(isinstance(item, dict) and isinstance(item.get('field'), str)
-                and isinstance(item.get('userQuote'), str) for item in changes):
-            raise ValueError('Field changes require an exact current user quote.')
-        if all(item['userQuote'].strip() and item['userQuote'] in payload['message'] for item in changes):
-            changed_fields = {canonical_field(item['field']) for item in changes}
+    # Malformed change metadata disables retention (changed_fields stays None); it never fails the turn.
+    if (isinstance(changes, list) and all(isinstance(item, dict) and isinstance(item.get('field'), str)
+            and isinstance(item.get('userQuote'), str) for item in changes)
+            and all(item['userQuote'].strip() and item['userQuote'] in payload['message'] for item in changes)):
+        changed_fields = {canonical_field(item['field']) for item in changes}
     unsupported = list(unsupported)
     previous['questions'] = [dict(q, field=canonical_field(q['field'])) for q in previous.get('questions', [])]
     prior_questions = previous['questions']
@@ -305,7 +336,7 @@ def draft_agreement(payload, extractor=extract):
             return
         questions.append({'field': field, 'question': question})
 
-    name = terms['name']
+    name = shorten(terms['name'])
     if not name:
         ask('name', 'What is the project called?')
     draft = dict(schemaVersion=1, projectId=old.get('projectId') or str(uuid4()),
@@ -329,6 +360,8 @@ def draft_agreement(payload, extractor=extract):
         total_unit = answer_unit
     total_quote = answer if focus == 'totalAmountWei' and NUMBER.fullmatch(answer) and answer_unit else terms['total']
     total = value_of(total_quote, sources, old_amounts, unit=total_unit)
+    if not payment_message and old.get('totalAmountWei'):
+        total = old['totalAmountWei']
     if total is None and repeats_stored_total(total_quote, old.get('totalAmountWei'), total_unit):
         total = old['totalAmountWei']
     if total_quote is None and old.get('totalAmountWei'):
@@ -346,7 +379,7 @@ def draft_agreement(payload, extractor=extract):
     milestones = []
     row_units = []
     old_rows = {m['id']: m for m in old.get('milestones', [])}
-    titles = [title_key(row['title'] or '') for row in rows]
+    titles = [title_key(shorten(row['title']) or '') for row in rows]
     same_schedule = (titles == [title_key(m['title']) for m in old.get('milestones', [])]
                      and len(titles) == len(set(titles)))
     for index, row in enumerate(rows, 1):
@@ -359,7 +392,10 @@ def draft_agreement(payload, extractor=extract):
         amount = value_of(row['amount'], sources, old_amounts, total, row_unit)
         field = f'milestones.{index}.amountWei'
         stored = old_rows.get(index, {}).get('amountWei')
-        if (amount is None and stored and same_schedule and changed_fields is not None
+        if stored and same_schedule and not payment_message:
+            # The verified amount stands: this message has no payment terms to change it.
+            amount = stored
+        elif (amount is None and stored and same_schedule and changed_fields is not None
                 and field not in changed_fields and field not in protected_fields
                 and (row['amount'] is None or repeats_stored_total(row['amount'], stored, row_unit))):
             # The old accepted value remains the evidence. A renamed/reordered stage or any
@@ -369,7 +405,7 @@ def draft_agreement(payload, extractor=extract):
             ask(f'milestones.{index}.amountWei', f'What exact amount is payable for milestone {index}?')
         if not row['title']:
             ask(f'milestones.{index}.title', f'What deliverable must be accepted for milestone {index}?')
-        milestones.append(dict(id=index, title=row['title'] or f'Milestone {index}', amountWei=amount))
+        milestones.append(dict(id=index, title=shorten(row['title']) or f'Milestone {index}', amountWei=amount))
     if not rows:
         ask('milestones', 'What deliverables should the client accept, in payment order?')
     if milestones and all(m['amountWei'] for m in milestones):
@@ -387,9 +423,14 @@ def draft_agreement(payload, extractor=extract):
     current_sources = [payload['message']]
     def direct_answer(field, quote):
         return focus == field and isinstance(quote, str) and answer == quote.strip()
+    conflicts = {canonical_field(q['field']) for q in terms['questions'] if q.get('kind') == 'conflict'}
+    named = {w.lower() for w in WALLET.findall(payload['message'])}
+    only_draft_wallets = bool(named) and named <= {(draft[f] or '').lower() for f in ('clientWallet', 'developerWallet')}
     for field in ('clientWallet', 'developerWallet'):
-        if (old.get(field) is None and draft[field] and direct_answer(field, draft[field])
-                and wallet_in(draft[field], current_sources)):
+        # A new wallet written verbatim answers its question when the message names no other
+        # address (no competing candidate) and the model reports no conflict.
+        if (old.get(field) is None and draft[field] and wallet_in(draft[field], current_sources)
+                and (direct_answer(field, draft[field]) or (only_draft_wallets and field not in conflicts))):
             deterministic.add(field)
     if (old.get('totalAmountWei') is None and total and direct_answer('totalAmountWei', total_quote)
             and value_of(total_quote, current_sources, set(), unit=answer_unit) == total):
@@ -418,6 +459,12 @@ def draft_agreement(payload, extractor=extract):
     questions = [q for q in questions if not (q['field'] in supported_values and q['field'] not in protected_fields | previous_protected
         and (q['field'] in missing_fields or (q['field'] in previous_missing | resolved
                                              and missing_question(q['field'], q['question']))))]
+    if not payment_message:
+        # New amount doubts raised on a message without payment terms are not evidence;
+        # questions still open from earlier turns remain.
+        open_fields = {q['field'] for q in pending}
+        questions = [q for q in questions if q['field'] in open_fields or q['field'] not in supported_values
+                     or not (q['field'] == 'totalAmountWei' or re.fullmatch(r'milestones\.\d+\.amountWei', q['field']))]
     if any(q['field'] == 'totalAmountWei' for q in questions):
         total = None
     if not total:
@@ -443,10 +490,9 @@ def draft_agreement(payload, extractor=extract):
     if old and draft != old:
         draft['specVersion'] += 1
     status = 'unsupported' if unsupported else ('needsClarification' if questions else 'readyForConfirmation')
-    notes = terms['separateTerms']
-    if not isinstance(notes, list) or not all(
-            isinstance(note, str) and note.strip() and any(note in s for s in sources) for note in notes):
-        raise ValueError('Separate terms must quote the parties.')
+    notes = terms['separateTerms'] if isinstance(terms['separateTerms'], list) else []
+    # Only exact quotes of the parties are kept; paraphrases are not evidence and are dropped.
+    notes = [note for note in notes if isinstance(note, str) and note.strip() and any(note in s for s in sources)]
     result = validate('ClarifyResult', dict(status=status, draftSpec=draft, questions=questions,
                                             unsupportedTerms=unsupported))
     return result, notes

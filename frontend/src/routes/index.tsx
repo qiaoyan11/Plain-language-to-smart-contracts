@@ -224,7 +224,7 @@ export function CreatePage() {
                   disabled={disabled}
                   onClick={() =>
                     send(
-                      `For this local test, use ${context.data.clientWallet} as the client wallet and ${context.data.developerWallet} as the developer wallet.`,
+                      `For this local test, use ${context.data.clientWallet} as the client wallet and ${context.data.developerWallet} as the provider wallet.`,
                     )
                   }
                 >

@@ -327,7 +327,7 @@ export function DetailPage({ id }: { id: string }) {
               <details className="mt-4">
                 <summary>Participant addresses</summary>
                 <Row label="Client · deposits and approves payments" value={spec.clientWallet} mono />
-                <Row label="Developer · receives payments" value={spec.developerWallet} mono />
+                <Row label="Provider · receives payments" value={spec.developerWallet} mono />
               </details>
             </div>
           )}

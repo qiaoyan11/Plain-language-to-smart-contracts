@@ -350,9 +350,9 @@ class AgentTests(unittest.TestCase):
         handoff = clarify(payload, lambda *_: terms)
         self.assertEqual(handoff['separateTerms'], [note])
         self.assertNotIn(note, json.dumps(handoff['draftSpec']))
-        terms['separateTerms'] = ['Invented term']
-        with self.assertRaises(ValueError):
-            draft_agreement(payload, lambda *_: terms)
+        # An invented term is not evidence: it is dropped, and the turn still succeeds.
+        terms['separateTerms'] = ['Invented term', note]
+        self.assertEqual(draft_agreement(payload, lambda *_: terms)[1], [note])
 
     def test_transport_and_worker(self):
         case = example('complete')
@@ -495,6 +495,67 @@ class FinanceAmountTests(unittest.TestCase):
                 result = clarify(dict(message=FINANCE_MESSAGES[4], history=history, draftSpec=previous['draftSpec']), lambda *_: terms)
                 self.assertEqual([m['amountWei'] for m in result['draftSpec']['milestones']], ['20000000000000000'] * 4)
                 self.assertEqual({q['field'] for q in result['questions']}, {'clientWallet', 'developerWallet'})
+
+    def test_wallet_only_reply_keeps_verified_amounts_without_change_metadata(self):
+        client, provider = '0x' + '1' * 40, '0x' + '2' * 40
+        for message, kept in [
+            (f'For this local test, use {client} as the client wallet and {provider} as the developer wallet.', True),
+            (f'Use {client} and {provider}. The chat bot price is changing.', False),
+        ]:
+            with self.subTest(message=message):
+                history, previous = self.legacy(complete=True)
+                terms = self.terms(None, [None] * 4)
+                terms.update(clientWallet=client, developerWallet=provider, resolvedQuestions=[
+                    dict(field='clientWallet', userQuote=client), dict(field='developerWallet', userQuote=provider)])
+                terms.pop('changedFields')
+                result = clarify(dict(message=message, history=history, draftSpec=previous['draftSpec']), lambda *_: terms)
+                amounts = [m['amountWei'] for m in result['draftSpec']['milestones']]
+                self.assertEqual(amounts, ['20000000000000000'] * 4 if kept else [None] * 4)
+                self.assertEqual(result['status'], 'readyForConfirmation' if kept else 'needsClarification')
+
+    def test_wallet_reply_resolves_wallet_questions_and_keeps_amounts_despite_model_claims(self):
+        client, provider = '0x' + '1' * 40, '0x' + '2' * 40
+        history, previous = self.legacy(complete=True)
+        message = f'For this local test, use {client} as the client wallet and {provider} as the developer wallet.'
+        terms = self.terms('0.08 ETH', ['25%'] * 4)
+        terms.update(clientWallet=client, developerWallet=provider)
+        # The model claims every amount changed and still asks for the provider wallet.
+        terms['changedFields'] = [dict(field=f'milestones.{n}.amountWei', userQuote='For this local test')
+                                  for n in range(1, 5)]
+        terms['questions'] = [dict(field='developerWallet', kind='semantic', sourceQuote=None,
+                                   question='Which wallet receives the provider payments?'),
+                              dict(field='milestones.2.amountWei', kind='semantic', sourceQuote=None,
+                                   question='Is the chat bot amount still agreed?')]
+        result = clarify(dict(message=message, history=history, draftSpec=previous['draftSpec']), lambda *_: terms)
+        self.assertEqual([m['amountWei'] for m in result['draftSpec']['milestones']], ['20000000000000000'] * 4)
+        self.assertEqual(result['draftSpec']['totalAmountWei'], '80000000000000000')
+        self.assertEqual(result['questions'], [])
+        self.assertEqual(result['status'], 'readyForConfirmation')
+
+    def test_real_contract_output_is_cleaned_instead_of_failing_the_turn(self):
+        case = example('complete')
+        payload, terms = case['request']['payload'], case['exampleExtraction']
+        long_title = 'Stages 3 through 6: front-end development, back-end development and CMS integration, ' \
+                     'testing and deployment, and post-launch support'
+        terms['name'] = 'Website Development Agreement between Northbeam Digital Limited and Calder Goods Inc. ' * 2
+        terms['milestones'][1]['title'] = long_title
+        terms['separateTerms'] = ['A paraphrase the user never wrote.']
+        terms['resolvedQuestions'] = [{'field': 'clientWallet'}, 'not an object']
+        terms['changedFields'] = 'everything'
+        result = clarify(payload, lambda *_: terms)
+        self.assertLessEqual(len(result['draftSpec']['name']), 120)
+        title = result['draftSpec']['milestones'][1]['title']
+        self.assertLessEqual(len(title), 120)
+        self.assertTrue(title.startswith('Stages 3 through 6: front-end development') and title.endswith('\u2026'))
+        self.assertEqual(result['separateTerms'], [])
+
+    def test_percentage_expression_may_restate_a_listed_percentage(self):
+        total = '20000000000000000'
+        source = 'The split is 25%, 25% and 50% of 0.02 ETH, in that order.'
+        self.assertEqual(value_of('25% of 0.02 ETH', [source], set(), total), '5000000000000000')
+        self.assertEqual(value_of('50% of 0.02 ETH', [source], set(), total), '10000000000000000')
+        self.assertIsNone(value_of('25% of 0.03 ETH', [source], set(), total))
+        self.assertIsNone(value_of('30% of 0.02 ETH', [source], set(), total))
 
     def test_changes_conflicts_new_identity_and_unverified_quotes_disable_retention(self):
         for mode in ('price_change', 'conflict', 'rename', 'reorder', 'bad_quote'):

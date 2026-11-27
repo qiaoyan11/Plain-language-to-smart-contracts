@@ -97,7 +97,7 @@ export function DraftSummary({
         />
         <Row
           stacked
-          label="Developer · receives payments"
+          label="Provider · receives payments"
           value={spec.developerWallet || "Address needed"}
           mono
         />

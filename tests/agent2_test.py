@@ -313,6 +313,17 @@ class LocalModelServerTests(unittest.TestCase):
         self.assertEqual(result['metadata']['provider'], 'openai-compatible:127.0.0.1')
         self.assertEqual(result['metadata']['returnedModel'], 'escrow-coder-ft')
 
+    def test_hosted_request_leaves_room_for_reasoning_and_a_multi_milestone_contract(self):
+        seen = []
+        def handler(request):
+            seen.append(json.loads(request.content))
+            return httpx.Response(200, json={'id': 'r1', 'model': DEFAULT_MODEL, 'status': 'completed', 'output': [
+                {'type': 'message', 'content': [{'type': 'output_text', 'text': json.dumps({'source': GOOD_SOURCE})}]}]})
+        result = self.call(handler, model=DEFAULT_MODEL, env={'OPENAI_API_KEY': 'test-key'})
+        # A realistic three-milestone agreement used 8,192 tokens and was cut off before any source.
+        self.assertGreaterEqual(seen[0]['max_output_tokens'], 16384)
+        self.assertEqual(result['metadata']['maxOutputTokens'], seen[0]['max_output_tokens'])
+
     def test_local_output_uses_the_same_validation_as_the_hosted_api(self):
         for content, finish in (('not json', 'stop'), (json.dumps({'source': GOOD_SOURCE}), 'length')):
             with self.subTest(finish=finish):

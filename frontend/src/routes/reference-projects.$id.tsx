@@ -139,8 +139,8 @@ export function ReferenceProject({ id }: { id: string }) {
                 return (
                   <>
                     <p>Amount: <strong>{formatWei(m.amountWei)} test ETH</strong></p>
-                    <p className="break-all">Recipient: the developer at {project.developerWallet}</p>
-                    <p>{`Confirming accepts milestone #${m.id} "${m.title}" and releases its payment to the developer.`}</p>
+                    <p className="break-all">Recipient: the provider at {project.developerWallet}</p>
+                    <p>{`Confirming accepts milestone #${m.id} "${m.title}" and releases its payment to the provider.`}</p>
                   </>
                 );
               })()}

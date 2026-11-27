@@ -52,6 +52,14 @@ the provider before any delivery ("half now", "an advance", "a kickoff payment")
 should be milestone 1, released when the client approves the start of work, and leave that amount null until answered.
 Flag refunds, deadlines, cancellation, automatic acceptance, split awards, alternative approvers,
 extra currencies and any other unrepresentable payment requirement.
+Only payment conditions belong in unsupportedTerms: clauses that change when, whether, how much or to whom
+money moves. Do not flag ordinary legal clauses that move no money (scope, intellectual property,
+confidentiality, warranties, liability caps, governing law, notices, the term of the agreement, or
+termination without a refund or payout); they stay in the parties' written contract and need no question.
+When the user says that the remaining or listed clauses stay in a separate written or signed agreement,
+copy that exact sentence into separateTerms and add a withdrawals entry, quoting that sentence, for every
+outstanding unsupported term it covers. Never flag the user's own statement about the separate agreement,
+or who keeps it, as an unsupported term.
 Read negation and context in every source language: "no refund or timeout is required" excludes those
 requirements; it is not a request for unsupported features. A hypothetical question
 about removing an existing term is not consent to remove it. Do not assume a separate agreement.

@@ -25,8 +25,11 @@ function milestoneLabel(spec, id) {
   return `milestone ${id}${milestone?.title ? ` (\u201c${milestone.title}\u201d)` : ''}`;
 }
 function primaryQuestion(result) {
-  if (result.unsupportedTerms.length) return { field: 'unsupportedTerms.0',
-    question: `The contract can't enforce "${result.unsupportedTerms[0]}" as written. How should it be handled? You can turn it into something the contract supports (for example, a milestone the client approves), agree to keep it in a separate written agreement, or leave this draft open.` };
+  if (result.unsupportedTerms.length) {
+    const more = result.unsupportedTerms.length - 1;
+    return { field: 'unsupportedTerms.0',
+      question: `The contract can't enforce "${result.unsupportedTerms[0]}"${more ? ` or ${more} other term${more === 1 ? '' : 's'} listed in the summary` : ''} as written. How should ${more ? 'they' : 'it'} be handled? You can turn a term into something the contract supports (for example, a milestone the client approves), keep it in your separate written agreement, or leave this draft open. One reply can cover all of them.` };
+  }
   const q = [...result.questions].sort((a, b) => questionPriority(a.field) - questionPriority(b.field)
     || a.field.localeCompare(b.field, 'en', { numeric: true }))[0];
   if (!q) return null;
@@ -67,7 +70,9 @@ function conversationTurn(previous, result, revision, previousTurn) {
       const equal = after.milestones.every(m => m.amountWei === after.milestones[0].amountWei);
       const matchesTotal = after.totalAmountWei && after.milestones.reduce((sum, m) => sum + BigInt(m.amountWei), 0n) === BigInt(after.totalAmountWei);
       lines.push(equal && matchesTotal
-        ? `${after.milestones.length} milestones at ${eth(after.milestones[0].amountWei)} each, for a total of ${eth(after.totalAmountWei)}.`
+        ? (after.milestones.length === 1
+          ? `1 milestone of ${eth(after.milestones[0].amountWei)}, the full total.`
+          : `${after.milestones.length} milestones at ${eth(after.milestones[0].amountWei)} each, for a total of ${eth(after.totalAmountWei)}.`)
         : `The milestone payments are ${after.milestones.map(m => eth(m.amountWei)).join(', ')} in order.`);
     }
     else {
@@ -93,9 +98,11 @@ function conversationTurn(previous, result, revision, previousTurn) {
     else if (question.field === 'totalAmountWei')
       lines.push('The total payment is not yet resolved; reply with the agreed total followed by ETH, or say it is still undecided.');
   }
-  if (!lines.length) lines.push(question
-    ? 'The draft is unchanged. The question below still needs an answer before confirmation.'
-    : 'The draft is unchanged.');
+  if (!lines.length) lines.push(previousTurn?.question && previousTurn.question.field !== question?.field
+    ? 'Noted. That answers the previous question.'
+    : question
+      ? 'The draft is unchanged. The question below still needs an answer before confirmation.'
+      : 'The draft is unchanged.');
   if (result.status === 'readyForConfirmation') lines.push('The payment rules are complete. Review the summary before explicitly confirming.');
   else if (result.status === 'unsupported') lines.push('Some terms remain outside the current contract’s capabilities, so the draft cannot be confirmed yet.');
   return { revision, reply: lines.join(' '), question };

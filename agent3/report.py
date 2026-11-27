@@ -8,7 +8,7 @@ ACTIONS = ('deposit', 'acceptMilestone')
 TEXT = {
     'en': {
         'deposit_ok': 'Deposit confirmed. Current escrow balance: {balance} test ETH. Transaction {tx}, block {block}.',
-        'accept_ok': 'Milestone #{id} "{title}" is paid: {eth} test ETH was sent to the developer wallet {wallet}. '
+        'accept_ok': 'Milestone #{id} "{title}" is paid: {eth} test ETH was sent to the provider wallet {wallet}. '
                      'Transaction {tx}, block {block}.',
         'reverted': 'Transaction {tx} reverted. This attempt failed.',
         'no_receipt': 'No receipt is available yet. Check the transaction status before retrying.',

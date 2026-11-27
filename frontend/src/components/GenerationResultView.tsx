@@ -5,6 +5,14 @@ const labels = {
   staticAnalysis: "Static analysis",
   clauseTests: "Payment-rule tests",
 };
+/** "Started 2 minutes ago. " while a run is in progress; the page polls, so this stays current. */
+function elapsed(createdAt: string) {
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
+  if (!Number.isFinite(seconds)) return "";
+  if (seconds < 60) return "Started less than a minute ago. ";
+  const minutes = Math.floor(seconds / 60);
+  return `Started ${minutes} minute${minutes === 1 ? "" : "s"} ago. `;
+}
 /** "24/24" from the clause-test report, when the validator states it. */
 function clauseSummary(
   report: NonNullable<NonNullable<GenerationRun["result"]>["validationReport"]>,
@@ -49,6 +57,13 @@ export function GenerationResultView({
     run.status === "completed" &&
     result?.status === "validated" &&
     report?.status === "passed";
+  // The model stopped before returning any source, so there was nothing to check.
+  const noContract =
+    !obsolete &&
+    run.status === "completed" &&
+    result?.status === "failed" &&
+    !result.sourceBundle &&
+    result.attempts.length === 0;
   const title = obsolete
     ? "These results are out of date"
     : run.status === "running"
@@ -57,16 +72,18 @@ export function GenerationResultView({
         ? "Generation could not complete"
         : passed
           ? "Automatic checks passed"
-          : result?.status === "toolError"
-            ? "A tool could not finish"
-            : "Contract checks did not pass";
+          : noContract
+            ? "The AI model did not return a contract"
+            : result?.status === "toolError"
+              ? "A tool could not finish"
+              : "Contract checks did not pass";
   return (
     <section aria-live="polite" className="mt-8 border-t border-border pt-7">
       <h2>{title}</h2>
       {run.status === "running" && (
         <p className="mt-3 text-sm text-muted-foreground">
-          This usually takes a few minutes. You can refresh or leave this page without restarting
-          it; results appear here when the checks finish.
+          {elapsed(run.createdAt)}This usually takes a few minutes. You can refresh or leave this
+          page without restarting it; results appear here when the checks finish.
         </p>
       )}
       {obsolete && (
@@ -76,6 +93,19 @@ export function GenerationResultView({
         </p>
       )}
       {run.error && <p className="mt-3 text-sm text-destructive">{run.error.message}</p>}
+      {noContract && (
+        <p className="mt-3 text-sm leading-relaxed">
+          The model's reply ended before it contained a complete contract, so no checks ran and
+          nothing can be deployed. This is usually temporary. Start another generation to try
+          again; your confirmed rules stay the same.
+        </p>
+      )}
+      {!obsolete && !noContract && run.status === "completed" && !passed && report && (
+        <p className="mt-3 text-sm leading-relaxed">
+          Accord never deploys a contract that fails a check. The failing checks are listed below;
+          start another generation to try again with the same confirmed rules.
+        </p>
+      )}
       {passed && report && (
         <p className="mt-3 text-sm leading-relaxed">
           {`The contract compiles, static analysis found no high- or medium-risk issues${clauseSummary(report) ? `, and ${clauseSummary(report)} payment-rule tests passed` : ", and the payment-rule tests passed"}. Open the technical details to see each check, the repair attempts and the Solidity source.`}
@@ -107,7 +137,7 @@ export function GenerationResultView({
           </div>
         </Technical>
       )}
-      {!obsolete && result && (
+      {!obsolete && result && result.attempts.length > 0 && (
         <details className="mt-5">
           <summary>Recorded attempts ({result.attempts.length})</summary>
           <p className="my-3 text-xs text-muted-foreground">

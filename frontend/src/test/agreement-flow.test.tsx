@@ -251,7 +251,7 @@ describe("server-owned agreement conversation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use local test accounts" }));
     await waitFor(() => expect(api.sendDraftMessage).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.sendDraftMessage).mock.calls[0]![1]).toBe(
-      `For this local test, use ${context.clientWallet} as the client wallet and ${context.developerWallet} as the developer wallet.`,
+      `For this local test, use ${context.clientWallet} as the client wallet and ${context.developerWallet} as the provider wallet.`,
     );
   });
   it("loads older sessions without inventing assistant replies for previous messages", async () => {
@@ -329,7 +329,7 @@ describe("server-owned agreement conversation", () => {
     fireEvent.click(await screen.findByText("Use local test accounts"));
     await waitFor(() => expect(api.sendDraftMessage).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.sendDraftMessage).mock.calls[0]![1]).toBe(
-      `For this local test, use ${context.clientWallet} as the client wallet and ${context.developerWallet} as the developer wallet.`,
+      `For this local test, use ${context.clientWallet} as the client wallet and ${context.developerWallet} as the provider wallet.`,
     );
   });
   it.each(["needsClarification", "unsupported"] as const)(
@@ -511,11 +511,25 @@ describe("honest generation results", () => {
     error: null,
     generatedDeploymentEnabled: false,
   };
+  const checked: GenerationRun = {
+    ...run,
+    result: {
+      ...run.result!,
+      attempts: [{ attempt: 0, sourceHash: "h", reportId: "rep", feedbackUsed: [] }],
+    },
+  };
   it("completed transport with failed checks is not displayed as a pass", () => {
-    render(<GenerationResultView run={run} currentVersion={1} />);
+    render(<GenerationResultView run={checked} currentVersion={1} />);
     expect(screen.getByText("Contract checks did not pass")).toBeTruthy();
     expect(screen.queryByText("Automatic checks passed")).toBeNull();
     expect(screen.queryByRole("button", { name: /deploy/i })).toBeNull();
+  });
+  it("explains a model reply without a contract instead of reporting failed checks", () => {
+    render(<GenerationResultView run={run} currentVersion={1} />);
+    expect(screen.getByText("The AI model did not return a contract")).toBeTruthy();
+    expect(screen.getByText(/no checks ran and nothing can be deployed/)).toBeTruthy();
+    expect(screen.queryByText("Contract checks did not pass")).toBeNull();
+    expect(screen.queryByText(/Recorded attempts/)).toBeNull();
   });
   it("discards results belonging to an older agreement version", () => {
     render(<GenerationResultView run={run} currentVersion={2} />);

@@ -65,7 +65,7 @@ export function AgreementEditor({
             />
           </label>
           <label className="block">
-            <span className="field-label">Developer wallet · receives payments</span>
+            <span className="field-label">Provider wallet · receives payments</span>
             <input
               className="field font-mono"
               value={developer}

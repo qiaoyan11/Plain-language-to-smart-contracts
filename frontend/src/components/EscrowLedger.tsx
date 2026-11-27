@@ -94,7 +94,7 @@ export function MilestoneLedger({
                 {milestoneStatus(project, m)}
               </p>
               <p className="mt-1 break-all text-xs text-muted-foreground">
-                {m.paid ? "Paid to" : "Pays"} the developer at {project.developerWallet}
+                {m.paid ? "Paid to" : "Pays"} the provider at {project.developerWallet}
               </p>
               {receipt && <Receipt tx={receipt} />}
             </li>

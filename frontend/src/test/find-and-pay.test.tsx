@@ -152,10 +152,10 @@ describe("milestone payments", () => {
     expect(first).toHaveTextContent("1. Homepage");
     expect(first).toHaveTextContent("0.003 test ETH");
     expect(first).toHaveTextContent("Paid");
-    expect(first).toHaveTextContent(`Paid to the developer at ${developer}`);
+    expect(first).toHaveTextContent(`Paid to the provider at ${developer}`);
     expect(first).toHaveTextContent("Receipt · block 3 · 0xpaid1");
     expect(second).toHaveTextContent("Next: waiting for the client's approval");
-    expect(second).toHaveTextContent(`Pays the developer at ${developer}`);
+    expect(second).toHaveTextContent(`Pays the provider at ${developer}`);
     expect(second).not.toHaveTextContent("Receipt");
     expect(screen.getByText("1 of 2 milestones paid")).toBeVisible();
   });
@@ -220,7 +220,7 @@ describe("milestone payments", () => {
     withQuery(<ReferenceProject id="p" />);
     fireEvent.click(await screen.findByRole("button", { name: "Approve milestone 2 payment" }));
     expect(screen.getByLabelText("Payment confirmation details")).toHaveTextContent(
-      `Recipient: the developer at ${developer}`,
+      `Recipient: the provider at ${developer}`,
     );
     read.mockResolvedValue(paid);
     fireEvent.click(screen.getByRole("button", { name: "Confirm acceptance and payment" }));

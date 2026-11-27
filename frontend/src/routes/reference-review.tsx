@@ -52,7 +52,7 @@ function ConfirmPage() {
         <div className="panel mt-8">
           <Row label="Project name" value={draft.name} />
           <Row label="Client wallet" value={draft.clientWallet} mono />
-          <Row label="Developer wallet" value={draft.developerWallet} mono />
+          <Row label="Provider wallet" value={draft.developerWallet} mono />
           <Row label="Total" value={`${formatWei(totalWei(draft.milestones))} test ETH`} />
           {draft.milestones.map((s, i) => (
             <Row key={i} label={`Milestone ${i + 1} · ${s.title}`} value={`${formatWei(s.amountWei)} test ETH`} />

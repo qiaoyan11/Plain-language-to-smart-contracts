@@ -126,7 +126,7 @@ export function OperationAssistant({
             </strong>
           </p>
           <p className="break-all">
-            {plan.intent?.action === "deposit" ? "Into the escrow contract" : "Recipient (developer)"}:{" "}
+            {plan.intent?.action === "deposit" ? "Into the escrow contract" : "Recipient (provider)"}:{" "}
             {plan.payment.to}
           </p>
           {plan.intent?.action === "acceptMilestone" ? (
