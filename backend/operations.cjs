@@ -21,9 +21,9 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
       to: deposit ? snapshot.contractAddress : snapshot.developerWallet,
       milestoneTitle: deposit ? null : milestone.title };
   }
-  function savePlan(p, result, language, snapshot) {
+  function savePlan(p, result, snapshot) {
     const id = randomUUID();
-    plans.set(p.id, { id, intent: copy(result.intent), used: false, createdAt: now(), language });
+    plans.set(p.id, { id, intent: copy(result.intent), used: false, createdAt: now() });
     return { planId: id, status: result.status, question: result.question, summary: result.summary,
       intent: copy(result.intent), payment: paymentDetails(result.intent, snapshot) };
   }
@@ -46,7 +46,7 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
       if (error?.message === 'PROJECT_BUSY') fail(409, 'Another request is running for this project; retry after it completes');
       fail(502, 'Agent 3 could not answer. No transaction has been sent.');
     }
-    return savePlan(p, result, /[一-鿿]/.test(body.message) ? 'zh' : 'en', snapshot);
+    return savePlan(p, result, snapshot);
   }
   // Buttons select a known operation. Amounts, recipients and contract identity always come from Node.
   function planKnown(p, body, deployment, snapshot) {
@@ -58,13 +58,11 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
       action: body.action, milestoneId: body.action === 'deposit' ? null : body.milestoneId };
     recheck(p, { intent }, deployment.chainId, snapshot);
     const payment = paymentDetails(intent, snapshot);
-    const chinese = /[一-鿿]/.test(p.name + snapshot.milestones.map(m => m.title).join(' '));
     const amount = formatEther(payment.amountWei);
     const summary = intent.action === 'deposit'
-      ? (chinese ? `确认存入 ${amount} 测试 ETH 到托管合约。尚未发送交易。` : `Review a deposit of ${amount} test ETH into escrow. No transaction has been sent.`)
-      : (chinese ? `确认已验收第 ${intent.milestoneId} 阶段「${payment.milestoneTitle}」，并支付 ${amount} 测试 ETH。尚未发送交易。`
-        : `Confirm acceptance of milestone #${intent.milestoneId} "${payment.milestoneTitle}" and payment of ${amount} test ETH. No transaction has been sent.`);
-    return savePlan(p, { status: 'readyForConfirmation', question: null, summary, intent }, chinese ? 'zh' : 'en', snapshot);
+      ? `Review a deposit of ${amount} test ETH into escrow. No transaction has been sent.`
+      : `Confirm acceptance of milestone #${intent.milestoneId} "${payment.milestoneTitle}" and payment of ${amount} test ETH. No transaction has been sent.`;
+    return savePlan(p, { status: 'readyForConfirmation', question: null, summary, intent }, snapshot);
   }
   // Returns the stored plan for one execution. Call only when the signer is free.
   function take(p, planId, body) {
@@ -89,7 +87,7 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
   }
   async function report(p, stored, receipt, snapshot) {
     const request = { interfaceVersion: 1, requestId: randomUUID(), operation: 'reportAction',
-      payload: { projectId: p.id, intent: copy(stored.intent), receipt, snapshot, language: stored.language } };
+      payload: { projectId: p.id, intent: copy(stored.intent), receipt, snapshot, language: 'en' } };
     try { return await ask(request, REPORT_TIMEOUT_MS); }
     catch {
       const failed = receipt?.status === 0 && receiptOutcome(request.payload) === 'failed';

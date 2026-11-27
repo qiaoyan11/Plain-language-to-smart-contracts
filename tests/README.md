@@ -1,5 +1,7 @@
 # Development and integration tests
 
+Write test scenarios, example agreements, model requests and expected product messages in English. Keep exact amounts and wallet addresses in assertions. Unicode parsing tests can exercise international punctuation or currency notation without changing the language of the scenario.
+
 | Command | Coverage |
 | --- | --- |
 | `npm test` | Reference contracts on the local EVM: permissions, exact amounts, ordering, duplicates and recipient failures |

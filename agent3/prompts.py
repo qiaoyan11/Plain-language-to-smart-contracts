@@ -13,7 +13,7 @@ Choose exactly one kind:
 
 milestoneId: set it only when the user names a milestone by number, by title, or as "next". "Next" means the lowest-numbered unpaid milestone in the list. Otherwise use null. Use only ids from the list.
 
-language: "zh" if the message is mainly Chinese, otherwise "en".
+Classify messages in any language. Always return language: "en"; all user-facing questions, plans, and reports are in English.
 
 Return only the JSON object required by the schema."""
 

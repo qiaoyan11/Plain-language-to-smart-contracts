@@ -116,11 +116,9 @@ export function DetailPage({ id }: { id: string }) {
     );
   const { project, context, run } = query.data;
   const spec = context.spec;
-  const chinese = /[一-鿿]/.test(spec.name + spec.milestones.map(m => m.title).join(" ") +
-    (origin.data?.messages.map(m => m.content).join(" ") ?? ""));
-  const currency = chinese ? "测试 ETH" : "test ETH";
-  const paidLabel = chinese ? "已付款" : "Paid";
-  const unpaidLabel = chinese ? "待付款" : "Unpaid";
+  const currency = "test ETH";
+  const paidLabel = "Paid";
+  const unpaidLabel = "Unpaid";
   const confirmation = context.confirmation;
   const source = currentValidatedSource(context, run);
   const deployment = context.deployment;
@@ -185,7 +183,7 @@ export function DetailPage({ id }: { id: string }) {
       </div>
       <p className="intro">
         {generated
-          ? (chinese ? "合约已部署到本地测试链。" : "Your generated contract is deployed on the local test chain.")
+          ? "Your generated contract is deployed on the local test chain."
           : reference
             ? "This project uses the handwritten reference contract."
             : hasDeployment
@@ -198,7 +196,7 @@ export function DetailPage({ id }: { id: string }) {
       </p>
       {context.draftOrigin ? (
         origin.data ? (
-          <DraftSource session={origin.data} language={chinese ? "zh" : "en"} />
+          <DraftSource session={origin.data} />
         ) : (
           <p className="mt-4 text-sm text-muted-foreground">
             {origin.error
@@ -247,7 +245,7 @@ export function DetailPage({ id }: { id: string }) {
         <>
           <div className="my-7">
             <Row
-              label={chinese ? "合同总额" : "Total"}
+              label="Total"
               value={`${formatWei(generated ? project.totalAmountWei : spec.totalAmountWei)} ${currency}`}
             />
             {(generated ? project.milestones : spec.milestones).map((m) => (
@@ -258,9 +256,9 @@ export function DetailPage({ id }: { id: string }) {
               />
             ))}
             <details className="mt-4">
-              <summary>{chinese ? "双方钱包地址" : "Participant addresses"}</summary>
-              <Row label={chinese ? "客户 · 验收付款" : "Client · approves payments"} value={spec.clientWallet} mono />
-              <Row label={chinese ? "服务方 · 收款" : "Developer · receives payments"} value={spec.developerWallet} mono />
+              <summary>Participant addresses</summary>
+              <Row label="Client · approves payments" value={spec.clientWallet} mono />
+              <Row label="Developer · receives payments" value={spec.developerWallet} mono />
             </details>
           </div>
           {reference && (
@@ -314,10 +312,10 @@ export function DetailPage({ id }: { id: string }) {
                 }
               >
                 {running
-                  ? (chinese ? "正在生成并检查…" : "Generating and checking…")
+                  ? "Generating and checking…"
                   : run
-                    ? (chinese ? "重新生成并检查" : "Start another generation")
-                    : (chinese ? "生成并检查合约" : "Generate & check contract")}
+                    ? "Start another generation"
+                    : "Generate & check contract"}
               </Button>
               {context.generationEnabled && (
                 <p className="mt-3 text-xs text-muted-foreground">
@@ -328,15 +326,15 @@ export function DetailPage({ id }: { id: string }) {
           )}
           {generated && (
             <section className="mt-8">
-              <h2>{chinese ? "本地托管合约" : "Local escrow"}</h2>
-              <Row label={chinese ? "合约地址" : "Contract address"} value={deployment.contractAddress} mono />
+              <h2>Local escrow</h2>
+              <Row label="Contract address" value={deployment.contractAddress} mono />
               <Row
-                label={chinese ? "托管余额" : "Escrow balance"}
+                label="Escrow balance"
                 value={`${formatWei(project.escrowBalanceWei)} ${currency}`}
               />
-              <Row label={chinese ? "存款状态" : "Deposit"} value={project.funded ? (chinese ? "已存入" : "Funded") : (chinese ? "待存入" : "Awaiting deposit")} />
+              <Row label="Deposit" value={project.funded ? "Funded" : "Awaiting deposit"} />
               <details className="mt-4">
-                <summary>{chinese ? "部署与交易记录" : "Deployment and transactions"}</summary>
+                <summary>Deployment and transactions</summary>
                 <Row label="Local chain ID" value={deployment.chainId} />
                 <Row label="Generation run" value={deployment.runId} mono />
                 <Row label="Source hash" value={deployment.sourceHash} mono />
@@ -356,7 +354,6 @@ export function DetailPage({ id }: { id: string }) {
                 onProject={updateProject}
                 quickActions
                 naturalLanguageEnabled={Boolean(context.operationsEnabled)}
-                language={chinese ? "zh" : "en"}
               />
             </section>
           )}
@@ -371,7 +368,7 @@ export function DetailPage({ id }: { id: string }) {
                   })
                 }
               >
-                {chinese ? "部署已验证合约到本机" : "Deploy generated contract locally"}
+                Deploy generated contract locally
               </Button>
               <p className="mt-3 text-xs text-muted-foreground">
                 Deploys this checked version with your confirmed payment rules on the local test

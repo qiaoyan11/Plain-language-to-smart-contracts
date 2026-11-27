@@ -58,7 +58,8 @@ def read_output(data):
     mid = output['milestoneId']
     if mid is not None and (isinstance(mid, bool) or not isinstance(mid, int) or mid < 1):
         raise ModelError('MODEL_FORMAT: milestoneId must be null or an integer >= 1.')
-    return {'kind': output['kind'], 'milestoneId': mid, 'language': output['language']}
+    # Accept the legacy classifier language values, but always render the operation in English.
+    return {'kind': output['kind'], 'milestoneId': mid, 'language': 'en'}
 
 
 def call_model(system, user, model=None):

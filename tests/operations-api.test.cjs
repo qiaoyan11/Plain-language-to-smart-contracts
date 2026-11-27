@@ -64,7 +64,7 @@ test('deposit then acceptance: Node executes the stored intent and reports from 
   const w = worker(() => next);
   await withAPI({ enabled: true, runner: w.runner }, async ({ act, plan, confirm }) => {
     await act('deploy');
-    const planned = await plan('把钱存进去');
+    const planned = await plan('Deposit the project funds into escrow.');
     assert.equal(planned.status, 200);
     assert.equal(planned.body.intent.action, 'deposit');
     const sent = w.seen[0].payload;
@@ -73,7 +73,7 @@ test('deposit then acceptance: Node executes the stored intent and reports from 
     const done = await confirm(planned.body.planId);
     assert.equal(done.status, 200);
     assert.equal(done.body.report.outcome, 'confirmed');
-    assert.match(done.body.report.summary, /存款已确认/);
+    assert.match(done.body.report.summary, /Deposit confirmed/);
     assert.equal(done.body.project.funded, true);
     assert.equal((await confirm(planned.body.planId)).status, 409); // single use
     next = { action: 'acceptMilestone', milestoneId: 1 };
@@ -85,6 +85,34 @@ test('deposit then acceptance: Node executes the stored intent and reports from 
     assert.equal(paid.body.project.escrowBalanceWei, '7000000000000000');
     assert.deepEqual(paid.body.project.transactions.map(t => t.action), ['deploy', 'deposit', 'acceptMilestone']);
   });
+});
+
+test('Unicode requests keep their original text while receipt reports remain English', async () => {
+  const w = worker(() => ({ action: 'deposit' }));
+  await withAPI({ enabled: true, runner: w.runner }, async ({ act, plan, confirm }) => {
+    await act('deploy');
+    const message = '\u628a\u94b1\u5b58\u8fdb\u53bb';
+    const planned = await plan(message);
+    assert.equal(w.seen[0].payload.message, message);
+    const done = await confirm(planned.body.planId);
+    assert.equal(done.body.report.outcome, 'confirmed');
+    assert.match(done.body.report.summary, /^Deposit confirmed\./);
+    assert.equal(w.seen.find(request => request.operation === 'reportAction').payload.language, 'en');
+  });
+});
+
+test('known payment summaries stay English and preserve original milestone names', () => {
+  const { payload } = structuredClone(require('../shared/examples/planAction.request.json'));
+  const project = { ...payload.snapshot, name: '\u7f51\u7ad9' };
+  const operations = createOperations({ enabled: false });
+  const deposit = operations.planKnown(project, { action: 'deposit' }, payload.deployment, payload.snapshot);
+  assert.match(deposit.summary, /^Review a deposit of 0.01 test ETH/);
+  payload.snapshot.funded = true;
+  payload.snapshot.milestones[0].title = '\u9996\u9875';
+  const payment = operations.planKnown(project, { action: 'acceptMilestone', milestoneId: 1 }, payload.deployment, payload.snapshot);
+  assert.match(payment.summary, /^Confirm acceptance of milestone #1/);
+  assert.ok(payment.summary.includes('"' + payload.snapshot.milestones[0].title + '"'));
+  assert.match(payment.summary, /No transaction has been sent\.$/);
 });
 
 test('payment buttons use trusted amounts and recipients without a planning model or Agent 3 live mode', async () => {

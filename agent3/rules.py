@@ -1,5 +1,4 @@
 """Pure decision rules: a parsed request plus the project state give a PlanResult."""
-import re
 from decimal import Context, Decimal
 
 TEXT = {
@@ -26,39 +25,13 @@ TEXT = {
         'too_long': 'The message is too long. Please shorten it and try again. {done}',
         'bad_ids': 'The project data is not in the expected form, so the request cannot be handled. {done}',
     },
-    'zh': {
-        'done': '尚未发送任何交易。',
-        'mismatch': '项目记录与已部署的合约地址不一致。{done}',
-        'unsupported': '暂不支持此请求。你可以查询托管状态、存入资金或验收里程碑。{done}',
-        'unclear_summary': '请求不够明确，无法执行。{done}',
-        'unclear_question': '你想做什么：查询托管状态、存入资金，还是验收里程碑？',
-        'query': '托管余额：{balance} ETH。已注资：{funded}。里程碑：{items}。{done}',
-        'query_item': '#{id} {title}，{eth} ETH，{state}',
-        'yes': '是', 'no': '否', 'paid': '已支付', 'unpaid': '未支付',
-        'deposit': '向托管合约存入 {total} ETH。{done}',
-        'already_funded': '托管合约已注资，不能重复存入。{done}',
-        'all_paid': '所有里程碑均已支付。{done}',
-        'ask_id_summary': '未指定要验收的里程碑。{done}',
-        'ask_id': '你要验收哪个里程碑？下一个未支付的里程碑是 #{id}「{title}」。',
-        'unknown_id': '本项目中不存在里程碑 #{id}。{done}',
-        'unfunded': '托管合约尚未注资，无法验收里程碑。{done}',
-        'is_paid': '里程碑 #{id} 已支付。{done}',
-        'out_of_order': '里程碑必须按顺序验收。下一个未支付的里程碑是 #{next_id}。{done}',
-        'accept': '验收里程碑 #{id}「{title}」，并向开发者钱包 {wallet} 支付 {eth} ETH。{done}',
-        'model_error': '由于服务错误，无法理解该请求。请重试。{done}',
-        'too_long': '消息过长，请缩短后重试。{done}',
-        'bad_ids': '项目数据格式不符合预期，无法处理该请求。{done}',
-    },
 }
 
 
 def _t(language, key, **kw):
-    table = TEXT.get(language, TEXT['en'])
+    # Language remains an accepted argument for existing callers; UI copy is always English.
+    table = TEXT['en']
     return table[key].format(done=table['done'], **kw)
-
-
-def guess_language(message):
-    return 'zh' if re.search('[一-鿿]', message) else 'en'
 
 
 def format_eth(wei):
@@ -92,7 +65,7 @@ def _ready(payload, action, milestone_id, summary):
 
 
 def decide(parsed, payload):
-    lang = parsed['language']
+    lang = 'en'
     kind = parsed['kind']
     mid = parsed['milestoneId']
     snap = payload['snapshot']

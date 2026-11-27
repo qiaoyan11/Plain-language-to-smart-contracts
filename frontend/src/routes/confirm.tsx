@@ -7,7 +7,6 @@ import { PaymentRules, ScopeAcknowledgement } from "@/components/AgreementNotes"
 import { useActiveDraft } from "@/hooks/use-active-draft";
 import { api } from "@/api/client";
 import { Button } from "@/components/ui/button";
-import { isChineseDraft } from "@/lib/draft-language";
 
 export const Route = createFileRoute("/confirm")({
   head: () => ({ meta: [{ title: "Review your agreement · Accord" }] }),
@@ -22,8 +21,6 @@ export function ConfirmPage() {
   const [error, setError] = useState("");
   const active = useRef(false);
   const ready = draftReady(session) && !query.isFetching && !query.isError;
-  const zh = isChineseDraft(session?.messages ?? []);
-  const language = zh ? "zh" : "en";
   async function confirm() {
     if (
       active.current ||
@@ -53,16 +50,16 @@ export function ConfirmPage() {
     }
   }
   return (
-    <Shell step={zh ? "核对并确认" : "Review & confirm"}>
-      <h1>{zh ? "核对付款约定" : "Review your agreement"}</h1>
+    <Shell step="Review & confirm">
+      <h1>Review your agreement</h1>
       <p className="intro">
-        {zh ? "请核对双方钱包和每期金额。确认后会保存这一版约定，供生成合约使用。"
-          : "Check the payment amounts and both wallets. Confirming saves this version for contract generation."}
+        Check the payment amounts and both wallets. Confirming saves this version for contract
+        generation.
       </p>
       {session ? (
         <>
-          <DraftSummary result={session.result} language={language} />
-          <DraftSource session={session} includeTerms={false} language={language} />
+          <DraftSummary result={session.result} />
+          <DraftSource session={session} includeTerms={false} />
           {session.confirmedProjectId ? (
             <Button
               className="mt-5"
@@ -70,13 +67,12 @@ export function ConfirmPage() {
                 nav({ to: "/projects/$id", params: { id: session.confirmedProjectId! } })
               }
             >
-              {zh ? "打开已确认的项目" : "Open confirmed project"}
+              Open confirmed project
             </Button>
           ) : (
             <>
-              <PaymentRules spec={ready ? session.result?.draftSpec : undefined} zh={zh} />
+              <PaymentRules spec={ready ? session.result?.draftSpec : undefined} />
               <ScopeAcknowledgement
-                zh={zh}
                 checked={ackRevision === session.revision}
                 onChange={(checked) => setAckRevision(checked ? session.revision : null)}
               />
@@ -85,11 +81,11 @@ export function ConfirmPage() {
                 disabled={busy || !ready || ackRevision !== session.revision}
                 onClick={() => void confirm()}
               >
-                {busy ? (zh ? "正在确认…" : "Confirming…") : (zh ? "确认付款约定" : "Confirm agreement")}
+                {busy ? "Confirming…" : "Confirm agreement"}
               </Button>
               {!draftReady(session) && (
                 <p className="mt-3 text-sm">
-                  {zh ? "请先回到对话，补齐待确认的条款。" : "Return to the conversation to resolve the remaining terms before confirming."}
+                  Return to the conversation to resolve the remaining terms before confirming.
                 </p>
               )}
             </>
@@ -106,7 +102,7 @@ export function ConfirmPage() {
         </p>
       )}
       <Button variant="link" className="mt-4 px-0" disabled={busy} onClick={() => nav({ to: "/" })}>
-        {zh ? "返回对话" : "Back to conversation"}
+        Back to conversation
       </Button>
     </Shell>
   );

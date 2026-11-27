@@ -35,7 +35,7 @@ The model returns three fields:
 | --- | --- |
 | `kind` | `query`, `deposit`, `acceptMilestone`, `unsupported`, `unclear` |
 | `milestoneId` | An integer (1 or more) or `null` |
-| `language` | `zh` or `en` |
+| `language` | `en`; legacy `zh` is accepted and normalized to `en` |
 
 The function `decide` applies these rules in order. The first rule that matches wins.
 
@@ -63,7 +63,7 @@ The function `decide` applies these rules in order. The first rule that matches 
 - A message over 2000 characters is refused.
 - Any model error is refused with a safe message.
 
-The replies are in Chinese or English, as the client wrote.
+The replies are always in English. Requests may use other languages, and original milestone names are preserved.
 
 ### Report after a transaction
 
@@ -125,6 +125,9 @@ Offline tests (no network):
 1. Run `npm run test:agent3`
 
 Evaluation with the real model (32 calls, costs money):
+
+The current set contains 32 English requests; cases `en-17` through `en-32` translate the earlier `zh-*` requests and retain their original IDs in `sourceCaseId`. The historical scores below describe the earlier bilingual sets, not a new measurement of this English set.
+All current plans, clarification questions and receipt reports use English, including when input text or a legacy `language` hint is not English; original milestone names remain unchanged.
 
 Prerequisite: `OPENAI_API_KEY` is set. `AGENT3_MODE` has no effect on the evaluation.
 

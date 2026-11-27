@@ -167,44 +167,45 @@ describe("server-owned agreement conversation", () => {
     expect(api.sendDraftMessage).not.toHaveBeenCalled();
     expect(api.createDraft).not.toHaveBeenCalled();
   });
-  it("keeps Chinese conversation labels and sends Chinese local-account messages after address-only replies", async () => {
+  it("keeps English prompts and local-account messages after address-only replies", async () => {
     const draft: DraftSession = {
       ...ready,
       revision: 2,
       messages: [
-        { role: "user", content: "请开发一个网站，总价 1 ETH。" },
+        { role: "user", content: "Build a website for a total of 1 ETH." },
         { role: "user", content: context.clientWallet },
       ],
       turns: [
         {
           revision: 1,
-          reply: "已记录网站交付和总金额 1 ETH。",
-          question: { field: "clientWallet", question: "客户的钱包地址是什么？" },
+          reply: "The website delivery and total of 1 ETH are recorded.",
+          question: { field: "clientWallet", question: "What is the client wallet address?" },
         },
         {
           revision: 2,
-          reply: "已更新客户钱包。",
-          question: { field: "developerWallet", question: "服务方的钱包地址是什么？" },
+          reply: "The client wallet is updated.",
+          question: { field: "developerWallet", question: "What is the provider wallet address?" },
         },
       ],
       result: {
         ...ready.result!,
         status: "needsClarification",
-        questions: [{ field: "developerWallet", question: "服务方的钱包地址是什么？" }],
+        questions: [{ field: "developerWallet", question: "What is the provider wallet address?" }],
       },
     };
     api.setActiveDraftId(draft.id);
     vi.mocked(api.getDraft).mockResolvedValue(draft);
     openPage(<CreatePage />);
-    await screen.findByText("已更新客户钱包。");
-    expect(screen.getByText("付款摘要")).toBeTruthy();
-    expect(screen.getAllByText("服务方的钱包地址是什么？")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "核对协议" })).toBeDisabled();
+    await screen.findByText("The client wallet is updated.");
+    expect(screen.getByText("Build a website for a total of 1 ETH.")).toBeTruthy();
+    expect(screen.getByText("Payment summary")).toBeTruthy();
+    expect(screen.getAllByText("What is the provider wallet address?")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Review agreement" })).toBeDisabled();
     expect(api.sendDraftMessage).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "使用本机测试账户" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use local test accounts" }));
     await waitFor(() => expect(api.sendDraftMessage).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.sendDraftMessage).mock.calls[0]![1]).toBe(
-      `本次本地测试，请使用 ${context.clientWallet} 作为客户钱包，${context.developerWallet} 作为服务方钱包。`,
+      `For this local test, use ${context.clientWallet} as the client wallet and ${context.developerWallet} as the developer wallet.`,
     );
   });
   it("loads older sessions without inventing assistant replies for previous messages", async () => {

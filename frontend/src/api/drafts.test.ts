@@ -9,16 +9,16 @@ const context: DraftContext = {
   developerWallet: "0x2222222222222222222222222222222222222222",
 };
 const session: DraftSession = {
-  id: "draft/一 ?",
+  id: "draft/one ?",
   revision: 3,
   createdAt: "2026-11-26T00:00:00Z",
   updatedAt: "2026-11-26T00:01:00Z",
-  messages: [{ role: "user", content: "首页验收后付 30%。" }],
+  messages: [{ role: "user", content: "Pay 30% after accepting the homepage." }],
   result: {
     status: "needsClarification",
     draftSpec: {
       schemaVersion: 1,
-      projectId: "draft/一 ?",
+      projectId: "draft/one ?",
       specVersion: 3,
       name: "Website",
       clientWallet: context.clientWallet,
@@ -29,13 +29,13 @@ const session: DraftSession = {
       refundPolicy: "none",
       deadline: null,
     },
-    questions: [{ field: "totalAmountWei", question: "总价是多少？" }],
+    questions: [{ field: "totalAmountWei", question: "What is the total price?" }],
     unsupportedTerms: [],
-    separateTerms: ["双方另行保留保密约定。"],
+    separateTerms: ["Both parties keep a separate confidentiality agreement."],
   },
   busy: false,
   pendingMessage: {
-    content: "把总价改为 0.012 ETH。",
+    content: "Change the total price to 0.012 ETH.",
     requestKey: "pending-message-key",
     expectedRevision: 3,
   },
@@ -92,7 +92,8 @@ describe("server-owned drafting API", () => {
 
   it("sends exact user text, revision and caller-owned request key, including a retry after a lost response", async () => {
     const fetcher = mockFetch();
-    const message = "  首页需按双方确认的设计稿验收。\n第二阶段金额待议。  ";
+    const message =
+      "  Accept the homepage against the agreed design.\nThe second milestone amount is still open.  ";
     const key = "unchanged-request-key";
     fetcher.mockRejectedValueOnce(new Error("Connection lost"));
     await expect(api.sendDraftMessage(session.id, message, 3, key)).rejects.toThrow(

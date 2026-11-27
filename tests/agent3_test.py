@@ -132,9 +132,9 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(r['status'], 'readyForConfirmation')
         self.assertEqual(r['intent']['milestoneId'], 2)
 
-    def test_chinese_template(self):
+    def test_legacy_classifier_language_uses_english(self):
         r = self.run_rules('acceptMilestone', state(True), mid=1, lang='zh')
-        self.assertIn('尚未发送任何交易', r['summary'])
+        self.assertIn('No transaction has been sent', r['summary'])
 
     def test_unknown_language_uses_english(self):
         r = self.run_rules('acceptMilestone', state(True), mid=1, lang='fr')
@@ -145,6 +145,7 @@ class RulesTest(unittest.TestCase):
             for lang in ('en', 'zh'):
                 self.assert_blocked(rules.refusal(key, lang))
                 validate('PlanResult', rules.refusal(key, lang))
+                self.assertIn('No transaction has been sent', rules.refusal(key, lang)['summary'])
         validate('PlanResult', rules.clarify('en'))
         self.assertEqual(rules.clarify('zh')['status'], 'needsClarification')
 
@@ -170,9 +171,13 @@ class RulesTest(unittest.TestCase):
                 self.assert_blocked(r)
                 self.assertIsNone(r['intent'])
 
-    def test_guess_language(self):
-        self.assertEqual(rules.guess_language('付一下'), 'zh')
-        self.assertEqual(rules.guess_language('pay'), 'en')
+    def test_english_question_preserves_a_unicode_milestone_title(self):
+        payload = state(True)
+        title = '\u9996\u9875'
+        payload['snapshot']['milestones'][0]['title'] = title
+        result = self.run_rules('acceptMilestone', payload, lang='zh')
+        self.assertTrue(result['question'].startswith('Which milestone do you want to accept?'))
+        self.assertIn(title, result['question'])
 
 
 def body(text, **extra):
@@ -191,6 +196,7 @@ class ModelTest(unittest.TestCase):
     def test_read_output_null_id(self):
         text = '{"kind":"query","milestoneId":null,"language":"zh"}'
         self.assertIsNone(read_output(body(text))['milestoneId'])
+        self.assertEqual(read_output(body(text))['language'], 'en')
 
     def test_read_output_rejects(self):
         def txt(**kw):
@@ -379,10 +385,20 @@ class ServiceTest(unittest.TestCase):
         self.assertIn('No transaction', result['summary'])
         self.assertEqual(self.stderr.getvalue().strip(), 'MODEL_NETWORK')
 
-    def test_model_error_chinese(self):
-        payload = request_with(message='付一下')['payload']
+    def test_model_error_for_unicode_input_is_english(self):
+        payload = request_with(message='\u4ed8\u4e00\u4e0b')['payload']
         result = service.plan_action(payload, fake(ModelError('MODEL_NETWORK')))
-        self.assertIn('尚未发送任何交易', result['summary'])
+        self.assertIn('No transaction has been sent', result['summary'])
+
+    def test_unicode_input_is_preserved_but_the_operation_is_english(self):
+        message = '\u9a8c\u6536\u91cc\u7a0b\u78911\u3002'
+        payload = request_with(state(funded=True), message=message)['payload']
+        call = fake(parsed('acceptMilestone', 1, lang='zh'))
+        result = service.plan_action(payload, call)
+        self.assertIn(message, call.calls[0])
+        self.assertEqual(payload['message'], message)
+        self.assertTrue(result['summary'].startswith('Accept milestone #1'))
+        self.assertIn('No transaction has been sent', result['summary'])
 
     def test_unexpected_call_error_blocked(self):
         result = service.plan_action(copy.deepcopy(PAYLOAD), fake(RuntimeError('boom')))
@@ -428,14 +444,24 @@ class EvaluateTest(unittest.TestCase):
             ready = expect['status'] == 'readyForConfirmation'
             self.assertEqual(expect['action'] is not None, ready)
             self.assertEqual(expect['milestoneId'] is not None, expect['action'] == 'acceptMilestone')
-        self.assertEqual(sum(c['id'].startswith('zh-') for c in cases), 16)
-        self.assertEqual(sum(c['id'].startswith('en-') for c in cases), 16)
+        self.assertEqual({c['id'] for c in cases}, {f'en-{i:02d}' for i in range(1, 33)})
+        self.assertTrue(all(c['message'].isascii() for c in cases))
+        self.assertEqual({c['sourceCaseId'] for c in cases if 'sourceCaseId' in c},
+                         {f'zh-{i:02d}' for i in range(1, 17)})
 
     def test_states_valid(self):
         for name, payload in evaluate.STATES.items():
             validate('PlanInput', payload)
         self.assertEqual(evaluate.STATES['paid1']['snapshot']['escrowBalanceWei'], '7000000000000000')
         self.assertEqual(len(evaluate.STATES['unfunded']['snapshot']['milestones']), 3)
+
+    def test_translated_evaluation_case_keeps_its_source_reference(self):
+        cases = json.loads((ROOT / 'agent3/cases/cases.json').read_text())
+        case = next(case for case in cases if case['id'] == 'en-17')
+        report = evaluate.run([case], fake(parsed('query')))
+        self.assertTrue(report['results'][0]['correct'])
+        self.assertEqual(report['results'][0]['sourceCaseId'], 'zh-01')
+        self.assertEqual(report['results'][0]['message'], case['message'])
 
     def test_run_counts_unsafe(self):
         cases = [
@@ -476,12 +502,24 @@ class ReportTest(unittest.TestCase):
         self.assertIn('0.01 ETH', r['summary'])
         self.assertIn('block 7', r['summary'])
 
-    def test_accept_confirmed_chinese(self):
+    def test_accept_confirmed_with_legacy_language_is_english(self):
         r = report_result(self.payload('paid1', 'acceptMilestone', 1, language='zh'))
         self.assertEqual(r['outcome'], 'confirmed')
-        self.assertIn('里程碑 #1', r['summary'])
+        self.assertIn('Milestone #1', r['summary'])
         self.assertIn('0.003 ETH', r['summary'])
         self.assertIn('0x7099…79C8', r['summary'])
+
+    def test_legacy_language_does_not_change_receipt_wording_or_outcome(self):
+        for state, action, mid, receipt in (
+                ('funded', 'deposit', None, 'deposit'),
+                ('paid1', 'acceptMilestone', 1, 'accept1'),
+                ('funded', 'acceptMilestone', 1, 'none'),
+                ('funded', 'acceptMilestone', 1, 'reverted'),
+                ('funded', 'acceptMilestone', 1, 'accept1')):
+            with self.subTest(state=state, action=action, receipt=receipt):
+                english = report_result(self.payload(state, action, mid, receipt, language='en'))
+                legacy = report_result(self.payload(state, action, mid, receipt, language='zh'))
+                self.assertEqual(legacy, english)
 
     def test_deposit_after_partial_payout_reports_the_observed_balance(self):
         r = report_result(self.payload('paid1', 'deposit'))

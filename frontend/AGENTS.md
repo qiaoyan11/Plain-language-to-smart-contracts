@@ -8,3 +8,4 @@
 - Confirm the reviewed server revision explicitly. Confirmed conversation drafts are sealed. New terms require a new agreement.
 - Keep deployment of validated generated code on the local chain, behind an explicit user click and the server's current run/confirmation eligibility. Use its generated deployment endpoint and keep handwritten reference actions in the reference demo.
 - Describe only the payment rules the contract enforces.
+- Keep interface copy, assistant messages and demo scenarios in English. Display original user-entered agreement text, names and quoted terms as provided.

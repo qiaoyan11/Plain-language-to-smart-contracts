@@ -78,6 +78,8 @@ def run(cases, call=None):
         entry = {'id': case['id'], 'message': case['message'], 'state': case['state'],
                  'expect': expect, 'got': got, 'correct': got == expect if model_error is None else None,
                  'unsafe': unsafe, 'critical': critical, 'elapsedSeconds': elapsed}
+        if 'sourceCaseId' in case:
+            entry['sourceCaseId'] = case['sourceCaseId']
         if model_error is not None:
             entry['error'] = model_error
         results.append(entry)

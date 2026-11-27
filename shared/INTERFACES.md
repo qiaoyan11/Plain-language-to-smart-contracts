@@ -73,7 +73,7 @@ Input: `{message, history, draftSpec}`. History entries contain `{role, content}
 - Questions: `{field, question}` entries; unsupportedTerms: strings explaining unhandled requirements.
 - `readyForConfirmation` requires complete, valid supported terms; it is not user confirmation.
 - `separateTerms` preserves exact source text from user messages for independent off-chain obligations. Agent 1 checks each entry against the user message history. The UI displays these terms and their source alongside the payment summary; they are not added to `ConfirmedSpec` or enforced by the generated contract.
-- Node presents the draft and unresolved items to the user. Users revise through messages and approve on a separate confirmation page; Agent 1 cannot confirm or deploy it.
+- Node presents the draft and unresolved items in English. Original user messages and quoted agreement terms retain their wording. Users revise through messages and approve on a separate confirmation page; Agent 1 cannot confirm or deploy it.
 
 The browser uses these Node endpoints, without submitting its own history or spec:
 
@@ -132,7 +132,7 @@ Input: `{message, projectId, deployment, snapshot}`. Deployment is trusted Node 
 
 Output: `{status, question, intent, summary}`. Status: `needsClarification`, `readyForConfirmation`, or `blocked`. Intent is null unless ready; then `{projectId, chainId, contractAddress, action, milestoneId}`. Allowed action values: `query`, `deposit`, `acceptMilestone`; milestoneId is null except for milestone acceptance. Query only returns read information. The model cannot choose arbitrary functions or addresses.
 
-After a confirmed `deposit` or `acceptMilestone`, Node sends the operation `reportAction` with `{projectId, intent, receipt, snapshot, language}`. Node checks the chain and contract before execution and records successful transactions before taking the snapshot. The receipt is `{hash, blockNumber, status}` or `null` when unavailable. The result is `{outcome, summary}` in the requested language (`zh` or `en`).
+After a confirmed `deposit` or `acceptMilestone`, Node sends `reportAction` with `{projectId, intent, receipt, snapshot, language}` and `language: "en"`. Node checks the chain and contract before execution and records successful transactions before taking the snapshot. The receipt is `{hash, blockNumber, status}` or `null` when unavailable. The result is `{outcome, summary}` with an English explanation.
 
 Python and Node independently check the receipt outcome. For `confirmed`, the intent and snapshot must identify the same project and contract. A status-1 receipt must match an entry in `snapshot.transactions` by hash, block number, status, action and milestone ID. The snapshot must show funding and, for acceptance, payment of the specified milestone. A status-0 receipt for this attempt yields `failed`. A missing receipt, mismatched project or contract, or incomplete evidence for a successful transaction yields `unverified`. Deposit summaries use the current `escrowBalanceWei`. See the [report request example](examples/reportAction.request.json).
 

@@ -2,7 +2,7 @@
 
 把日常语言描述的服务协议，变成可确认的付款规则和智能合约。例如：请开发者做一个网站，按交付阶段验收和付款。
 
-用户输入服务描述，由真实 Agent 1 追问缺失信息，网页同步显示付款规则、待解决事项和原文。规则完整后，用户进入独立确认页明确批准，再让 Agent 2 生成合约。编译、Slither 和条款测试通过后，点击 **Deploy generated contract locally** 部署该版本。接着可以用中英文让 Agent 3 查询余额、存款或验收。每次存款和付款都要点 **Confirm and send**。金额、收款方和支付状态来自本机 Hardhat 测试链。
+用户描述服务协议，Agent 1 每次用英文追问一项缺失信息。核对金额、钱包和余款可能锁定的提示后，用户确认规则，Agent 2 生成合约。编译、Slither 和条款测试通过后，用户可以部署到本机链，用付款按钮或 Agent 3 的自然语言入口操作。每笔存款和付款都需要核对并确认，结果取自链上回执。网页、助手回复和测试场景使用英文。
 
 在仓库根目录用 `AGENT1_MODE=live AGENT2_MODE=live AGENT3_MODE=live npm run backend` 启动后端，在 `frontend/` 用 `npm run dev` 启动网页。模型调用会产生 API 费用。页面通过 **Use local test accounts** 明确把本机测试账户加入对话。手写合约演示仍可从首页进入 `/reference-demo`。[完整对话演示](docs/AGENT1_DEMO.md) · [前端运行说明](frontend/README.md) · [模块验证记录](docs/WORKLOG.md)
 

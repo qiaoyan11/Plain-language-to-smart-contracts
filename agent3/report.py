@@ -15,13 +15,6 @@ TEXT = {
         'unverified': 'The project records and contract state do not verify this operation. '
                       'Check transaction {tx} before retrying.',
     },
-    'zh': {
-        'deposit_ok': '存款已确认。托管合约当前余额为 {balance} ETH。交易 {tx}，区块 {block}。',
-        'accept_ok': '里程碑 #{id}「{title}」已支付：已向开发者钱包 {wallet} 转入 {eth} ETH。交易 {tx}，区块 {block}。',
-        'reverted': '交易 {tx} 已回滚，本次操作失败。',
-        'no_receipt': '暂未取得交易回执。请先查询交易状态，再决定是否重试。',
-        'unverified': '根据项目交易记录和合约状态，暂时无法确认本次操作。请先核对交易 {tx}，再决定是否重试。',
-    },
 }
 
 
@@ -55,7 +48,8 @@ def report_result(payload):
     _check(payload)
     validate('ReportInput', payload)
     intent, receipt, snap = payload['intent'], payload['receipt'], payload['snapshot']
-    text = TEXT.get(payload['language'], TEXT['en'])
+    # Keep accepting legacy ReportInput.language values without changing output language.
+    text = TEXT['en']
     action, mid = intent['action'], intent['milestoneId']
     if receipt is None:
         return _result('unverified', text['no_receipt'])

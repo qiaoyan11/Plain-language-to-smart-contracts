@@ -23,13 +23,15 @@ class AgentTests(unittest.TestCase):
                 self.assertEqual(clarify(case['request']['payload'], lambda *_: case['exampleExtraction']),
                                  dict(case['expectedResult'], separateTerms=[]))
 
-    def test_implicit_revision_wording_in_chinese(self):
+    def test_unicode_revision_clause_keeps_source_quote_and_english_question(self):
         case = example('complete')
         payload = case['request']['payload']
-        payload['message'] += '乙方持续修改至甲方满意。'
+        clause = '\u4e59\u65b9\u6301\u7eed\u4fee\u6539\u81f3\u7532\u65b9\u6ee1\u610f\u3002'
+        payload['message'] += clause
         result = clarify(payload, lambda *_: case['exampleExtraction'])
         self.assertEqual(result['status'], 'needsClarification')
-        self.assertIn('验收', result['questions'][0]['question'])
+        self.assertIn('Which agreed mockup or test determines acceptance?', result['questions'][0]['question'])
+        self.assertIn('\u4fee\u6539\u81f3\u7532\u65b9\u6ee1\u610f', result['questions'][0]['question'])
 
     def test_revision_question_persists_until_replaced(self):
         case = example('revisions')
@@ -51,17 +53,17 @@ class AgentTests(unittest.TestCase):
         for quote in ('0.0000000000000000001 ETH', '99 ETH', '0 wei', '3%'):
             self.assertIsNone(value_of(quote, ['0.0000000000000000001 ETH, 199 ETH, 0 wei, 3%'], set(), '1'))
         self.assertEqual(value_of('0.010 test ETH', ['Escrow 0.010 test ETH'], set()), '10000000000000000')
-        self.assertEqual(value_of('30%', ['首页30%'], set(), '100'), '30')
+        self.assertEqual(value_of('30%', ['\u9996\u987530%'], set(), '100'), '30')
         self.assertEqual(value_of('0.012 ETH', ['0.012 ETH'], set()), '12000000000000000')
 
-    def test_chinese_test_eth_and_fullwidth_percent_keep_exact_evidence(self):
+    def test_unicode_amount_units_preserve_evidence_and_english_fallback_questions(self):
         case = example('complete')
         payload, terms = case['request']['payload'], case['exampleExtraction']
-        payload['message'] = ('网站项目，客户 ' + terms['clientWallet'] + '，服务方 ' + terms['developerWallet']
-                              + '。总额 0.01 测试 ETH，首页 30％，整站 70％，客户逐阶段验收。'
-                              + '不需要退款，没有自动放款或期限。')
-        terms['total'] = '0.01 测试 ETH'
-        terms['milestones'][0]['amount'], terms['milestones'][1]['amount'] = '30％', '70％'
+        payload['message'] = ('Website. Client ' + terms['clientWallet'] + ', provider ' + terms['developerWallet']
+                              + '. Total 0.01 \u6d4b\u8bd5 ETH, homepage 30\uff05, complete site 70\uff05.'
+                              + ' The client approves in order. No refund, automatic release or timeout is required.')
+        terms['total'] = '0.01 \u6d4b\u8bd5 ETH'
+        terms['milestones'][0]['amount'], terms['milestones'][1]['amount'] = '30\uff05', '70\uff05'
         result = clarify(payload, lambda *_: terms)
         self.assertEqual(result['status'], 'readyForConfirmation')
         self.assertEqual(result['draftSpec']['totalAmountWei'], '10000000000000000')
@@ -70,6 +72,10 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(result['unsupportedTerms'], [])
         self.assertIsNone(value_of('0.01 test ETH', [payload['message']], set()))
         self.assertIsNone(value_of('30%', [payload['message']], set(), '100'))
+        payload['message'] = payload['message'].replace(terms['developerWallet'], '[not supplied]')
+        terms['developerWallet'] = None
+        result = clarify(payload, lambda *_: terms)
+        self.assertEqual(result['questions'], [dict(field='developerWallet', question='What is the provider wallet address?')])
 
     def test_current_wallet_answers_clear_missing_fields_without_resolution_metadata(self):
         case = example('complete')
@@ -83,12 +89,12 @@ class AgentTests(unittest.TestCase):
         terms['developerWallet'] = None
         terms['questions'] = list(prior['questions'])
         payload = dict(message=client, draftSpec=prior['draftSpec'], history=[
-            dict(role='user', content='网站总额 1 ETH，首页 30%，整站 70%，还没有填写钱包。'),
+            dict(role='user', content='Website total 1 ETH, homepage 30%, complete site 70%. Wallets are not supplied.'),
             dict(role='assistant', content=json.dumps(prior))])
         result = clarify(payload, lambda *_: terms)
         self.assertEqual(result['status'], 'needsClarification')
         self.assertEqual([q['field'] for q in result['questions']], ['developerWallet'])
-        self.assertIn('服务方', result['questions'][0]['question'])
+        self.assertIn('provider', result['questions'][0]['question'])
         payload['history'].extend([dict(role='user', content=client),
                                    dict(role='assistant', content=json.dumps(result))])
         payload.update(message=provider, draftSpec=result['draftSpec'])
@@ -104,20 +110,20 @@ class AgentTests(unittest.TestCase):
         for milestone in prior['draftSpec']['milestones']:
             milestone['amountWei'] = None
         prior['questions'] = [dict(field=f'milestones.{n}.amountWei', question='What is the amount?') for n in (1, 2)]
-        payload = dict(message='30％', draftSpec=prior['draftSpec'], history=[
-            dict(role='user', content='网站总额 1 ETH，有首页和整站两个阶段，金额比例待定。'),
+        payload = dict(message='30\uff05', draftSpec=prior['draftSpec'], history=[
+            dict(role='user', content='Website total 1 ETH, with homepage and complete-site milestones. Allocation is unresolved.'),
             dict(role='assistant', content=json.dumps(prior))])
         terms['total'] = None
-        terms['milestones'][0]['amount'], terms['milestones'][1]['amount'] = '30％', None
+        terms['milestones'][0]['amount'], terms['milestones'][1]['amount'] = '30\uff05', None
         terms['questions'] = list(prior['questions'])
         result = clarify(payload, lambda *_: terms)
         self.assertEqual(result['status'], 'needsClarification')
         self.assertEqual([q['field'] for q in result['questions']], ['milestones.2.amountWei'])
         payload['history'].extend([dict(role='user', content=payload['message']),
                                    dict(role='assistant', content=json.dumps(result))])
-        payload.update(message='70％', draftSpec=result['draftSpec'])
+        payload.update(message='70\uff05', draftSpec=result['draftSpec'])
         terms['milestones'][0]['amount'] = result['draftSpec']['milestones'][0]['amountWei'] + ' wei'
-        terms['milestones'][1]['amount'] = '70％'
+        terms['milestones'][1]['amount'] = '70\uff05'
         terms['questions'] = list(result['questions'])
         result = clarify(payload, lambda *_: terms)
         self.assertEqual(result['status'], 'readyForConfirmation')
@@ -205,10 +211,10 @@ class AgentTests(unittest.TestCase):
                 with self.subTest(field=field, followup=followup):
                     case = example('complete')
                     payload, terms = case['request']['payload'], case['exampleExtraction']
-                    question = dict(field=field, question='这里有两个候选值，双方尚未决定采用哪一个？')
-                    candidates = {'totalAmountWei': '总额 1 ETH 或 2 ETH，尚未确定。',
-                                  'milestones.1.amountWei': '首页金额 30% 或 40%，尚未确定。',
-                                  'developerWallet': terms['developerWallet'] + ' 或 0x' + '3'*40 + '，尚未确定。'}
+                    question = dict(field=field, question='There are two candidate values. Which one have both parties agreed?')
+                    candidates = {'totalAmountWei': 'Total 1 ETH or 2 ETH, still undecided.',
+                                  'milestones.1.amountWei': 'Homepage allocation 30% or 40%, still undecided.',
+                                  'developerWallet': terms['developerWallet'] + ' or 0x' + '3'*40 + ', still undecided.'}
                     terms['questions'] = [question]
                     if followup:
                         prior = case['expectedResult']
@@ -234,10 +240,10 @@ class AgentTests(unittest.TestCase):
         prior, terms = case['expectedResult'], case['exampleExtraction']
         prior['status'] = 'needsClarification'
         prior['draftSpec']['clientWallet'] = prior['draftSpec']['developerWallet'] = None
-        prior['questions'] = [dict(field='developerWallet', question='服务方钱包是什么？'),
-                              dict(field='clientWallet', question='客户钱包是什么？')]
+        prior['questions'] = [dict(field='developerWallet', question='What is the provider wallet?'),
+                              dict(field='clientWallet', question='What is the client wallet?')]
         payload = dict(message=terms['clientWallet'], draftSpec=prior['draftSpec'], history=[
-            dict(role='user', content='总额 1 ETH，首页 30%，整站 70%。'),
+            dict(role='user', content='Total 1 ETH, homepage 30%, complete site 70%.'),
             dict(role='assistant', content=json.dumps(dict(result=prior, question=prior['questions'][1])))])
         terms['developerWallet'] = None
         terms['questions'] = list(prior['questions'])

@@ -3,7 +3,7 @@ import sys
 from shared.handoff import validate
 from agent3.model import ModelError, call_model
 from agent3.prompts import SYSTEM, build_user
-from agent3.rules import clarify, decide, guess_language, refusal
+from agent3.rules import clarify, decide, refusal
 
 MAX_MESSAGE_CHARS = 2000
 
@@ -12,7 +12,7 @@ def plan_action(payload, call=None):
     call = call or call_model
     validate('PlanInput', payload)
     message = payload['message']
-    language = guess_language(message)
+    language = 'en'
     if not message.strip():
         return validate('PlanResult', clarify(language))
     if len(message) > MAX_MESSAGE_CHARS:

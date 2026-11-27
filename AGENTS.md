@@ -9,6 +9,7 @@ User instructions take precedence. Do not infer completion from a plan or stub.
 - Work in your assigned folder and a feature branch. Shared interfaces or another
   owner's files require coordination; record agreed changes in WORKLOG first.
 - Wire JSON uses camelCase, integer wei strings and versioned schemas.
+- Use English for the UI, assistant replies, test descriptions, scenarios and expected results. Preserve user-provided names, agreement text and exact evidence quotes.
 - Check module input/output with shared.handoff; do not bypass failed checks.
 - Stubs are fixtures, never AI performance results or deployment approval.
 - Keep hidden evaluation tests/results out of generator prompts and feedback.
