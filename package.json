@@ -15,7 +15,8 @@
     "e2e": "npm run test:handoff && node --test tests/python-bridge.test.cjs",
     "test:agent2": "node scripts/test-agent2.cjs",
     "test:agent3": "node scripts/test-agent3.cjs",
-    "test:validation": "node scripts/test-validation.cjs"
+    "test:validation": "node scripts/test-validation.cjs",
+    "eval:agent1": "node scripts/eval-agent1.cjs"
   },
   "engines": {
     "node": ">=20 <23"

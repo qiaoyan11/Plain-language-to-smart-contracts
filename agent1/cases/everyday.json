@@ -1,0 +1,214 @@
+[
+  {
+    "id": "logo-usd",
+    "messages": [
+      "I need a logo for my coffee shop. Found a designer on Instagram, she charges $500. I'll pay when I'm happy with the final files."
+    ],
+    "expect": {
+      "currency": "USD",
+      "amounts": [
+        500
+      ],
+      "total": 500,
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "site-half-rest",
+    "messages": [
+      "Hiring a freelancer to redo my restaurant website. $2,400 total — half upfront, rest when it's live."
+    ],
+    "expect": {
+      "currency": "USD",
+      "amounts": [
+        1200,
+        1200
+      ],
+      "total": 2400,
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "zh-kitchen",
+    "messages": [
+      "我家厨房要翻新，师傅报价3万8，开工先付一万，水电做完付一万五，完工验收后付剩下的。"
+    ],
+    "expect": {
+      "currency": "CNY",
+      "amounts": [
+        10000,
+        15000,
+        13000
+      ],
+      "total": 38000,
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "zh-tutor",
+    "messages": [
+      "给孩子请了个数学家教，一共20节课，每节300块，上完10节付一半，全部上完付另一半。"
+    ],
+    "expect": {
+      "currency": "CNY",
+      "amounts": [
+        3000,
+        3000
+      ],
+      "total": 6000,
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "wedding-gbp",
+    "messages": [
+      "Wedding photographer, £1,800. £500 deposit to book the date, the rest after we get the edited photos. If she cancels we get the deposit back."
+    ],
+    "expect": {
+      "currency": "GBP",
+      "amounts": [
+        500,
+        1300
+      ],
+      "total": 1800,
+      "notEnforced": [
+        "cancel"
+      ],
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "mvp-eur-equal",
+    "messages": [
+      "We're paying a dev team €9,000 for an MVP in 3 equal payments: designs, beta, launch."
+    ],
+    "expect": {
+      "currency": "EUR",
+      "amounts": [
+        3000,
+        3000,
+        3000
+      ],
+      "total": 9000,
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "vague-translate",
+    "messages": [
+      "I want to pay someone to translate my book",
+      "about 2000 dollars, pay when it's done"
+    ],
+    "expect": {
+      "currency": "USD",
+      "amounts": [
+        2000
+      ],
+      "total": 2000,
+      "maxTurns": 2
+    }
+  },
+  {
+    "id": "sublet-deposit",
+    "messages": [
+      "My friend is subletting my room for December, $1,200 rent, plus a $600 security deposit I'll return if nothing's damaged."
+    ],
+    "expect": {
+      "currency": "USD",
+      "amounts": [
+        1200
+      ],
+      "total": 1200,
+      "notEnforced": [
+        "deposit"
+      ],
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "video-jpy",
+    "messages": [
+      "Video editing for my channel, ¥80,000 JPY total, pay after delivery"
+    ],
+    "expect": {
+      "currency": "JPY",
+      "amounts": [
+        80000
+      ],
+      "total": 80000,
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "eth-native",
+    "messages": [
+      "Pay my web designer 1.5 ETH: 0.5 when the mockups are approved and 1 ETH when the site launches."
+    ],
+    "expect": {
+      "currency": "ETH",
+      "amounts": [
+        0.5,
+        1
+      ],
+      "total": 1.5,
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "zh-brand-equal",
+    "messages": [
+      "找设计师做一套品牌VI，总价2万，分两次平均付：初稿确认付一次，终稿交付付一次。"
+    ],
+    "expect": {
+      "currency": "CNY",
+      "amounts": [
+        10000,
+        10000
+      ],
+      "total": 20000,
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "zh-renovation-percent",
+    "messages": [
+      "装修合同总价12万，开工付30%，中期验收付40%，完工验收付剩下的。"
+    ],
+    "expect": {
+      "currency": "CNY",
+      "amounts": [
+        36000,
+        48000,
+        36000
+      ],
+      "total": 120000,
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "copy-revisions",
+    "messages": [
+      "Hiring a copywriter for my website, $900, she'll keep revising until I'm happy, I pay when it's done."
+    ],
+    "expect": {
+      "currency": "USD",
+      "amounts": [
+        900
+      ],
+      "total": 900,
+      "notEnforced": [
+        "revision"
+      ],
+      "maxTurns": 1
+    }
+  },
+  {
+    "id": "weekly-hourly",
+    "messages": [
+      "Pay my assistant $25 an hour every week for as long as she works for me."
+    ],
+    "expect": {
+      "ready": false
+    }
+  }
+]

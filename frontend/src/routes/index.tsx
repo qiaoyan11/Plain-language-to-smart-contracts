@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
+import { ContractUpload } from "@/components/ContractUpload";
 import { Shell } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { DraftSummary, draftReady } from "@/components/DraftSummary";
@@ -145,8 +146,8 @@ export function CreatePage() {
     <Shell step="Describe & refine" progress={1}>
       <h1>What would you like to agree on?</h1>
       <p className="intro">
-        Paste your contract or describe the work and payment terms. Answer the questions, then
-        review the agreement before confirming.
+        Describe the work and how you will pay, in your own words, or upload the contract you
+        already have. Answer any questions, then review the agreement before confirming.
       </p>
       <p className="-mt-5 mb-8 text-sm text-muted-foreground">
         Returning to earlier work?{" "}
@@ -183,15 +184,20 @@ export function CreatePage() {
               <label htmlFor="agreement-message" className="field-label">
                 Describe your agreement or add a detail
               </label>
-              <textarea
-                id="agreement-message"
-                className="agreement-text"
-                maxLength={20000}
-                value={input}
-                onChange={(event) => setMessage(event.target.value)}
+              <ContractUpload
                 disabled={Boolean(occupied || session?.pendingMessage)}
-                placeholder="Who is doing the work, what will they deliver, and when should they be paid?"
-              />
+                onText={setMessage}
+              >
+                <textarea
+                  id="agreement-message"
+                  className="agreement-text"
+                  maxLength={20000}
+                  value={input}
+                  onChange={(event) => setMessage(event.target.value)}
+                  disabled={Boolean(occupied || session?.pendingMessage)}
+                  placeholder="Who is doing the work, what will they deliver, and when should they be paid?"
+                />
+              </ContractUpload>
               {!session?.messages.length && !session?.pendingMessage && !input.trim() && (
                 <div>
                   <Button
