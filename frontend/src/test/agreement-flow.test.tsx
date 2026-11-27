@@ -107,6 +107,7 @@ beforeEach(() => {
   vi.spyOn(api, "createDraft").mockResolvedValue(empty);
   vi.spyOn(api, "sendDraftMessage").mockResolvedValue(ready);
   vi.spyOn(api, "confirmDraft").mockResolvedValue({ project, agreement });
+  vi.spyOn(api, "startGeneration").mockResolvedValue({} as GenerationRun);
 });
 afterEach(() => {
   cleanup();
@@ -462,6 +463,38 @@ describe("explicit agreement confirmation", () => {
     expect(api.confirmDraft).toHaveBeenCalledWith(ready.id, ready.revision);
     expect(navigate).not.toHaveBeenCalled();
     finish({ project, agreement });
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({ to: "/projects/$id", params: { id: project.id } }),
+    );
+  });
+  it("starts generating the contract as soon as the agreement is confirmed", async () => {
+    await openReady();
+    await screen.findByText("Payment summary");
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm agreement" }));
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({ to: "/projects/$id", params: { id: project.id } }),
+    );
+    expect(api.startGeneration).toHaveBeenCalledWith(project.id, agreement);
+  });
+  it("still opens the project when generation is off or cannot start", async () => {
+    vi.mocked(api.confirmDraft).mockResolvedValue({
+      project,
+      agreement: { ...agreement, generationEnabled: false },
+    });
+    await openReady();
+    await screen.findByText("Payment summary");
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm agreement" }));
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    expect(api.startGeneration).not.toHaveBeenCalled();
+  });
+  it("opens the project even if generation could not start", async () => {
+    vi.mocked(api.startGeneration).mockRejectedValue(new Error("busy"));
+    await openReady();
+    await screen.findByText("Payment summary");
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm agreement" }));
     await waitFor(() =>
       expect(navigate).toHaveBeenCalledWith({ to: "/projects/$id", params: { id: project.id } }),
     );

@@ -37,6 +37,11 @@ export function ConfirmPage() {
       await cache.cancelQueries({ queryKey: ["draft", id] });
       const confirmed = await api.confirmDraft(session.id, session.revision);
       cache.setQueryData(["draft", id], { ...session, confirmedProjectId: confirmed.project.id });
+      // Confirming is the go-ahead: start writing and checking the contract straight away, so the
+      // project page opens on its progress. The project page can still start it if this fails.
+      const agreement = confirmed.agreement;
+      if (agreement.generationEnabled && agreement.confirmation && !agreement.latestRunId)
+        await api.startGeneration(confirmed.project.id, agreement).catch(() => undefined);
       await nav({ to: "/projects/$id", params: { id: confirmed.project.id } });
     } catch (caught) {
       setError((caught as Error).message);
@@ -54,7 +59,7 @@ export function ConfirmPage() {
       <h1>Review your agreement</h1>
       <p className="intro">
         Check the payments and the conditions the contract will not enforce. Confirming saves this
-        version for contract generation.
+        version and starts writing and checking its contract.
       </p>
       {session ? (
         <>
