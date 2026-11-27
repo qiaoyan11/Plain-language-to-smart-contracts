@@ -6,6 +6,8 @@ import {
   type OperationReport,
   type Project,
 } from "@/api/client";
+import type { ExchangeRate } from "@/api/types";
+import { approximately } from "@/lib/money";
 
 /** Payment buttons and plain-language operations (Agent 3). The backend keeps the intent; this panel only shows it and asks for approval. */
 export function OperationAssistant({
@@ -15,9 +17,12 @@ export function OperationAssistant({
   refreshProject,
   quickActions = false,
   naturalLanguageEnabled = true,
+  rate,
 }: {
   project: Project;
   disabled: boolean;
+  /** The agreement's original currency, to show "≈ 500 USD" in payment previews. */
+  rate?: ExchangeRate | undefined;
   onProject: (project: Project) => void | Promise<void>;
   refreshProject?: () => Promise<void>;
   quickActions?: boolean;
@@ -69,9 +74,11 @@ export function OperationAssistant({
     try {
       setPlan(await request());
     } catch (e) {
-      setError(e instanceof TypeError
-        ? "The payment preview could not be loaded. Prepare a new preview after reconnecting."
-        : (e as Error).message);
+      setError(
+        e instanceof TypeError
+          ? "The payment preview could not be loaded. Prepare a new preview after reconnecting."
+          : (e as Error).message,
+      );
       await refresh();
     } finally {
       active.current = false;
@@ -95,11 +102,13 @@ export function OperationAssistant({
       setMessage("");
     } catch (e) {
       const message = (e as Error).message;
-      setError(e instanceof TypeError
-        ? "The payment response did not arrive. Check the balance and transaction history before trying another payment."
-        : message.includes("Plan not found")
-          ? "This payment preview has expired. Review the current balance, then prepare and confirm a new preview."
-          : message);
+      setError(
+        e instanceof TypeError
+          ? "The payment response did not arrive. Check the balance and transaction history before trying another payment."
+          : message.includes("Plan not found")
+            ? "This payment preview has expired. Review the current balance, then prepare and confirm a new preview."
+            : message,
+      );
       // The transaction may have completed before the response was lost. Read state; never resend it.
       await refresh();
     } finally {
@@ -123,11 +132,14 @@ export function OperationAssistant({
             Amount:{" "}
             <strong>
               {formatWei(plan.payment.amountWei)} {unit}
+              {approximately(plan.payment.amountWei, rate)}
             </strong>
           </p>
           <p className="break-all">
-            {plan.intent?.action === "deposit" ? "Into the escrow contract" : "Recipient (provider)"}:{" "}
-            {plan.payment.to}
+            {plan.intent?.action === "deposit"
+              ? "Into the escrow contract"
+              : "Recipient (provider)"}
+            : {plan.payment.to}
           </p>
           {plan.intent?.action === "acceptMilestone" ? (
             <p>{`Confirming accepts milestone #${plan.intent?.milestoneId} "${plan.payment.milestoneTitle}" and releases its payment to the provider.`}</p>

@@ -44,9 +44,9 @@
     "message": "Pay it.",
     "state": "funded",
     "expect": {
-      "status": "needsClarification",
-      "action": null,
-      "milestoneId": null
+      "status": "readyForConfirmation",
+      "action": "acceptMilestone",
+      "milestoneId": 1
     }
   },
   {
@@ -208,9 +208,9 @@
     "message": "Make the payment.",
     "state": "funded",
     "expect": {
-      "status": "needsClarification",
-      "action": null,
-      "milestoneId": null
+      "status": "readyForConfirmation",
+      "action": "acceptMilestone",
+      "milestoneId": 1
     },
     "sourceCaseId": "zh-05"
   },

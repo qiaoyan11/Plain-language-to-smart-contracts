@@ -4,7 +4,7 @@
 
 用户描述服务协议，Agent 1 每次用英文追问一项缺失信息。核对金额、钱包和余款可能锁定的提示后，用户确认规则，Agent 2 生成合约。编译、Slither 和条款测试通过后，用户可以部署到本机链，用付款按钮或 Agent 3 的自然语言入口操作。每笔存款和付款都需要核对并确认，结果取自链上回执。网页、助手回复和测试场景使用英文。
 
-安装好前后端依赖后，使用 Node 22.12+（建议 22.x）在仓库根目录运行 `AGENT1_MODE=live AGENT2_MODE=live AGENT3_MODE=live npm run demo:web`，默认打开 http://127.0.0.1:5173 。若后端用 Node 20、前端另装了新版 Node，设置 `DEMO_FRONTEND_NODE` 为前端 Node 的完整路径。模型调用会产生 API 费用。页面通过 **Use local test accounts** 把本机测试账户加入对话。手写合约演示仍可从首页进入 `/reference-demo`。[完整对话演示](docs/AGENT1_DEMO.md) · [前端运行说明](frontend/README.md) · [模块验证记录](docs/WORKLOG.md)
+安装好前后端依赖后，使用 Node 22.12+（建议 22.x）在仓库根目录运行 `npm run demo:live`（等同于 `AGENT1_MODE=live AGENT2_MODE=live AGENT3_MODE=live npm run demo:web`），默认打开 http://127.0.0.1:5173 。若后端用 Node 20，启动器会自动寻找 `~/.accord-node` 或 Homebrew 里的 Node 22；也可以设置 `DEMO_FRONTEND_NODE` 为前端 Node 的完整路径。模型调用会产生 API 费用。页面通过 **Use local test accounts** 把本机测试账户加入对话。手写合约演示仍可从首页进入 `/reference-demo`。[完整对话演示](docs/AGENT1_DEMO.md) · [前端运行说明](frontend/README.md) · [模块验证记录](docs/WORKLOG.md)
 
 服务端保存对话和草稿版本，刷新网页时按草稿 ID 恢复。只有完整且没有待解决事项的草稿才能确认；确认后的对话封存，修改约定需新建协议。独立链下条款以用户原文单独显示，不成为链上付款条件。草稿版本与确认后项目的 `specVersion` 分别计数，来源由 `draftOrigin` 关联。
 

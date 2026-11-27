@@ -7,6 +7,7 @@
     "test": "node --test tests/escrow.test.cjs tests/milestone.test.cjs",
     "demo": "node scripts/demo.cjs",
     "demo:web": "node scripts/web-demo.cjs",
+    "demo:live": "node scripts/web-demo.cjs --live",
     "backend": "node backend/server.cjs",
     "test:api": "node --test tests/api.test.cjs tests/generation-api.test.cjs tests/operations-api.test.cjs tests/drafting-api.test.cjs tests/project-list-api.test.cjs",
     "test:agent1": "node scripts/test-agent1.cjs",

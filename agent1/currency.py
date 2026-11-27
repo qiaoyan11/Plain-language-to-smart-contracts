@@ -60,35 +60,92 @@ NUM = re.compile(rf'(?<![0-9.,])(?P<num>{_NUMBER})(?:\s*(?P<scale>{_SCALE})(?![A
 SCALES = {'k': 1000, 'thousand': 1000, 'million': 10**6, '万': 10**4, '千': 1000}
 
 
-def parse(text):
-    """(currency, amount) for one whole amount quote such as "USD $8,000"; None otherwise."""
-    if not isinstance(text, str) or not text.strip():
+CN_DIGITS = {'零': 0, '〇': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4,
+             '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
+CN_SMALL = {'十': 10, '百': 100, '千': 1000}
+CN_BIG = {'万': 10**4, '亿': 10**8}
+_CN_ALL = ''.join(CN_DIGITS) + ''.join(CN_SMALL) + ''.join(CN_BIG)
+# "3万8", "一万五", "3.8万", "三万八千", "十万": digits mixed with Chinese numerals and units.
+CN_NUMBER = re.compile(r'(?:[0-9]+(?:\.[0-9]+)?|[' + _CN_ALL + r'])[0-9.' + _CN_ALL + r']*')
+# Words that make an amount a rate or a unit price, which is not one payment.
+NOT_ONE_AMOUNT = re.compile(r'(?<![A-Za-z])(?:per|each|every)(?![A-Za-z])|/\s*(?:h|hr|hour|day|week|month|mo|year|yr)\b'
+                            r'|每', re.I)
+
+
+def chinese_number(text):
+    """Value of a Chinese or mixed number; the colloquial "3万8" is 38,000 and "一万五" 15,000."""
+    total, section, number, last = Fraction(0), Fraction(0), None, None
+    for token in re.findall(r'[0-9]+(?:\.[0-9]+)?|.', text):
+        if token[0].isdigit():
+            number = Fraction(Decimal(token))
+        elif token in CN_DIGITS:
+            number = Fraction(CN_DIGITS[token])
+        elif token in CN_SMALL:
+            section += (number if number is not None else 1) * CN_SMALL[token]
+            number, last = None, CN_SMALL[token]
+        elif token in CN_BIG:
+            section += number if number is not None else 0
+            total += (section or 1) * CN_BIG[token]
+            section, number, last = Fraction(0), None, CN_BIG[token]
+        else:
+            return None
+    if number is not None:
+        # A digit after the last unit counts one unit lower: "3万8" means 3万8千.
+        section += number * last / 10 if last and last >= 100 else number
+    value = total + section
+    return value if value > 0 else None
+
+
+def _amount_and_rest(text):
+    """(value, text around it, written in Chinese) for the one amount in text, else None."""
+    chinese = [m for m in CN_NUMBER.finditer(text) if re.search('[' + _CN_ALL + ']', m.group())]
+    if len(chinese) == 1:
+        found = chinese[0]
+        others = NUM.findall(text[:found.start()] + ' ' + text[found.end():])
+        value = chinese_number(found.group()) if not others else None
+        return (value, text[:found.start()] + ' ' + text[found.end():], True) if value else None
+    if chinese:
         return None
     numbers = list(NUM.finditer(text))
     if len(numbers) != 1:
         return None
     number = numbers[0]
-    rest = text[:number.start()] + ' ' + text[number.end():]
-    found = set()
-    for pattern, code in MARKERS:
-        for match in re.finditer(pattern, rest, re.I):
-            found.add(code or ('CNY' if match.group().upper() == 'RMB' else match.group().upper()))
-        rest = re.sub(pattern, ' ', rest, flags=re.I)
-    # Anything besides currency markers ("for stage 2", "per month") is not a single amount.
-    if rest.strip(' \t.:()（）') or not found:
-        return None
-    if found == {'CNY', 'JPY'}:
-        found = {'JPY'}  # "¥150,000 JPY": the symbol is shared, the code decides.
-    if len(found) != 1:
-        return None
     try:
         amount = Decimal(number['num'].replace(',', '').replace('，', ''))
     except InvalidOperation:
         return None
     if number['scale']:
         amount *= SCALES[number['scale'].lower()]
-    return (found.pop(), Fraction(amount)) if amount > 0 else None
+    return Fraction(amount), text[:number.start()] + ' ' + text[number.end():], False
 
+
+def parse(text):
+    """(currency, amount) for a quote naming one amount, such as "USD $8,000", "£500 deposit",
+    "about 2000 dollars" or "3万8"; None for anything else (two numbers, a unit price, no currency)."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    parts = _amount_and_rest(text)
+    if not parts:
+        return None
+    amount, rest, chinese = parts
+    if NOT_ONE_AMOUNT.search(rest):
+        return None
+    found = set()
+    for pattern, code in MARKERS:
+        for match in re.finditer(pattern, rest, re.I):
+            found.add(code or ('CNY' if match.group().upper() == 'RMB' else match.group().upper()))
+        rest = re.sub(pattern, ' ', rest, flags=re.I)
+    if found == {'CNY', 'JPY'}:
+        found = {'JPY'}  # "¥150,000 JPY": the symbol is shared, the code decides.
+    if chinese and not found:
+        # "3万8" or "一万五" in a Chinese request is an amount in yuan; a bare numeral such as the
+        # 一 in "一半" (half) is not an amount at all.
+        if not re.search('[' + ''.join(CN_SMALL) + ''.join(CN_BIG) + ']', text):
+            return None
+        found = {'CNY'}
+    if len(found) != 1:
+        return None
+    return (found.pop(), amount) if amount > 0 else None
 
 ONE_ETH = r'(?<![0-9.])1\s*(?:test\s+|测试\s*)?ETH\b'
 EQUALS = r'\s*(?:=|＝|≈|\bis worth\b|\bequals\b|\bis\b|等于|折合|合)\s*'
@@ -256,14 +313,17 @@ ACTIVE = contextvars.ContextVar('accord_rate_book', default=None)
 def to_wei(quote, sources):
     """Wei for a quote in another currency, rounded to 6 ETH decimals; None if not convertible."""
     parsed = parse(quote)
-    if not parsed:
-        return None
+    return wei_for(parsed[0], parsed[1], sources) if parsed else None
+
+
+def wei_for(code, amount, sources):
+    """Wei for an amount in one currency at the turn's rate, rounded to 6 ETH decimals."""
     # Outside an Agent 1 turn (tests, helpers) only stated and reference rates are used.
     book = ACTIVE.get() or RateBook(sources, live=False)
-    per_eth, _ = book.price(parsed[0])
+    per_eth, _ = book.price(code)
     if not per_eth:
         return None
-    value = parsed[1] * WEI / per_eth
+    value = Fraction(amount) * WEI / per_eth
     rounded = (value / STEP + Fraction(1, 2)).__floor__() * STEP
     return int(rounded) if rounded > 0 else None
 

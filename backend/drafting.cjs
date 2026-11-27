@@ -33,8 +33,14 @@ function primaryQuestion(result) {
   const q = [...result.questions].sort((a, b) => questionPriority(a.field) - questionPriority(b.field)
     || a.field.localeCompare(b.field, 'en', { numeric: true }))[0];
   if (!q) return null;
+  // Questions follow the agreement's currency: a bare "800" reply is then read in that currency.
+  const rates = result.exchangeRates ?? [];
+  const fiat = rates.length === 1 ? rates[0].currency : null;
+  const inEth = !rates.length && Boolean(result.draftSpec.totalAmountWei || result.draftSpec.milestones.some(m => m.amountWei));
   const fixed = {
-    totalAmountWei: 'What total amount in ETH have both parties agreed?',
+    totalAmountWei: fiat ? `What is the total price in ${fiat}?`
+      : inEth ? 'What total amount in ETH have both parties agreed?'
+        : 'What is the total price, and in which currency? For example "$1,200" or "8,000 元".',
     clientWallet: 'What wallet address will the client use to fund the contract?',
     developerWallet: 'What wallet address will receive the provider’s milestone payments?',
     milestones: 'Which deliverables should be accepted, in payment order?',
@@ -43,9 +49,13 @@ function primaryQuestion(result) {
   };
   const stage = /^milestones\.(\d+)\.(amountWei|title)$/.exec(q.field);
   let text = fixed[q.field];
-  if (stage) text = stage[2] === 'amountWei'
-    ? `What amount in ETH, or percentage of ${result.draftSpec.totalAmountWei ? `the agreed ${eth(result.draftSpec.totalAmountWei)} total` : 'the total'}, is payable for ${milestoneLabel(result.draftSpec, stage[1])}?`
-    : `What must be delivered for ${milestoneLabel(result.draftSpec, stage[1])}?`;
+  const known = stage && result.draftSpec.milestones.find(m => String(m.id) === stage[1])?.amountWei;
+  // A question about an amount that is already recorded is the model's own doubt: show its words.
+  if (stage && !(stage[2] === 'amountWei' && known)) text = stage[2] !== 'amountWei'
+    ? `What must be delivered for ${milestoneLabel(result.draftSpec, stage[1])}?`
+    : fiat
+      ? `How much is paid for ${milestoneLabel(result.draftSpec, stage[1])}? Give an amount in ${fiat}, or a share of the total such as "half".`
+      : `What amount in ETH, or percentage of ${result.draftSpec.totalAmountWei ? `the agreed ${eth(result.draftSpec.totalAmountWei)} total` : 'the total'}, is payable for ${milestoneLabel(result.draftSpec, stage[1])}?`;
   if (!text) {
     // The extraction prompt requests one focused question per field. Keep only its first question
     // for display; all underlying blockers remain in result.questions and block confirmation.
@@ -125,9 +135,9 @@ function conversationTurn(previous, result, revision, previousTurn, demoWallets 
   // accepted an amount merely because the user supplied a number or a model repeated it.
   if (question && question.field === previousTurn?.question?.field) {
     const stage = /^milestones\.(\d+)\.amountWei$/.exec(question.field);
-    if (stage) lines.push(`The payment for ${milestoneLabel(after, stage[1])} is not yet resolved; reply with an agreed amount followed by ETH or a percentage of the total.`);
+    if (stage) lines.push(`The payment for ${milestoneLabel(after, stage[1])} is still open.`);
     else if (question.field === 'totalAmountWei')
-      lines.push('The total payment is not yet resolved; reply with the agreed total followed by ETH, or say it is still undecided.');
+      lines.push('The total price is still open; reply with the agreed amount, or say it is still undecided.');
   }
   if (!lines.length) lines.push(previousTurn?.question && previousTurn.question.field !== question?.field
     ? 'Noted. That answers the previous question.'
@@ -259,6 +269,16 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
     return { spec: copy(s.result.draftSpec), projectId: s.confirmedProjectId };
   }
   function markConfirmed(id, projectId) { state(id).confirmedProjectId = projectId; }
+  // An unfinished conversation the user no longer wants. Confirmed drafts stay: projects point to them.
+  function discard(id, body) {
+    fields(body, []);
+    const s = state(id);
+    if (s.confirmedProjectId) fail(409, 'This agreement is confirmed. Its project keeps the conversation.');
+    if (s.busy) fail(409, 'Wait for the current reply before discarding this conversation.');
+    sessions.delete(id);
+    onChange();
+    return { id, discarded: true };
+  }
   function get(id) { return snapshot(state(id)); }
   // Unconfirmed conversations, newest first, so a closed tab does not lose a draft.
   function list() {
@@ -272,6 +292,6 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
       })
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
-  return { enabled, create, get, list, message, confirmationCandidate, markConfirmed, exportState };
+  return { enabled, create, get, list, message, confirmationCandidate, markConfirmed, discard, exportState };
 }
 module.exports = { createDrafting };

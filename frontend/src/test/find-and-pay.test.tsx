@@ -121,6 +121,29 @@ describe("finding a project again", () => {
     expect(select).toHaveBeenCalledWith("d1");
     expect(navigate).toHaveBeenCalledWith({ to: "/" });
   });
+  it("discards an unfinished conversation only after a second click", async () => {
+    vi.spyOn(api, "listProjects").mockResolvedValue([]);
+    vi.spyOn(api, "listDrafts").mockResolvedValue([
+      {
+        id: "d1",
+        name: "Logo design",
+        createdAt: project.createdAt,
+        updatedAt: project.createdAt,
+        status: "needsClarification",
+        messageCount: 1,
+        awaitingReply: false,
+      },
+    ]);
+    const discard = vi.spyOn(api, "discardDraft").mockResolvedValue();
+    withQuery(<ProjectsPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Discard conversation: Logo design" }),
+    );
+    expect(discard).not.toHaveBeenCalled();
+    expect(screen.getByText(/This cannot be undone/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Discard conversation: Logo design" }));
+    await waitFor(() => expect(discard).toHaveBeenCalledWith("d1"));
+  });
   it("explains a restart when the running server predates the project list", async () => {
     vi.spyOn(api, "listProjects").mockRejectedValue(new Error("Endpoint not found"));
     vi.spyOn(api, "listDrafts").mockRejectedValue(new Error("Endpoint not found"));

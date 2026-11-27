@@ -26,7 +26,11 @@ async function request<T>(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   // A stopped local API may leave the dev proxy serving an empty 5xx instead of JSON.
-  if (!response.ok && response.status >= 500 && !response.headers.get("content-type")?.includes("json")) {
+  if (
+    !response.ok &&
+    response.status >= 500 &&
+    !response.headers.get("content-type")?.includes("json")
+  ) {
     throw new TypeError("The local server could not be reached.");
   }
   const data = await response.json();
@@ -347,6 +351,11 @@ export const api = {
     if (MOCK_MODE) return [];
     return (await request<{ drafts: DraftSummary[] }>("/drafts")).drafts;
   },
+  /** Removes an unfinished conversation. Confirmed agreements cannot be discarded. */
+  async discardDraft(id: string): Promise<void> {
+    await request(`/drafts/${encodeURIComponent(id)}/discard`, {});
+    if (api.getActiveDraftId() === id) api.setActiveDraftId(null);
+  },
   async getLocalAccounts(): Promise<{ clientWallet: string; developerWallet: string }> {
     return request("/local-accounts");
   },
@@ -407,10 +416,15 @@ export const api = {
     if (MOCK_MODE) throw new Error(AGENT3_LOCAL_ONLY);
     return request(`/projects/${encodeURIComponent(id)}/plans`, { message });
   },
-  async planKnownOperation(id: string, action: { action: "deposit" } | { action: "acceptMilestone"; milestoneId: number }): Promise<OperationPlan> {
+  async planKnownOperation(
+    id: string,
+    action: { action: "deposit" } | { action: "acceptMilestone"; milestoneId: number },
+  ): Promise<OperationPlan> {
     if (MOCK_MODE) throw new Error("Payment controls need local API mode.");
-    const body = action.action === "deposit" ? { action: action.action }
-      : { action: action.action, milestoneId: action.milestoneId };
+    const body =
+      action.action === "deposit"
+        ? { action: action.action }
+        : { action: action.action, milestoneId: action.milestoneId };
     return request(`/projects/${encodeURIComponent(id)}/action-plans`, body);
   },
   async confirmOperation(

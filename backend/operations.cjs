@@ -21,9 +21,13 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
       to: deposit ? snapshot.contractAddress : snapshot.developerWallet,
       milestoneTitle: deposit ? null : milestone.title };
   }
-  function savePlan(p, result, snapshot) {
+  function savePlan(p, result, snapshot, message = null) {
     const id = randomUUID();
-    plans.set(p.id, { id, intent: copy(result.intent), used: false, createdAt: now() });
+    // A question from Agent 3 is remembered briefly, so a short reply ("yes", "the first one")
+    // is read together with the request it answers.
+    const pending = result.status === 'needsClarification' && message && result.question
+      ? { message, question: result.question } : null;
+    plans.set(p.id, { id, intent: copy(result.intent), used: false, createdAt: now(), pending });
     return { planId: id, status: result.status, question: result.question, summary: result.summary,
       intent: copy(result.intent), payment: paymentDetails(result.intent, snapshot) };
   }
@@ -38,15 +42,21 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
     if (typeof body.message !== 'string' || !body.message.trim() || body.message.length > MAX_MESSAGE) fail(400, `Message must contain 1–${MAX_MESSAGE} characters`);
     if (!enabled) fail(503, 'Agent 3 is disabled; start the local backend with AGENT3_MODE=live to enable paid model calls');
     const id = randomUUID();
+    const previous = plans.get(p.id);
+    const followUp = previous?.pending && now() - previous.createdAt < PLAN_TTL_MS
+      && body.message.length <= 200 ? previous.pending : null;
+    const message = followUp
+      ? `${followUp.message}\n(Assistant asked: "${followUp.question}" The user replied: "${body.message}")`
+      : body.message;
     const request = { interfaceVersion: 1, requestId: id, operation: 'planAction',
-      payload: { message: body.message, projectId: p.id, deployment, snapshot } };
+      payload: { message: message.slice(0, MAX_MESSAGE), projectId: p.id, deployment, snapshot } };
     let result;
     try { result = await ask(request, PLAN_TIMEOUT_MS); }
     catch (error) {
       if (error?.message === 'PROJECT_BUSY') fail(409, 'Another request is running for this project; retry after it completes');
       fail(502, 'Agent 3 could not answer. No transaction has been sent.');
     }
-    return savePlan(p, result, snapshot);
+    return savePlan(p, result, snapshot, body.message);
   }
   // Buttons select a known operation. Amounts, recipients and contract identity always come from Node.
   function planKnown(p, body, deployment, snapshot) {

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatWei, type Project } from "@/api/client";
+import type { ExchangeRate } from "@/api/types";
+import { approximately } from "@/lib/money";
 
 const UNIT = "test ETH";
 type Transaction = Project["transactions"][number];
@@ -44,9 +46,12 @@ function milestoneStatus(project: Project, milestone: Project["milestones"][numb
 export function MilestoneLedger({
   project,
   className = "my-7",
+  rate,
 }: {
   project: Project;
   className?: string;
+  /** The agreement's original currency, to show "≈ 500 USD" beside each amount. */
+  rate?: ExchangeRate | undefined;
 }) {
   const deposit = receiptFor(project, "deposit");
   const paid = project.milestones.filter((m) => m.paid).length;
@@ -64,6 +69,7 @@ export function MilestoneLedger({
             <span className="text-sm font-medium">Deposit from the client</span>
             <span className="text-sm font-medium">
               {formatWei(project.totalAmountWei)} {UNIT}
+              {approximately(project.totalAmountWei, rate)}
             </span>
           </div>
           <p className="mt-1 text-sm">
@@ -88,6 +94,7 @@ export function MilestoneLedger({
                 </span>
                 <span className="text-sm font-medium">
                   {formatWei(m.amountWei)} {UNIT}
+                  {approximately(m.amountWei, rate)}
                 </span>
               </div>
               <p className={`mt-1 text-sm ${m.paid ? "font-medium text-success" : ""}`}>

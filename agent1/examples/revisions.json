@@ -32,7 +32,7 @@
     "revisionResolutionQuote": null
   },
   "expectedResult": {
-    "status": "needsClarification",
+    "status": "readyForConfirmation",
     "draftSpec": {
       "schemaVersion": 1,
       "projectId": "example-project",
@@ -57,12 +57,10 @@
       ],
       "totalAmountWei": "1000000000000000000"
     },
-    "questions": [
-      {
-        "field": "acceptance.openEndedRevisions",
-        "question": "“until satisfied” could leave the milestone payment waiting indefinitely. Which agreed mockup or test determines acceptance? If the parties already settled this, give their replacement wording."
-      }
-    ],
-    "unsupportedTerms": []
+    "questions": [],
+    "unsupportedTerms": [],
+    "notEnforced": [
+      "open-ended revisions (“until satisfied”): payment waits for the client's approval and has no review deadline"
+    ]
   }
 }

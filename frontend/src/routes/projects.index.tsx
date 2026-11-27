@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Shell } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -91,6 +92,67 @@ function ProjectItem({ project }: { project: ProjectSummary }) {
   );
 }
 
+/** Continue a conversation, or discard it after a second, explicit click. */
+function DraftActions({ draft, onContinue }: { draft: DraftSummary; onContinue: () => void }) {
+  const cache = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState("");
+  const name = draft.name ?? "Untitled agreement";
+  const discard = useMutation({
+    mutationFn: () => api.discardDraft(draft.id),
+    onSuccess: () => cache.invalidateQueries({ queryKey: ["draft-list"] }),
+    onError: (e: Error) => setError(e.message),
+  });
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {confirming ? (
+        <>
+          <span className="text-sm">Discard this conversation? This cannot be undone.</span>
+          <Button
+            variant="destructive"
+            size="sm"
+            aria-label={`Discard conversation: ${name}`}
+            disabled={discard.isPending}
+            onClick={() => discard.mutate()}
+          >
+            {discard.isPending ? "Discarding…" : "Discard"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>
+            Keep
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={`Continue conversation: ${name}`}
+            onClick={onContinue}
+          >
+            Continue conversation
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Discard conversation: ${name}`}
+            onClick={() => {
+              setError("");
+              setConfirming(true);
+            }}
+          >
+            Discard
+          </Button>
+        </>
+      )}
+      {error && (
+        <p role="alert" className="w-full text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ProjectsPage() {
   const nav = useNavigate();
   const projects = useQuery({
@@ -133,17 +195,13 @@ export function ProjectsPage() {
                     {when(draft.updatedAt) && ` · updated ${when(draft.updatedAt)}`}
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label={`Continue conversation: ${draft.name ?? "Untitled agreement"}`}
-                  onClick={() => {
+                <DraftActions
+                  draft={draft}
+                  onContinue={() => {
                     api.setActiveDraftId(draft.id);
                     void nav({ to: "/" });
                   }}
-                >
-                  Continue conversation
-                </Button>
+                />
               </li>
             ))}
           </ul>

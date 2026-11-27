@@ -158,5 +158,88 @@ class NaturalShareTests(unittest.TestCase):
         self.assertEqual(result['draftSpec']['name'], 'Service agreement')
 
 
+
+class EverydayRequestTests(unittest.TestCase):
+    """Requests written the way first-time users wrote them in the live run."""
+
+    def run_case(self, message, total, amounts, history=(), draft=None, rates=None):
+        terms = dict(separateTerms=[], name='Request', clientWallet=None, developerWallet=None, total=total,
+                     milestones=[dict(title=f'Step {i}', amount=a) for i, a in enumerate(amounts, 1)],
+                     revisionRiskOpen=False, withdrawals=[], questions=[], unsupportedTerms=[], resolvedQuestions=[])
+        with patch.object(currency, 'live_prices', return_value=market(rates or {'USD': '1667.36', 'CNY': '11103.25',
+                                                                                  'GBP': '1271.31'})):
+            return clarify(dict(message=message, history=list(history), draftSpec=draft), lambda *_: terms)
+
+    def amounts(self, result):
+        return [int(m['amountWei']) if m['amountWei'] else None for m in result['draftSpec']['milestones']]
+
+    def test_chinese_numerals_and_the_rest(self):
+        message = '\u6211\u5bb6\u53a8\u623f\u8981\u7ffb\u65b0\uff0c\u5e08\u5085\u62a5\u4ef73\u4e078\uff0c\u5f00\u5de5\u5148\u4ed8\u4e00\u4e07\uff0c\u6c34\u7535\u505a\u5b8c\u4ed8\u4e00\u4e07\u4e94\uff0c\u5b8c\u5de5\u9a8c\u6536\u540e\u4ed8\u5269\u4e0b\u7684\u3002'
+        # The model's actual quotes: it translated 剩下的 into English.
+        result = self.run_case(message, '3\u4e078', ['\u4e00\u4e07', '\u4e00\u4e07\u4e94', 'the remaining balance'])
+        amounts = self.amounts(result)
+        self.assertEqual(sum(amounts), int(result['draftSpec']['totalAmountWei']))
+        # 10,000 and 15,000 of 38,000 yuan; the rest is 13,000.
+        self.assertAlmostEqual(amounts[2] / amounts[0], 1.3, places=4)
+        self.assertEqual(result['exchangeRates'][0]['currency'], 'CNY')
+
+    def test_count_times_unit_price_and_chinese_halves(self):
+        message = '\u7ed9\u5b69\u5b50\u8bf7\u4e86\u4e2a\u6570\u5b66\u5bb6\u6559\uff0c\u4e00\u517120\u8282\u8bfe\uff0c\u6bcf\u8282300\u5757\uff0c\u4e0a\u5b8c10\u8282\u4ed8\u4e00\u534a\uff0c\u5168\u90e8\u4e0a\u5b8c\u4ed8\u53e6\u4e00\u534a\u3002'
+        result = self.run_case(message, '20 \u00d7 300\u5757', ['half', 'the remaining balance'])
+        amounts = self.amounts(result)
+        self.assertEqual(amounts[0], amounts[1])
+        # 6,000 yuan at 11,103.25 yuan per ETH.
+        self.assertEqual(int(result['draftSpec']['totalAmountWei']), 540382000000000000)
+
+    def test_share_words_followed_by_their_condition(self):
+        message = "Hiring a freelancer to redo my restaurant website. $2,400 total \u2014 half upfront, rest when it's live."
+        result = self.run_case(message, '$2,400', ['half upfront', 'the rest'])
+        amounts = self.amounts(result)
+        # Halves of a converted total differ by at most the 6-decimal rounding step.
+        self.assertLessEqual(abs(amounts[0] - amounts[1]), currency.STEP)
+        self.assertEqual(sum(amounts), int(result['draftSpec']['totalAmountWei']))
+        self.assertEqual(result['status'], 'needsClarification')  # only the wallets are left
+        self.assertEqual({q['field'] for q in result['questions']}, {'clientWallet', 'developerWallet'})
+
+    def test_a_share_word_counts_only_as_a_whole_word_the_user_wrote(self):
+        from agent1.service import natural_word
+        self.assertIsNone(natural_word('the rest', ['Redo my restaurant website for $2,400.']))
+        self.assertEqual(natural_word('the rest', ["half upfront, rest when it's live"]), ('rest', None))
+        self.assertEqual(natural_word('half', ['\u4e0a\u5b8c10\u8282\u4ed8\u4e00\u534a']), ('fraction', (1, 2)))
+        self.assertIsNone(natural_word('half', ['Pay $500 now and $700 later.']))
+
+    def test_an_amount_quoted_with_a_word_and_the_rest(self):
+        message = 'Wedding photographer, \u00a31,800. \u00a3500 deposit to book the date, the rest after we get the edited photos.'
+        result = self.run_case(message, '\u00a31,800', ['\u00a3500 deposit', 'the rest after we get the edited photos'])
+        amounts = self.amounts(result)
+        self.assertEqual(sum(amounts), int(result['draftSpec']['totalAmountWei']))
+        self.assertAlmostEqual(amounts[1] / amounts[0], 2.6, places=4)
+
+    def test_about_an_amount_in_words(self):
+        result = self.run_case("about 2000 dollars, pay when it's done", 'about 2000 dollars', ['about 2000 dollars'])
+        self.assertTrue(result['draftSpec']['totalAmountWei'])
+
+    def test_a_bare_number_reply_uses_the_agreement_currency(self):
+        first = 'Website for $2,400: a first payment, and the rest at launch.'
+        opened = self.run_case(first, '$2,400', [None, 'the rest'])
+        question = dict(field='milestones.1.amountWei', question='How much is paid for milestone 1? Give an amount in USD.')
+        history = [dict(role='user', content=first),
+                   dict(role='assistant', content=json.dumps(dict(result=opened, question=question)))]
+        result = self.run_case('800', '$2,400', ['800', 'the rest'], history=history, draft=opened['draftSpec'])
+        amounts = self.amounts(result)
+        self.assertEqual(amounts[0] + amounts[1], int(result['draftSpec']['totalAmountWei']))
+        self.assertAlmostEqual(amounts[1] / amounts[0], 2, places=4)
+
+    def test_chinese_and_everyday_amount_phrases(self):
+        cases = {'3\u4e078': ('CNY', 38000), '\u4e00\u4e07\u4e94': ('CNY', 15000), '\u5341\u4e07': ('CNY', 100000),
+                 '\u4e09\u4e07\u516b\u5343\u5143': ('CNY', 38000), '\u00a3500 deposit': ('GBP', 500),
+                 'about 2000 dollars': ('USD', 2000)}
+        for text, (code, value) in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(currency.parse(text), (code, Fraction(value)))
+        for text in ('\u4e00\u534a', '\u53e6\u4e00\u534a', '$500 per month', '\u6bcf\u8282300\u5757'):
+            with self.subTest(text=text):
+                self.assertIsNone(currency.parse(text))
+
 if __name__ == '__main__':
     unittest.main()

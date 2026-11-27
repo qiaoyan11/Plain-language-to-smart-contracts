@@ -117,13 +117,15 @@ class RulesTest(unittest.TestCase):
     def test_accept_all_paid_blocked(self):
         self.assert_blocked(self.run_rules('acceptMilestone', state(True, (1, 2))))
 
-    def test_accept_without_id_asks(self):
+    def test_accept_without_id_prepares_the_next_unpaid_milestone(self):
+        # Milestones are paid in order; the preview names the milestone before anything is sent.
         r = self.run_rules('acceptMilestone', state(True))
-        self.assertEqual(r['status'], 'needsClarification')
-        self.assertIsNone(r['intent'])
-        self.assertIn('#1 ', r['question'])
-        self.assertIn('Homepage accepted', r['question'])
-        self.assertTrue(r['summary'])
+        self.assertEqual(r['status'], 'readyForConfirmation')
+        self.assertEqual(r['intent']['milestoneId'], 1)
+        self.assertIn('#1 ', r['summary'])
+        self.assertIn('Homepage accepted', r['summary'])
+        later = self.run_rules('acceptMilestone', state(True, paid=(1,)))
+        self.assertEqual(later['intent']['milestoneId'], 2)
 
     def test_accept_unknown_id_blocked(self):
         self.assert_blocked(self.run_rules('acceptMilestone', state(True), mid=5))
@@ -194,13 +196,13 @@ class RulesTest(unittest.TestCase):
                 self.assert_blocked(r)
                 self.assertIsNone(r['intent'])
 
-    def test_english_question_preserves_a_unicode_milestone_title(self):
+    def test_english_summary_preserves_a_unicode_milestone_title(self):
         payload = state(True)
         title = '\u9996\u9875'
         payload['snapshot']['milestones'][0]['title'] = title
         result = self.run_rules('acceptMilestone', payload, lang='zh')
-        self.assertTrue(result['question'].startswith('Which milestone do you want to accept?'))
-        self.assertIn(title, result['question'])
+        self.assertTrue(result['summary'].startswith('Accept milestone #1'))
+        self.assertIn(title, result['summary'])
 
 
 def body(text, **extra):

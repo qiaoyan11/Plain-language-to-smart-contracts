@@ -15,6 +15,7 @@ import {
   RefreshHelp,
   TransactionHistory,
 } from "@/components/EscrowLedger";
+import { approximately, rateText, singleRate } from "@/lib/money";
 import {
   api,
   formatWei,
@@ -138,6 +139,8 @@ export function DetailPage({ id }: { id: string }) {
   const { project, context, run } = query.data;
   const spec = context.spec;
   const currency = "test ETH";
+  // Amounts first written in another currency show their approximate original value.
+  const rate = singleRate(origin.data?.result?.exchangeRates);
   const confirmation = context.confirmation;
   const source = currentValidatedSource(context, run);
   const sealed = Boolean(context.draftOrigin || context.recoveredOnFreshChain);
@@ -310,7 +313,8 @@ export function DetailPage({ id }: { id: string }) {
                 label="Escrow balance"
                 value={`${formatWei(project.escrowBalanceWei)} ${currency}`}
               />
-              <MilestoneLedger project={project} />
+              <MilestoneLedger project={project} rate={rate} />
+              {rate && <p className="-mt-4 mb-6 text-xs text-muted-foreground">{rateText(rate)}</p>}
               <OperationAssistant
                 key={deployment.contractAddress}
                 project={project}
@@ -321,6 +325,7 @@ export function DetailPage({ id }: { id: string }) {
                   if (refreshed.error) throw refreshed.error;
                 }}
                 quickActions
+                rate={rate}
                 naturalLanguageEnabled={Boolean(context.operationsEnabled)}
               />
               <DemoLimits />
@@ -334,14 +339,18 @@ export function DetailPage({ id }: { id: string }) {
             </section>
           ) : (
             <div className="my-7">
-              <Row label="Total" value={`${formatWei(spec.totalAmountWei)} ${currency}`} />
+              <Row
+                label="Total"
+                value={`${formatWei(spec.totalAmountWei)} ${currency}${approximately(spec.totalAmountWei, rate)}`}
+              />
               {spec.milestones.map((m) => (
                 <Row
                   key={m.id}
                   label={`${m.id}. ${m.title}`}
-                  value={`${formatWei(m.amountWei)} ${currency}`}
+                  value={`${formatWei(m.amountWei)} ${currency}${approximately(m.amountWei, rate)}`}
                 />
               ))}
+              {rate && <p className="mt-3 text-xs text-muted-foreground">{rateText(rate)}</p>}
               <details className="mt-4">
                 <summary>Participant addresses</summary>
                 <Row

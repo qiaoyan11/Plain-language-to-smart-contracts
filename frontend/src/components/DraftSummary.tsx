@@ -1,5 +1,6 @@
 import { formatWei } from "@/api/client";
-import type { ClarifyResult, DraftSession, ExchangeRate } from "@/api/types";
+import type { ClarifyResult, DraftSession } from "@/api/types";
+import { approximately, rateText } from "@/lib/money";
 import { Row } from "./Shell";
 
 export function draftReady(session: DraftSession | undefined) {
@@ -12,30 +13,6 @@ export function draftReady(session: DraftSession | undefined) {
     session.result.questions.length === 0 &&
     session.result.unsupportedTerms.length === 0,
   );
-}
-
-const grouped = (value: string) => {
-  const [whole = "", part] = value.split(".");
-  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (part ? `.${part}` : "");
-};
-
-/** One line saying how amounts in another currency became test ETH. */
-export function rateText(rate: ExchangeRate) {
-  const at = `1 test ETH = ${grouped(rate.unitsPerEth)} ${rate.currency}`;
-  const time = rate.asOf ? `, ${rate.asOf.slice(11, 16)} UTC` : "";
-  if (rate.source === "stated")
-    return `Converted from ${rate.currency} at the rate you gave: ${at}.`;
-  if (rate.source === "reference")
-    return `Converted from ${rate.currency} at a reference rate because no live rate was available: ${at}.`;
-  const label = rate.source === "cached" ? "the last available rate" : "the live rate";
-  return `Converted from ${rate.currency} at ${label}: ${at}${rate.provider ? ` (${rate.provider}${time})` : ""}.`;
-}
-
-/** "≈ 500 USD" for an amount in wei, when every amount came from one other currency. */
-function approximately(wei: string, rate: ExchangeRate | undefined) {
-  if (!rate) return "";
-  const value = (Number(BigInt(wei) / 1_000_000n) / 1e12) * Number(rate.unitsPerEth);
-  return ` (≈ ${value.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${rate.currency})`;
 }
 
 export function DraftSummary({

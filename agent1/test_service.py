@@ -33,17 +33,19 @@ class AgentTests(unittest.TestCase):
                 self.assertEqual(clarify(case['request']['payload'], lambda *_: case['exampleExtraction']),
                                  dict(case['expectedResult'], separateTerms=[]))
 
-    def test_unicode_revision_clause_keeps_source_quote_and_english_question(self):
+    def test_unicode_revision_clause_becomes_an_english_note_with_the_source_quote(self):
         case = example('complete')
         payload = case['request']['payload']
         clause = '\u4e59\u65b9\u6301\u7eed\u4fee\u6539\u81f3\u7532\u65b9\u6ee1\u610f\u3002'
         payload['message'] += clause
         result = clarify(payload, lambda *_: case['exampleExtraction'])
-        self.assertEqual(result['status'], 'needsClarification')
-        self.assertIn('Which agreed mockup or test determines acceptance?', result['questions'][0]['question'])
-        self.assertIn('\u4fee\u6539\u81f3\u7532\u65b9\u6ee1\u610f', result['questions'][0]['question'])
+        # No question: the user is told on the review page instead.
+        self.assertEqual(result['status'], 'readyForConfirmation')
+        self.assertEqual(result['questions'], [])
+        self.assertIn('\u4fee\u6539\u81f3\u7532\u65b9\u6ee1\u610f', result['notEnforced'][0])
+        self.assertTrue(result['notEnforced'][0].startswith('open-ended revisions'))
 
-    def test_revision_question_persists_until_replaced(self):
+    def test_revision_note_persists_until_replaced(self):
         case = example('revisions')
         first = case['request']['payload']['message']
         payload = dict(draftSpec=case['expectedResult']['draftSpec'],
@@ -53,11 +55,23 @@ class AgentTests(unittest.TestCase):
         terms = case['exampleExtraction']
         terms['revisionResolutionQuote'] = 'Fabricated consent'
         result = clarify(payload, lambda *_: terms)
-        self.assertEqual(result['questions'][0]['field'], 'acceptance.openEndedRevisions')
+        self.assertEqual(result['notEnforced'], case['expectedResult']['notEnforced'])
         payload['message'] = 'We replace satisfaction with acceptance against mockup v2 and the checkout tests.'
         terms['revisionResolutionQuote'] = payload['message']
         result = clarify(payload, lambda *_: terms)
         self.assertEqual(result['status'], 'readyForConfirmation')
+        self.assertNotIn('notEnforced', result)
+
+    def test_old_drafts_with_a_revision_question_get_a_note_instead(self):
+        case = example('revisions')
+        prior = dict(case['expectedResult'], status='needsClarification', notEnforced=[],
+                     questions=[dict(field='acceptance.openEndedRevisions', question='Which mockup decides?')])
+        payload = dict(draftSpec=prior['draftSpec'], message='Keep the same wallet.',
+                       history=[dict(role='user', content='Website, revise until I am happy.'),
+                                dict(role='assistant', content=json.dumps(prior))])
+        result = clarify(payload, lambda *_: case['exampleExtraction'])
+        self.assertEqual(result['questions'], [])
+        self.assertTrue(result['notEnforced'][0].startswith('open-ended revisions:'))
 
     def test_money(self):
         for quote in ('0.0000000000000000001 ETH', '99 ETH', '0 wei', '3%'):

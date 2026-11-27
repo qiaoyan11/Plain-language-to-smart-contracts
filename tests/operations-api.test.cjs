@@ -250,3 +250,26 @@ test('real bridge accepts the real project snapshot (stub Agent 3, no model call
     });
   } finally { if (saved !== undefined) process.env.AGENT3_MODE = saved; }
 });
+
+test('a short reply to an Agent 3 question is read together with the request it answers', async () => {
+  const seen = [];
+  const runner = async request => {
+    seen.push(request.payload.message);
+    const { projectId, deployment } = request.payload;
+    const first = seen.length === 1;
+    return { interfaceVersion: 1, requestId: request.requestId, status: 'ok', errors: [], result: first
+      ? { status: 'needsClarification', question: 'Do you want to deposit 0.01 test ETH first?', intent: null, summary: 'unclear' }
+      : { status: 'readyForConfirmation', question: null, summary: 'Deposit 0.01 test ETH.',
+        intent: { projectId, chainId: deployment.chainId, contractAddress: deployment.contractAddress, action: 'deposit', milestoneId: null } } };
+  };
+  await withAPI({ enabled: true, runner }, async ({ act, plan }) => {
+    await act('deploy');
+    assert.equal((await plan('Pay the designer.')).body.status, 'needsClarification');
+    const answer = await plan('yes');
+    assert.equal(answer.body.intent.action, 'deposit');
+    assert.match(seen[1], /^Pay the designer\.\n\(Assistant asked: "Do you want to deposit 0\.01 test ETH first\?" The user replied: "yes"\)$/);
+    // A new request after a completed plan is sent as written.
+    await plan('Check the escrow.');
+    assert.equal(seen[2], 'Check the escrow.');
+  });
+});

@@ -105,7 +105,8 @@ test('English conversation turns show one stable question while retaining every 
     const turn = first.body.turns[0];
     assert.equal(turn.revision, 1);
     assert.equal(turn.question.field, 'totalAmountWei');
-    assert.match(turn.question.question, /total amount in ETH/);
+    // Nothing is priced yet, so the question asks for any currency rather than ETH.
+    assert.match(turn.question.question, /^What is the total price, and in which currency\?/);
     assert.equal((turn.question.question.match(/\?/g) ?? []).length, 1);
     assert.equal(turn.reply.includes(turn.question.question), false);
     reverse = true;
@@ -246,8 +247,8 @@ test('unresolved stage payments identify the delivery and accepted answer format
     assert.match(first.turns[0].question.question, /milestone 1.*Market display/);
     assert.match(first.turns[0].question.question, /0\.08 ETH/);
     const repeat = (await call(path + '/messages', message('The first amount is undecided.', 1, 'stage-amount-002'))).body;
-    assert.match(repeat.turns[1].reply, /milestone 1.*Market display.*not yet resolved/);
-    assert.match(repeat.turns[1].reply, /amount followed by ETH.*percentage/);
+    assert.match(repeat.turns[1].reply, /milestone 1.*Market display.*is still open\./);
+    assert.match(repeat.turns[1].reply, /is still open\./);
     assert.equal(repeat.result.draftSpec.milestones.every(m => m.amountWei === null), true);
     assert.equal((await call(path + '/confirmation', { approved: true, expectedRevision: 2 })).status, 409);
     const third = (await call(path + '/messages', message('25%', 2, 'stage-amount-003'))).body;
@@ -607,5 +608,23 @@ test('a reply that settles flagged terms says which terms no longer block the dr
     // The review page lists it as a condition the contract does not enforce.
     assert.deepEqual(second.body.settledTerms, ['payment due June 30, 2026']);
     assert.deepEqual((await call(path)).body.settledTerms, ['payment due June 30, 2026']);
+  });
+});
+
+test('an unfinished conversation can be discarded; a confirmed one cannot', async () => {
+  let accounts;
+  await withAPI({ enabled: true, runner: async request => ready(request, accounts) }, async ({ call, create, accounts: local }) => {
+    accounts = local;
+    const kept = await create(), dropped = await create();
+    await call(kept.path + '/messages', message());
+    await call(dropped.path + '/messages', message('A second idea I no longer need.'));
+    assert.equal((await call('/drafts')).body.drafts.length, 2);
+    assert.equal((await call(dropped.path + '/discard', {})).status, 200);
+    assert.equal((await call(dropped.path)).status, 404);
+    assert.deepEqual((await call('/drafts')).body.drafts.map(d => d.id), [kept.draft.id]);
+    assert.equal((await call(kept.path + '/confirmation', { approved: true, expectedRevision: 1 })).status, 201);
+    const refused = await call(kept.path + '/discard', {});
+    assert.equal(refused.status, 409);
+    assert.match(refused.body.error, /confirmed/);
   });
 });

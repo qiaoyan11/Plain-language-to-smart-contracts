@@ -1,13 +1,35 @@
 """Extract terms, reconcile exact payments, then validate the existing v1 handoff."""
+import copy
 import json
 import re
+import time
 from fractions import Fraction
 from uuid import uuid4
 
 from agent1 import currency
 from agent1.model import extract
 from agent1.prompts import INSTRUCTIONS
-from shared.handoff import MAX_UINT, validate
+from shared.handoff import MAX_UINT, ROOT, validate
+
+# What the model extracted on each live turn, next to what the program made of it. Local and
+# git-ignored: it shows why a real request needed a question, and is training data for a
+# locally served Agent 1 model later.
+TRACE = ROOT / 'data' / 'private' / 'agent1-traces.jsonl'
+TRACE_LINES = 500
+
+
+def record_trace(payload, terms, result, error=None):
+    entry = {'time': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'message': payload['message'],
+             'historyTurns': len(payload['history']), 'terms': terms, 'error': error,
+             'result': result and {key: result.get(key) for key in
+                                   ('status', 'questions', 'unsupportedTerms', 'notEnforced', 'exchangeRates', 'draftSpec')}}
+    try:
+        TRACE.parent.mkdir(parents=True, exist_ok=True)
+        lines = TRACE.read_text().splitlines() if TRACE.exists() else []
+        lines = (lines + [json.dumps(entry, ensure_ascii=False)])[-TRACE_LINES:]
+        TRACE.write_text('\n'.join(lines) + '\n')
+    except OSError:
+        pass  # Tracing never affects the conversation.
 
 AMOUNT = re.compile(r'([0-9]+(?:\.[0-9]+)?)\s*(?:(?:test|Sepolia|\u6d4b\u8bd5)\s*)?(ETH|wei|%|\uff05)', re.I)
 NUMBER = re.compile(r'[0-9]+(?:\.[0-9]+)?')
@@ -72,24 +94,26 @@ def resolved_question_fields(terms, message):
             and item['userQuote'] in message}
 
 
-def revision_question(message, previous, terms):
-    prior = next((q for q in previous.get('questions', []) if q['field'] == REVISION_FIELD), None)
+REVISION_NOTE = 'open-ended revisions'
+REVISION_FIELDS = (REVISION_FIELD, 'acceptance', 'revision.followup')
+
+
+def revision_note(message, previous, terms):
+    """Open-ended revisions become a note, not a question: like Upwork, Fiverr and Escrow.com,
+    the fix is a review window, which the v1 contract does not have, not wording from the user.
+    Returns (note or None, resolved)."""
     quote = terms.get('revisionResolutionQuote')
-    resolved = (not terms['revisionRiskOpen'] and isinstance(quote, str)
-                and bool(quote.strip()) and quote in message)
-    if resolved:
-        return None
+    if (not terms['revisionRiskOpen'] and isinstance(quote, str) and quote.strip() and quote in message):
+        return None, True
+    tail = "payment waits for the client's approval and has no review deadline"
     match = OPEN_ENDED.search(message)
-    if not match:
-        followup = next((q for q in terms['questions'] if q['field'] == 'revision.followup'), None)
-        if prior and followup:
-            return dict(field=REVISION_FIELD, question=followup['question'])
-        return prior
-    clause = match.group()
-    question = (f'“{clause}” could leave the milestone payment waiting indefinitely. '
-                'Which agreed mockup or test determines acceptance? '
-                'If the parties already settled this, give their replacement wording.')
-    return dict(field=REVISION_FIELD, question=question)
+    if match:
+        return f'{REVISION_NOTE} (\u201c{match.group()}\u201d): {tail}', False
+    # An older draft may still hold the revision question; carry it over as a note.
+    prior = next((q for q in previous.get('questions', []) if q['field'] in REVISION_FIELDS), None)
+    if terms['revisionRiskOpen'] or prior:
+        return f'{REVISION_NOTE}: {tail}', False
+    return None, False
 
 
 MONEY_UNITS = (r'usd[ct]?|eur|gbp|cny|rmb|jpy|cad|aud|inr|btc|wbtc|weth|gwei|dai|sol|'
@@ -106,7 +130,8 @@ def quote_in(quote, sources, bare=False):
         for found in literal.finditer(source):
             before, after = source[:found.start()], source[found.end():]
             separator = re.search(r"[0-9]([,.' \u00a0\u202f]+)$", before)
-            if separator:
+            # Only a quote that starts with a digit can be the tail of a longer number.
+            if separator and quote.strip()[:1].isdigit():
                 # "1, 500 ETH" or "1.5 ETH" continue one number. In "Stages 3 to 6, 24 ETH" a comma
                 # and a space list the next number: a group after ", " always has three digits.
                 digits = re.match(r'[0-9]+', quote.strip())
@@ -132,9 +157,33 @@ def leading_amount(text):
     return fiat[0].strip() if fiat and currency.parse(fiat[0].strip()) else None
 
 
+PRODUCT = re.compile(r'\s*([0-9]+(?:\.[0-9]+)?)\s*(?:\u00d7|x|X|\*)\s*(.+?)\s*|\s*(.+?)\s*(?:\u00d7|x|X|\*)\s*([0-9]+(?:\.[0-9]+)?)\s*')
+
+
 def value_of(quote, sources, old_amounts, total=None, unit=None):
     if not isinstance(quote, str):
         return None
+    product = PRODUCT.fullmatch(quote)
+    if product and not AMOUNT.fullmatch(quote.strip()):
+        # "20 × 300块": a count and a unit price the user gave ("20 lessons, 300 each").
+        count, price = (product[1], product[2]) if product[1] else (product[4], product[3])
+        price = currency.NOT_ONE_AMOUNT.sub(' ', price).strip()
+        if not any(count in s for s in sources):
+            return None
+        fiat = currency.parse(price)
+        if fiat and quote_in(price, sources):
+            # Multiply in the original currency, then convert once, so rounding happens once.
+            wei = currency.wei_for(fiat[0], fiat[1] * Fraction(count), sources)
+            return str(wei) if wei and wei <= MAX_UINT else None
+        each = value_of(price, sources, old_amounts, total, unit)
+        value = Fraction(count) * int(each) if each else None
+        return str(int(value)) if value and value.denominator == 1 and value <= MAX_UINT else None
+    if not AMOUNT.fullmatch(quote.strip()) and not currency.parse(quote):
+        # "0.5 ETH when the mockups are approved": the one ETH amount inside a longer quote.
+        inside = AMOUNT.findall(quote)
+        if len(inside) == 1 and len(NUMBER.findall(quote)) == 1 and quote_in(quote, sources):
+            found = AMOUNT.search(quote)
+            return value_of(found[0], sources, old_amounts, total, unit)
     if not AMOUNT.fullmatch(quote.strip()) and currency.parse(quote):
         # "$8,000" or "89,800 元": converted to test ETH, so the user never has to.
         if quote not in old_amounts and not quote_in(quote, sources):
@@ -178,6 +227,10 @@ def value_of(quote, sources, old_amounts, total=None, unit=None):
                 break
     elif bare and unit in ('eth', 'wei'):
         value = Fraction(quote.strip())
+    elif bare and unit in currency.CODES:
+        # A bare "800" answering a question about a price in USD.
+        wei = currency.to_wei(f'{quote.strip()} {unit}', sources)
+        return str(wei) if wei and wei <= MAX_UINT else None
     else:
         return None
     if unit == '%':
@@ -313,32 +366,52 @@ def amount_token(text, sources=()):
     return ('wei', Fraction(match[1]) * (10**18 if unit == 'eth' else 1))
 
 
-# Everyday ways to state a share of the total. Each must appear in the user's own words.
-FRACTION_WORDS = {
-    'half': (1, 2), 'a half': (1, 2), 'one half': (1, 2), 'the other half': (1, 2), '1/2': (1, 2),
-    'a third': (1, 3), 'one third': (1, 3), '1/3': (1, 3), 'two thirds': (2, 3), '2/3': (2, 3),
-    'a quarter': (1, 4), 'one quarter': (1, 4), 'a fourth': (1, 4), '1/4': (1, 4),
-    'three quarters': (3, 4), '3/4': (3, 4),
-    '\u4e00\u534a': (1, 2), '\u534a\u6570': (1, 2), '\u53e6\u4e00\u534a': (1, 2), '\u4e09\u5206\u4e4b\u4e00': (1, 3),
-    '\u4e09\u5206\u4e4b\u4e8c': (2, 3), '\u56db\u5206\u4e4b\u4e00': (1, 4), '\u56db\u5206\u4e4b\u4e09': (3, 4),
-}
-REST_WORDS = {'the rest', 'rest', 'the remaining', 'remaining', 'the remainder', 'remainder', 'the balance',
-              'balance', 'the remaining balance', 'remaining balance', 'whatever is left',
-              '\u5269\u4e0b\u7684', '\u5269\u4e0b', '\u5269\u4f59', '\u4f59\u6b3e', '\u5c3e\u6b3e', '\u4f59\u4e0b'}
-EQUAL_WORDS = {'equal', 'equally', 'evenly', 'equal share', 'equal shares', 'equal parts', 'equal installments',
-               'equal instalments', 'the same', 'same amount', 'the same amount', 'an equal amount', 'split evenly',
-               '\u5e73\u5747', '\u5747\u5206', '\u5e73\u5206', '\u7b49\u989d'}
+# Everyday ways to state a share of the total, grouped by meaning. A model quote counts when the
+# user wrote any word of the same group: models translate ("剩下的" -> "the remaining balance").
+SHARE_GROUPS = [
+    ('fraction', (1, 2), ['half', 'a half', 'one half', '1/2', '50/50', 'fifty-fifty', '\u4e00\u534a', '\u534a\u6570',
+                          '\u5bf9\u534a', '\u53e6\u4e00\u534a', 'the other half', 'other half']),
+    ('fraction', (1, 3), ['a third', 'one third', '1/3', '\u4e09\u5206\u4e4b\u4e00']),
+    ('fraction', (2, 3), ['two thirds', '2/3', '\u4e09\u5206\u4e4b\u4e8c']),
+    ('fraction', (1, 4), ['a quarter', 'one quarter', 'a fourth', '1/4', '\u56db\u5206\u4e4b\u4e00']),
+    ('fraction', (3, 4), ['three quarters', '3/4', '\u56db\u5206\u4e4b\u4e09']),
+    ('rest', None, ['the rest', 'rest', 'the remaining', 'remaining', 'the remainder', 'remainder', 'the balance',
+                    'balance', 'the remaining balance', 'remaining balance', 'the remaining amount',
+                    'whatever is left', 'what is left', 'the other half', 'other half', '\u5269\u4e0b\u7684',
+                    '\u5269\u4e0b', '\u5269\u4f59', '\u4f59\u6b3e', '\u5c3e\u6b3e', '\u4f59\u4e0b', '\u53e6\u4e00\u534a']),
+    ('equal', None, ['equal', 'equally', 'evenly', 'equal share', 'equal shares', 'equal parts', 'equal payments',
+                     'equal installments', 'equal instalments', 'the same', 'same amount', 'the same amount',
+                     'an equal amount', 'split evenly', '\u5e73\u5747', '\u5747\u5206', '\u5e73\u5206', '\u7b49\u989d', '\u5747\u644a']),
+]
 FIVE_LIMIT = 'The requested schedule exceeds the five-milestone limit.'
+_PREFIXES = sorted(((word, index) for index, (_, _, words) in enumerate(SHARE_GROUPS) for word in words),
+                   key=lambda item: len(item[0]), reverse=True)
+
+
+def _written(word, text):
+    if word.isascii():
+        return re.search(r'(?<![a-z0-9])' + re.escape(word) + r'(?![a-z0-9])', text) is not None
+    return word in text
 
 
 def natural_word(quote, sources):
-    """The normalised quote when it is a share word the user actually wrote, else None."""
+    """(kind, fraction) for a share quote such as "half upfront" or "the remaining balance",
+    when the user wrote a word with that meaning; None otherwise."""
     if not isinstance(quote, str):
         return None
-    word = ' '.join(quote.casefold().strip(' .,;:!\u3002\uff0c').split())
-    if word not in FRACTION_WORDS and word not in REST_WORDS and word not in EQUAL_WORDS:
+    text = ' '.join(quote.casefold().strip(' .,;:!\u3002\uff0c').split())
+    if NUMBER.search(text.replace('1/2', '').replace('1/3', '').replace('2/3', '').replace('1/4', '').replace('3/4', '')
+                     .replace('50/50', '')):
         return None
-    return word if any(word in ' '.join(source.casefold().split()) for source in sources) else None
+    match = next((index for word, index in _PREFIXES if text == word or text.startswith(word + ' ')
+                  or (not word.isascii() and text.startswith(word))), None)
+    if match is None:
+        return None
+    said = [' '.join(source.casefold().split()) for source in sources]
+    kind, share, words = SHARE_GROUPS[match]
+    if not any(_written(word, source) for word in words for source in said):
+        return None
+    return kind, share
 
 
 def round_step(value):
@@ -351,14 +424,15 @@ def fill_natural_amounts(rows, milestones, total, sources):
         return set()
     words = {m['id']: natural_word(row['amount'], sources) for row, m in zip(rows, milestones)
              if m['amountWei'] is None}
+    words = {mid: word for mid, word in words.items() if word}
     resolved = set()
-    for mid, word in words.items():
-        if word in FRACTION_WORDS:
-            top, bottom = FRACTION_WORDS[word]
+    for mid, (kind, share) in words.items():
+        if kind == 'fraction':
+            top, bottom = share
             milestones[mid - 1]['amountWei'] = str(round_step(Fraction(int(total) * top, bottom)))
             resolved.add(mid)
-    equal = [mid for mid, word in words.items() if word in EQUAL_WORDS]
-    rest = [mid for mid, word in words.items() if word in REST_WORDS]
+    equal = [mid for mid, (kind, _) in words.items() if kind == 'equal']
+    rest = [mid for mid, (kind, _) in words.items() if kind == 'rest']
     known = sum(int(m['amountWei']) for m in milestones if m['amountWei'] and m['id'] not in equal + rest)
     open_rows = [m for m in milestones if m['amountWei'] is None and m['id'] not in equal + rest]
     left = int(total) - known
@@ -478,13 +552,23 @@ def draft_agreement(payload, extractor=extract):
     # One rate per currency for the whole turn, reused on later turns so amounts do not drift.
     book = currency.RateBook(sources, previous.get('exchangeRates'))
     token = currency.ACTIVE.set(book)
+    captured = {}
+    def capture(*args):
+        captured['terms'] = extractor(*args)
+        return copy.deepcopy(captured['terms'])
     try:
-        result, notes = reconcile(payload, extractor)
+        result, notes = reconcile(payload, capture)
+    except Exception as error:
+        if extractor is extract:
+            record_trace(payload, captured.get('terms'), None, f'{type(error).__name__}: {error}')
+        raise
     finally:
         currency.ACTIVE.reset(token)
     rates = book.records()
     if rates:
         result['exchangeRates'] = rates
+    if extractor is extract:
+        record_trace(payload, captured.get('terms'), result)
     return validate('ClarifyResult', result), notes
 
 
@@ -540,6 +624,12 @@ def reconcile(payload, extractor):
     focus = canonical_field(displayed.get('field', '')) if isinstance(displayed, dict) and not previous.get('unsupportedTerms') else None
     answer = payload['message'].strip().rstrip('\u3002.').strip()
     answer_unit = question_unit(displayed)
+    # Once the agreement is priced in one currency, a bare number answering an amount
+    # question is in that currency ("800" after "$2,400 total").
+    priced = [r['currency'] for r in previous.get('exchangeRates', []) if isinstance(r, dict)]
+    if (answer_unit is None and len(priced) == 1 and focus
+            and (focus == 'totalAmountWei' or re.fullmatch(r'milestones\.\d+\.amountWei', focus))):
+        answer_unit = priced[0]
     resolved = resolved_question_fields(terms, payload['message'])
     pending = [q for q in previous.get('questions', [])
                if q['field'] != REVISION_FIELD and q['field'] not in resolved]
@@ -581,6 +671,8 @@ def reconcile(payload, extractor):
     if total_quote is not None and total is None:
         ask('totalAmountWei', 'Please state the exact total in ETH or wei.')
     unit = established_unit(payload, total, total_quote)
+    if unit is None and converted(total_quote):
+        unit = currency.parse(total_quote)[0]  # "$2,400 total, 800 now": the 800 is dollars too.
     rows = terms['milestones']
     if not isinstance(rows, list):
         raise ValueError('Expected a list of milestones.')
@@ -724,14 +816,12 @@ def reconcile(payload, extractor):
         if term not in still_blocking and not any(same_term(term, kept) for kept in not_enforced):
             not_enforced.append(term)
     unsupported = still_blocking
-    review = revision_question(payload['message'], previous, terms)
-    if review:
-        pending_fields = {q['field'] for q in pending}
-        questions = [review] + [q for q in questions
-                               if q['field'] in pending_fields or q['field'] not in
-                               (REVISION_FIELD, 'acceptance', 'revision.followup')]
-    elif terms['revisionRiskOpen']:
-        ask('acceptance', 'Which specific agreed criterion determines acceptance of this milestone?')
+    questions = [q for q in questions if q['field'] not in REVISION_FIELDS]
+    note, settled = revision_note(payload['message'], previous, terms)
+    if settled:
+        not_enforced = [t for t in not_enforced if not t.startswith(REVISION_NOTE)]
+    elif note and not any(t.startswith(REVISION_NOTE) for t in not_enforced):
+        not_enforced.append(note)
     draft.update(milestones=milestones, totalAmountWei=total)
     if old and draft != old:
         draft['specVersion'] += 1

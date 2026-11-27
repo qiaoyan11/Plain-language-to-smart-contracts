@@ -28,8 +28,6 @@ TEXT = {
                           '{total} test ETH first? Ask to deposit, or use the deposit button.',
         'already_funded': 'The escrow is already funded, so it cannot be deposited again. {done}',
         'all_paid': 'All milestones are already paid. {done}',
-        'ask_id_summary': 'The milestone to accept is not specified. {done}',
-        'ask_id': 'Which milestone do you want to accept? The next unpaid milestone is #{id} "{title}".',
         'unknown_id': 'Milestone #{id} does not exist in this project. {done}',
         'unfunded': 'The escrow is not funded yet, so no milestone can be accepted. {done}',
         'is_paid': 'Milestone #{id} is already paid. {done}',
@@ -124,9 +122,9 @@ def decide(parsed, payload):
         return _blocked(lang, 'all_paid')
     lowest = min(unpaid, key=lambda m: m['id'])
     if mid is None:
-        return {'status': 'needsClarification', 'intent': None,
-                'question': _t(lang, 'ask_id', id=lowest['id'], title=lowest['title']),
-                'summary': _t(lang, 'ask_id_summary')}
+        # Milestones are paid in order, so "approve it" can only mean the next unpaid one.
+        # The preview names it and its amount before anything is sent.
+        mid = lowest['id']
     target = next((m for m in milestones if m['id'] == mid), None)
     if target is None:
         return _blocked(lang, 'unknown_id', id=mid)

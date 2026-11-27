@@ -224,10 +224,11 @@ async function buildServer({ generation: generationOptions, operations: operatio
         return send(200, { clarificationEnabled: drafting.enabled, mode: 'local-chain', ...accounts });
       if (req.method === 'GET' && path === '/api/drafts') return send(200, { drafts: drafting.list() });
       if (req.method === 'POST' && path === '/api/drafts') return send(201, drafting.create(await body(req)));
-      const dr = path.match(/^\/api\/drafts\/([^/]+)(?:\/(messages|confirmation))?$/);
+      const dr = path.match(/^\/api\/drafts\/([^/]+)(?:\/(messages|confirmation|discard))?$/);
       if (dr) {
         const [, id, resource] = dr;
         if (req.method === 'GET' && !resource) return send(200, drafting.get(id));
+        if (req.method === 'POST' && resource === 'discard') return send(200, drafting.discard(id, await body(req)));
         if (req.method === 'POST' && resource === 'messages') return send(200, await drafting.message(id, await body(req, 100000)));
         if (req.method === 'POST' && resource === 'confirmation') {
           const candidate = drafting.confirmationCandidate(id, await body(req));
