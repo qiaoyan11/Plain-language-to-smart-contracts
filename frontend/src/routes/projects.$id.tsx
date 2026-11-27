@@ -293,7 +293,7 @@ export function DetailPage({ id }: { id: string }) {
         <>
           {generated ? (
             <section
-              className="mt-8 outline-none"
+              className="mt-8 scroll-mt-24 outline-none"
               aria-label="Local escrow"
               tabIndex={-1}
               ref={(element) => {

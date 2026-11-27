@@ -18,10 +18,12 @@ export function DraftSummary({
   result,
   compactIssues = false,
   primaryQuestionField,
+  settledTerms = [],
 }: {
   result: ClarifyResult | null;
   compactIssues?: boolean;
   primaryQuestionField?: string | undefined;
+  settledTerms?: string[] | undefined;
 }) {
   if (!result)
     return (
@@ -84,9 +86,7 @@ export function DraftSummary({
             stacked
             key={m.id}
             label={`${m.id}. ${m.title}`}
-            value={
-              m.amountWei === null ? "Amount needed" : `${formatWei(m.amountWei)} test ETH`
-            }
+            value={m.amountWei === null ? "Amount needed" : `${formatWei(m.amountWei)} test ETH`}
           />
         ))}
         <Row
@@ -116,7 +116,29 @@ export function DraftSummary({
           )
         : issues}
       <SeparateTerms terms={result.separateTerms || []} />
+      <SettledTerms terms={settledTerms} />
     </div>
+  );
+}
+
+/** Conditions from the user's agreement that came up and were moved out of the payment rules. */
+export function SettledTerms({ terms }: { terms: string[] }) {
+  if (!terms.length) return null;
+  return (
+    <section>
+      <h2>Not enforced by the contract</h2>
+      <p className="mt-2 text-sm text-muted-foreground">
+        These conditions from your agreement came up in the conversation and were moved out of the
+        contract's payment rules. If they still apply, your written agreement governs them.
+      </p>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">
+        {terms.map((term, i) => (
+          <li key={i} className="whitespace-pre-wrap break-words">
+            {term}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -157,6 +179,7 @@ export function DraftSource({
           </p>
         ))}
         {includeTerms && <SeparateTerms terms={session.result?.separateTerms || []} />}
+        {includeTerms && <SettledTerms terms={session.settledTerms || []} />}
       </div>
     </details>
   );

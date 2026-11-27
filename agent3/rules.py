@@ -13,6 +13,9 @@ TEXT = {
         'done': 'No transaction has been sent.',
         'mismatch': 'The project record does not match the deployed contract address. {done}',
         'unsupported': 'This request is not supported. You can ask about the escrow, deposit funds, or accept a milestone. {done}',
+        'unsupported_held': 'This contract cannot refund, cancel, change an amount or pay anyone other than the provider '
+                            'wallet. The escrow keeps its {balance} test ETH until the client approves the next milestone; '
+                            'settle anything else under your written agreement. {done}',
         'unclear_summary': 'The request is not clear enough to act on. {done}',
         'unclear_question': 'What do you want to do: check the escrow, deposit funds, or accept a milestone?',
         'query': 'Escrow balance: {balance} test ETH. Funded: {funded}. Milestones: {items}. {done}',
@@ -87,6 +90,9 @@ def decide(parsed, payload):
     if [m['id'] for m in milestones] != list(range(1, len(milestones) + 1)):
         return _blocked(lang, 'bad_ids')
     if kind == 'unsupported':
+        if snap['funded'] and any(not m['paid'] for m in milestones):
+            # Say plainly where the money stays, so a dispute is not mistaken for a pending refund.
+            return _blocked(lang, 'unsupported_held', balance=format_eth(snap['escrowBalanceWei']))
         return _blocked(lang, 'unsupported')
     if kind == 'unclear':
         return clarify(lang)

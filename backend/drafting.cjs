@@ -140,9 +140,22 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
     if (!s) fail(404, 'Draft not found in this local workspace.');
     return s;
   }
+  // Conditions flagged on an earlier turn that no longer block the draft: the user replaced them
+  // or kept them in the written agreement. The contract does not enforce them, so say so on review.
+  function settledTerms(s) {
+    const open = s.result?.unsupportedTerms ?? [], seen = [];
+    for (const turn of s.history) {
+      if (turn.role !== 'assistant') continue;
+      let terms;
+      try { terms = JSON.parse(turn.content)?.result?.unsupportedTerms; } catch { continue; }
+      for (const term of Array.isArray(terms) ? terms : [])
+        if (typeof term === 'string' && !open.includes(term) && !seen.includes(term)) seen.push(term);
+    }
+    return seen;
+  }
   function snapshot(s) {
     const { history, keys, ...visible } = s;
-    return copy(visible);
+    return copy({ ...visible, settledTerms: settledTerms(s) });
   }
   function revision(s, expected) {
     if (!Number.isSafeInteger(expected) || expected < 0) fail(400, 'expectedRevision must be a nonnegative integer');

@@ -474,6 +474,16 @@ describe("explicit agreement confirmation", () => {
     );
     expect(api.confirmDraft).toHaveBeenCalledTimes(1);
   });
+  it("lists conditions moved out of the contract on the review page", async () => {
+    api.setActiveDraftId(ready.id);
+    vi.mocked(api.getDraft).mockResolvedValue({
+      ...ready,
+      settledTerms: ["payment due June 30, 2026"],
+    });
+    openPage(<ConfirmPage />);
+    expect(await screen.findByText("Not enforced by the contract")).toBeVisible();
+    expect(screen.getByText("payment due June 30, 2026")).toBeVisible();
+  });
   it("clears acknowledgement after a revision conflict and requires reviewing again", async () => {
     await openReady();
     await screen.findByText("Payment summary");

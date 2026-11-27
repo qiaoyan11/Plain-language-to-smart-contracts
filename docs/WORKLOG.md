@@ -80,6 +80,14 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-27 · Jiahao Zhang · Real contracts end to end (round 3)
+
+- Five agreements went through the whole flow with paid model calls: a NY sublease (rent as one milestone, security deposit kept on paper), a three-milestone SOW, a USD website agreement (1 ETH = 1,000 USD), a Chinese career-consulting contract (RMB, restructured into three installments, Agent 3 commands in Chinese) and a casual "half upfront, revise until I'm happy" request. Each was confirmed, passed 24/24 checks, deployed, funded and paid in full; every project shows deploy, deposit and one receipt per milestone (blocks 62–82), no duplicates.
+- Fixed from these runs: Agent 2 output budget 8,192 → 16,384 tokens (the SOW's first call needed 8,903 and returned nothing; the page now says the model returned no contract instead of "checks did not pass"). Agent 1 settles amount questions when one message states the whole ETH schedule, drops numbered questions after a restructure, keeps paper-agreement terms out on later turns, reads "6, 24 ETH" as a list and writes unsupported terms as short phrases.
+- Agent 3 prepares a deposit that names the milestone it covers, says the deposit comes first for "pay milestone 1" on an unfunded escrow, and on a refund request says where the money stays. After deploying, the page moves to the escrow section.
+- Drafting replies name the flagged terms that no longer block the draft and ask for agreed ETH figures when prices are in another currency; the review page lists conditions "Not enforced by the contract". These Node changes are live after the next backend restart; Python and frontend changes are live now.
+- Tests: contracts 26, HTTP 57, handoff 18, Agent 1/2/3 36/29/71, validation 14, frontend 87; tsc passes. Needs a decision: none.
+
 ### 2026-11-27 · Jiahao Zhang · Main-flow polish after a real restart
 
 - After the user restarted `npm run demo:web`, the same URLs restored every project: 工作室官网 kept its address, receipts (blocks 26, 27) and 0.007 balance with 3 transactions; milestone 2 was then paid (block 31, balance 0). The photography project was unchanged (blocks 17–21). Your projects listed all projects and both unfinished conversations; a conversation whose tab closed mid-reply was resumed from that list.

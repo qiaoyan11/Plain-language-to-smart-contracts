@@ -39,7 +39,12 @@ export function CreatePage() {
   } | null>(null);
   useEffect(() => {
     const sent = pending.current;
-    if (sent && session?.id === sent.id && session.revision > sent.expectedRevision && !session.pendingMessage) {
+    if (
+      sent &&
+      session?.id === sent.id &&
+      session.revision > sent.expectedRevision &&
+      !session.pendingMessage
+    ) {
       pending.current = null;
       if (session.messages.at(-1)?.content === sent.content) {
         setMessage("");
@@ -110,9 +115,11 @@ export function CreatePage() {
       pending.current = null;
       setMessage("");
     } catch (caught) {
-      setError(reconnectDelay(caught)
-        ? "Your message response did not arrive. Check the conversation before sending it again."
-        : (caught as Error).message);
+      setError(
+        reconnectDelay(caught)
+          ? "Your message response did not arrive. Check the conversation before sending it again."
+          : (caught as Error).message,
+      );
       if (current) {
         try {
           await cache.cancelQueries({ queryKey: ["draft", current.id] });
@@ -207,13 +214,13 @@ export function CreatePage() {
                 <ArrowUp />
               </Button>
               <p className="mt-3 text-xs text-muted-foreground">
-                Messages may use a paid AI model. Your conversation and
-                draft are saved on this local backend.
+                Messages may use a paid AI model. Your conversation and draft are saved on this
+                local backend.
               </p>
               {context.data?.clarificationEnabled && !session?.pendingMessage && walletQuestion && (
                 <p className="mt-4 text-sm">
-                  This demo uses two built-in test wallets. Choose <strong>Use local test accounts</strong>{" "}
-                  to answer the wallet question.
+                  This demo uses two built-in test wallets. Choose{" "}
+                  <strong>Use local test accounts</strong> to answer the wallet question.
                 </p>
               )}
               {context.data?.clarificationEnabled && !session?.pendingMessage && (
@@ -242,7 +249,7 @@ export function CreatePage() {
         <aside className="rounded-lg border border-border p-5" aria-label="Current agreement draft">
           <DraftSummary
             result={session?.result ?? null}
-
+            settledTerms={session?.settledTerms}
             compactIssues
             primaryQuestionField={latestDraftQuestion(session)?.field}
           />

@@ -58,6 +58,10 @@ class RulesTest(unittest.TestCase):
 
     def test_unsupported_blocked(self):
         self.assert_blocked(self.run_rules('unsupported'))
+        held = self.run_rules('unsupported', state(funded=True, paid=(1,)))
+        self.assert_blocked(held)
+        self.assertIn('cannot refund', held['summary'])
+        self.assertIn('until the client approves the next milestone', held['summary'])
 
     def test_unclear_asks(self):
         r = self.run_rules('unclear')

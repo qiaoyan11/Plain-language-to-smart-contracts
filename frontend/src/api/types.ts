@@ -110,12 +110,18 @@ export interface DraftSession {
   createdAt: string;
   updatedAt: string;
   messages: Array<{ role: "user"; content: string }>;
-  turns?: Array<{ revision: number; reply: string; question: { field: string; question: string } | null }>;
+  turns?: Array<{
+    revision: number;
+    reply: string;
+    question: { field: string; question: string } | null;
+  }>;
   result: ClarifyResult | null;
   busy: boolean;
   pendingMessage: { content: string; requestKey: string; expectedRevision: number } | null;
   lastError: string | null;
   confirmedProjectId: string | null;
+  /** Conditions flagged on an earlier turn that the contract no longer has to enforce. */
+  settledTerms?: string[];
 }
 
 export interface BuildSettings {

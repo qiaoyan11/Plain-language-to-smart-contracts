@@ -58,7 +58,7 @@ export function ConfirmPage() {
       </p>
       {session ? (
         <>
-          <DraftSummary result={session.result} />
+          <DraftSummary result={session.result} settledTerms={session.settledTerms} />
           <DraftSource session={session} includeTerms={false} />
           {session.confirmedProjectId ? (
             <Button
@@ -84,8 +84,8 @@ export function ConfirmPage() {
                 {busy ? "Confirming…" : "Confirm agreement"}
               </Button>
               <p className="mt-3 text-xs text-muted-foreground">
-                Next, Accord writes the contract and checks it automatically. Nothing is deployed and
-                no funds move until you choose to.
+                Next, Accord writes the contract and checks it automatically. Nothing is deployed
+                and no funds move until you choose to.
               </p>
               {!draftReady(session) && (
                 <p className="mt-3 text-sm">

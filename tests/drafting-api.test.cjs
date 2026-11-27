@@ -596,5 +596,8 @@ test('a reply that settles flagged terms says which terms no longer block the dr
     await call(path + '/messages', message('Pay USD 8,000 by June 30, 2026.'));
     const second = await call(path + '/messages', message('Release it when the client approves, not on a date.', 1, 'draft-message-002'));
     assert.match(second.body.turns[1].reply, /^This term no longer blocks the draft: \u201cpayment due June 30, 2026\u201d\./);
+    // The review page lists it as a condition the contract does not enforce.
+    assert.deepEqual(second.body.settledTerms, ['payment due June 30, 2026']);
+    assert.deepEqual((await call(path)).body.settledTerms, ['payment due June 30, 2026']);
   });
 });
