@@ -9,6 +9,13 @@ import { GenerationResultView } from "@/components/GenerationResultView";
 import { OperationAssistant } from "@/components/OperationAssistant";
 import { DraftSource } from "@/components/DraftSummary";
 import {
+  DemoLimits,
+  MilestoneLedger,
+  ProjectLink,
+  RefreshHelp,
+  TransactionHistory,
+} from "@/components/EscrowLedger";
+import {
   api,
   formatWei,
   reconnectDelay,
@@ -127,8 +134,6 @@ export function DetailPage({ id }: { id: string }) {
   const { project, context, run } = query.data;
   const spec = context.spec;
   const currency = "test ETH";
-  const paidLabel = "Paid";
-  const unpaidLabel = "Unpaid";
   const confirmation = context.confirmation;
   const source = currentValidatedSource(context, run);
   const sealed = Boolean(context.draftOrigin || context.recoveredOnFreshChain);
@@ -192,6 +197,9 @@ export function DetailPage({ id }: { id: string }) {
       setAck(false);
     });
   }
+  const generateHelp = source
+    ? "Only needed if you want a different contract. A new AI generation replaces this checked version and may incur model costs."
+    : "Starts AI generation and contract checks. This request may incur model costs.";
   return (
     <Shell step={editing ? "Revise agreement" : generated ? "Local escrow" : "Generate & check"}>
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -211,15 +219,18 @@ export function DetailPage({ id }: { id: string }) {
                 : "Deployment details could not be matched to this project. Refresh its status to check again."
               : canDeploy && context.recoveredOnFreshChain
                 ? "Your checked contract was recovered. You can deploy it on this fresh local chain without generating it again."
-                : context.confirmation
-                  ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
-                  : "The agreement changed. Review and confirm this version before generating."}
+                : canDeploy
+                  ? "Your contract passed its checks. Deploy it on the local test chain to start the deposit and payments."
+                  : context.confirmation
+                    ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
+                    : "The agreement changed. Review and confirm this version before generating."}
       </p>
       {context.recoveredOnFreshChain && !hasDeployment && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          Transactions from the previous local chain are unavailable.
+        <p className="-mt-5 mb-5 text-sm text-muted-foreground">
+          Transactions from an earlier local test chain are not shown here.
         </p>
       )}
+      <ProjectLink />
       {context.draftOrigin ? (
         origin.data ? (
           <DraftSource session={origin.data} />
@@ -231,14 +242,9 @@ export function DetailPage({ id }: { id: string }) {
           </p>
         )
       ) : context.recoveredOnFreshChain ? null : (
-        <AgreementNotes workspace={notes} />
-      )}
-      {sealed && (
-        <Button asChild variant="link" className="mt-4 px-0">
-          <Link to="/" onClick={() => api.setActiveDraftId(null)}>
-            Start a new agreement to change these terms
-          </Link>
-        </Button>
+        <div className="mt-5">
+          <AgreementNotes workspace={notes} />
+        </div>
       )}
       {editing && !sealed ? (
         <div className="mt-7">
@@ -269,24 +275,53 @@ export function DetailPage({ id }: { id: string }) {
         </div>
       ) : (
         <>
-          <div className="my-7">
-            <Row
-              label="Total"
-              value={`${formatWei(generated ? project.totalAmountWei : spec.totalAmountWei)} ${currency}`}
-            />
-            {(generated ? project.milestones : spec.milestones).map((m) => (
+          {generated ? (
+            <section className="mt-8" aria-label="Local escrow">
+              <h2>Local escrow</h2>
+              <Row label="Contract address" value={deployment.contractAddress} mono />
               <Row
-                key={m.id}
-                label={`${m.id}. ${m.title}`}
-                value={`${formatWei(m.amountWei)} ${currency}${"paid" in m ? ` · ${m.paid ? paidLabel : unpaidLabel}` : ""}`}
+                label="Escrow balance"
+                value={`${formatWei(project.escrowBalanceWei)} ${currency}`}
               />
-            ))}
-            <details className="mt-4">
-              <summary>Participant addresses</summary>
-              <Row label="Client · approves payments" value={spec.clientWallet} mono />
-              <Row label="Developer · receives payments" value={spec.developerWallet} mono />
-            </details>
-          </div>
+              <MilestoneLedger project={project} />
+              <OperationAssistant
+                key={deployment.contractAddress}
+                project={project}
+                disabled={busy || query.isError}
+                onProject={updateProject}
+                refreshProject={async () => {
+                  const refreshed = await query.refetch();
+                  if (refreshed.error) throw refreshed.error;
+                }}
+                quickActions
+                naturalLanguageEnabled={Boolean(context.operationsEnabled)}
+              />
+              <DemoLimits />
+              <TransactionHistory project={project} />
+              <details className="mt-4">
+                <summary>Deployment details</summary>
+                <Row label="Local chain ID" value={deployment.chainId} />
+                <Row label="Generation run" value={deployment.runId} mono />
+                <Row label="Source hash" value={deployment.sourceHash} mono />
+              </details>
+            </section>
+          ) : (
+            <div className="my-7">
+              <Row label="Total" value={`${formatWei(spec.totalAmountWei)} ${currency}`} />
+              {spec.milestones.map((m) => (
+                <Row
+                  key={m.id}
+                  label={`${m.id}. ${m.title}`}
+                  value={`${formatWei(m.amountWei)} ${currency}`}
+                />
+              ))}
+              <details className="mt-4">
+                <summary>Participant addresses</summary>
+                <Row label="Client · deposits and approves payments" value={spec.clientWallet} mono />
+                <Row label="Developer · receives payments" value={spec.developerWallet} mono />
+              </details>
+            </div>
+          )}
           {reference && (
             <Button asChild variant="outline">
               <Link to="/reference-projects/$id" params={{ id }}>
@@ -319,6 +354,26 @@ export function DetailPage({ id }: { id: string }) {
                   </Button>
                 </div>
               )}
+              {canDeploy && (
+                <section className="panel mb-7" aria-label="Next step">
+                  <h2>Next step: deploy the checked contract</h2>
+                  <p className="mt-2 text-sm leading-relaxed">
+                    Deploys this checked version with your confirmed payment rules on the local
+                    test chain. Deploying makes no model request and moves no funds.
+                  </p>
+                  <Button
+                    className="mt-4"
+                    disabled={busy || query.isError}
+                    onClick={() =>
+                      action(async () => {
+                        await updateProject(await api.deployGeneration(id, run.id, confirmation));
+                      }, "deployment")
+                    }
+                  >
+                    {busy ? "Deploying…" : "Deploy generated contract locally"}
+                  </Button>
+                </section>
+              )}
               {!context.generationEnabled && (
                 <p className="mb-5 text-sm text-muted-foreground">
                   AI generation is disabled on this backend. Your rules are saved. The project owner
@@ -326,6 +381,7 @@ export function DetailPage({ id }: { id: string }) {
                 </p>
               )}
               <Button
+                variant={source ? "outline" : "default"}
                 disabled={
                   !context.confirmation ||
                   !context.generationEnabled ||
@@ -344,68 +400,11 @@ export function DetailPage({ id }: { id: string }) {
                     : "Generate & check contract"}
               </Button>
               {context.generationEnabled && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Starts AI generation and contract checks. This request may incur model costs.
-                </p>
+                <p className="mt-3 text-xs text-muted-foreground">{generateHelp}</p>
               )}
             </>
           )}
-          {generated && (
-            <section className="mt-8">
-              <h2>Local escrow</h2>
-              <Row label="Contract address" value={deployment.contractAddress} mono />
-              <Row
-                label="Escrow balance"
-                value={`${formatWei(project.escrowBalanceWei)} ${currency}`}
-              />
-              <Row label="Deposit" value={project.funded ? "Funded" : "Awaiting deposit"} />
-              <details className="mt-4">
-                <summary>Deployment and transactions</summary>
-                <Row label="Local chain ID" value={deployment.chainId} />
-                <Row label="Generation run" value={deployment.runId} mono />
-                <Row label="Source hash" value={deployment.sourceHash} mono />
-                {project.transactions.map((tx) => (
-                  <Row
-                    key={tx.hash}
-                    label={`${tx.action}${tx.milestoneId ? ` · stage ${tx.milestoneId}` : ""} · block ${tx.blockNumber}`}
-                    value={tx.hash}
-                    mono
-                  />
-                ))}
-              </details>
-              <OperationAssistant
-                key={deployment.contractAddress}
-                project={project}
-                disabled={busy || query.isError}
-                onProject={updateProject}
-                refreshProject={async () => {
-                  const refreshed = await query.refetch();
-                  if (refreshed.error) throw refreshed.error;
-                }}
-                quickActions
-                naturalLanguageEnabled={Boolean(context.operationsEnabled)}
-              />
-            </section>
-          )}
           {run && <GenerationResultView run={run} currentVersion={spec.specVersion} />}
-          {canDeploy && (
-            <div className="mt-5">
-              <Button
-                disabled={busy || query.isError}
-                onClick={() =>
-                  action(async () => {
-                    await updateProject(await api.deployGeneration(id, run.id, confirmation));
-                  }, "deployment")
-                }
-              >
-                Deploy generated contract locally
-              </Button>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Deploys this checked version with your confirmed payment rules on the local test
-                chain.
-              </p>
-            </div>
-          )}
           {!hasDeployment && source && !canDeploy && (
             <p className="mt-4 text-sm text-muted-foreground">
               Local deployment is unavailable for this run.
@@ -418,18 +417,28 @@ export function DetailPage({ id }: { id: string }) {
           {alertText}
         </p>
       )}
-      <Button
-        className="mt-5"
-        variant="link"
-        disabled={busy}
-        onClick={async () => {
-          setError("");
-          const refreshed = await query.refetch();
-          if (refreshed.isSuccess) setDeploymentUnconfirmed(false);
-        }}
-      >
-        Refresh status
-      </Button>
+      <div className="mt-6 border-t border-border pt-4">
+        {sealed && (
+          <Button asChild variant="link" className="px-0">
+            <Link to="/" onClick={() => api.setActiveDraftId(null)}>
+              Start a new agreement to change these terms
+            </Link>
+          </Button>
+        )}
+        <Button
+          className="block px-0"
+          variant="link"
+          disabled={busy}
+          onClick={async () => {
+            setError("");
+            const refreshed = await query.refetch();
+            if (refreshed.isSuccess) setDeploymentUnconfirmed(false);
+          }}
+        >
+          Refresh status
+        </Button>
+        <RefreshHelp />
+      </div>
     </Shell>
   );
 }

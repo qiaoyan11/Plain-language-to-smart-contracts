@@ -32,6 +32,7 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
+| 2026-11-27 | Add read-only `GET /api/projects` and `GET /api/drafts` to Project API v2 (documented in shared/PROJECT_API_V2.md). Existing endpoints and fields are unchanged. | A first-time user who loses a project URL must be able to find the project or unfinished conversation again. The lists never sign or start model jobs. |
 | 2026-11-27 | 冻结的 Solidity 接口及共享源码样例中的注释改为英文，接口签名和规则不变；生成提示词明确要求英文源码。旧项目的已生成源码和交易历史按原样保留。 | 避免中文接口注释被原样复制到新生成的合约中，同时保持已部署项目可追溯。 |
 | 2026-11-27 | 网页、助手提示、回执说明和演示测试统一用英文。用户提交的协议原文和地址按原样保存。 | 团队要求使用英文演示、测试和评估。 |
 | 2026-11-27 | 草稿响应保留每轮呈现给用户的摘要和一个首要问题；服务器保留全部待解决项。确认页按本单金额说明余款风险。生成合约页增设存款和逐期付款按钮，沿用先预览、确认再执行的流程。 | 让用户在本地用中文走完 30%／70% 案例的首期付款。 |
@@ -78,6 +79,16 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-27 · Jiahao Zhang · Find saved work, clearer milestone receipts and demo limits
+
+- First-time-user browser review (two new reference projects, the validated 工作室官网 generated project, photography project read-only). Top problems: a lost URL meant a lost project; recipient and receipt per milestone were buried; after checks passed the paid "Start another generation" was the primary button; reference deposit and payments were sent on one click; the banner did not say that test accounts sign automatically.
+- Added the read-only project and draft lists, a **Your projects** page (header link) and **Copy project link**. A shared `EscrowLedger` shows each milestone's amount, recipient, paid state and receipt on both project pages. Reference deposit/payment now has a review step; a stale second confirmation says nothing new was sent.
+- After checks pass, deploying is the primary next step and regeneration is secondary with a cost note. Banner, footer and "About this local demo" state auto-signing, no wallet or real money, no refund/cancellation/deadline/dispute. Reference demo uses Accord branding, "milestone" and "test ETH".
+- Browser: 工作室官网 deployed at `0xa85233C6…32338f`, deposit block 26, milestone 1 block 27, balance 0.007 after reload; reference A paid in full and a stale second tab was rejected (4 transactions, no duplicate); reference B is funded with both milestones open. One Agent 1 message was sent to check an unclear input; no generation call.
+- Not verified in the browser: the new lists against the running Mac backend and a real service restart, because this session cannot restart that process. A new HTTP test covers list + restart + receipts.
+- Tests: contracts 26, HTTP 55 (2 new), handoff 18+13, Agent 1/2/3 28/24/68, validation 14, frontend 80 (7 new); tsc and build pass. Push is blocked from this environment; the commits are in a bundle (see the handoff note).
+- Follow-ups for owners: Agent 3 receipt text says "ETH" rather than "test ETH" (agent3/report.py); Agent 1 dropped "probably half now" instead of asking about an upfront payment. Needs a decision: none.
 
 ### 2026-11-27 · 英文合约模板与摄影项目最终核对
 

@@ -81,6 +81,41 @@ export interface OperationReport {
   outcome: "confirmed" | "failed" | "unverified";
   summary: string;
 }
+/** Read-only summaries for finding a saved project or an unfinished draft again. */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  kind: "agreement" | "reference";
+  stage:
+    | "needsConfirmation"
+    | "readyToGenerate"
+    | "generating"
+    | "readyToDeploy"
+    | "checksNotPassed"
+    | "notDeployed"
+    | "awaitingDeposit"
+    | "paying"
+    | "complete"
+    | "unknown";
+  createdAt: string;
+  contractAddress: string | null;
+  funded: boolean;
+  totalAmountWei: string;
+  escrowBalanceWei: string | null;
+  milestoneCount: number;
+  paidCount: number | null;
+}
+export interface DraftSummary {
+  id: string;
+  name: string | null;
+  createdAt: string;
+  updatedAt: string;
+  status: string | null;
+  messageCount: number;
+  awaitingReply: boolean;
+}
+/** A backend started before the list endpoints existed answers 404 for them. */
+export const LIST_UNAVAILABLE = "Endpoint not found";
 const AGENT3_LOCAL_ONLY = "Plain-language operations need local API mode with AGENT3_MODE=live.";
 const MAX_WEI = (1n << 256n) - 1n;
 const UNIT = 10n ** 18n;
@@ -119,10 +154,10 @@ export function actionBlockReason(p: Project, intent: ProjectAction): string | n
   if (intent.action === "deposit") return p.funded ? "Funds already deposited" : null;
   const milestone = p.milestones.find((m) => m.id === intent.milestoneId);
   if (!milestone) return "Invalid milestone ID";
-  if (milestone.paid) return `Stage ${milestone.id} already paid`;
+  if (milestone.paid) return `Milestone ${milestone.id} already paid`;
   if (!p.funded) return "No funds deposited yet — cannot pay";
   if (p.milestones.some((m) => m.id < milestone.id && !m.paid))
-    return "Earlier stages must be paid first";
+    return "Earlier milestones must be paid first";
   return null;
 }
 export function applyAction(p: Project, intent: ProjectAction): Project {
@@ -303,6 +338,14 @@ export const api = {
         confirmationId: confirmation.confirmationId,
       },
     );
+  },
+  async listProjects(): Promise<ProjectSummary[]> {
+    if (MOCK_MODE) throw new Error("Saved projects are listed in local API mode.");
+    return (await request<{ projects: ProjectSummary[] }>("/projects")).projects;
+  },
+  async listDrafts(): Promise<DraftSummary[]> {
+    if (MOCK_MODE) return [];
+    return (await request<{ drafts: DraftSummary[] }>("/drafts")).drafts;
   },
   async getLocalAccounts(): Promise<{ clientWallet: string; developerWallet: string }> {
     return request("/local-accounts");

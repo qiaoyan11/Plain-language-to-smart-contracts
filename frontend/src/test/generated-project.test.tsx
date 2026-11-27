@@ -297,7 +297,7 @@ describe("generated project operations", () => {
     const regenerate = vi.spyOn(api, "startGeneration");
     openPage();
     await screen.findByText(/deploy it on this fresh local chain without generating it again/i);
-    expect(screen.getByText(/transactions from the previous local chain are unavailable/i)).toBeVisible();
+    expect(screen.getByText(/transactions from an earlier local test chain are not shown/i)).toBeVisible();
     expect(screen.queryByText("Add or change agreement details")).toBeNull();
     expect(screen.queryByText("Original description & additional terms")).toBeNull();
     expect(screen.getByText("Start a new agreement to change these terms")).toBeVisible();
@@ -309,7 +309,7 @@ describe("generated project operations", () => {
     serve(deployed, { ...context, recoveredOnFreshChain: true, deployment }, run);
     openPage();
     await screen.findByText("Your generated contract is deployed on the local test chain.");
-    expect(screen.queryByText(/transactions from the previous local chain are unavailable/i)).toBeNull();
+    expect(screen.queryByText(/transactions from an earlier local test chain are not shown/i)).toBeNull();
   });
   it("automatically reconnects to a passed run after a lost deployment response without resending it", async () => {
     serve(project, context, run);

@@ -5,18 +5,22 @@ import { FileText } from "lucide-react";
 export function Shell({ step, children }: { step: string; children: ReactNode }) {
   return (
     <div className="min-h-screen">
-      <div className="prototype-label">Local test chain · Test funds only</div>
-      <header className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-7">
+      <div className="prototype-label">
+        Local test-chain demo · Built-in test accounts sign automatically · No real wallet or money
+      </div>
+      <header className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-4 px-6 py-7">
         <Link to="/" className="flex items-center gap-2 font-display text-lg font-semibold">
           <FileText className="size-5 text-primary" />
           Accord
         </Link>
-        <Link
-          to="/reference-demo"
-          className="text-xs text-muted-foreground underline underline-offset-4"
-        >
-          Reference payment demo
-        </Link>
+        <nav aria-label="Main" className="flex items-center gap-5 text-xs">
+          <Link to="/projects" className="font-medium text-primary underline underline-offset-4">
+            Your projects
+          </Link>
+          <Link to="/reference-demo" className="text-muted-foreground underline underline-offset-4">
+            Reference payment demo
+          </Link>
+        </nav>
       </header>
       <main className="mx-auto max-w-3xl px-6 pb-20">
         <div className="mb-9 border-t border-border pt-5 text-xs text-muted-foreground">
@@ -25,8 +29,8 @@ export function Shell({ step, children }: { step: string; children: ReactNode })
         {children}
       </main>
       <footer className="mx-auto max-w-3xl border-t border-border px-6 py-5 text-xs leading-relaxed text-muted-foreground">
-        This local demo saves your drafts, confirmed rules and completed checks. Reopen the same
-        project after a restart to continue.
+        This local demo saves drafts, confirmed rules, checks and test-chain receipts on this
+        computer. After a restart, open Your projects or the same project link to continue.
       </footer>
     </div>
   );

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
@@ -134,6 +134,13 @@ export function CreatePage() {
       <p className="intro">
         Paste your contract or describe the work and payment terms. Answer the questions, then
         review the agreement before confirming.
+      </p>
+      <p className="-mt-5 mb-8 text-sm text-muted-foreground">
+        Returning to earlier work?{" "}
+        <Link to="/projects" className="text-primary underline underline-offset-4">
+          Open your saved projects and conversations
+        </Link>
+        .
       </p>
       <div className="grid items-start gap-8 md:grid-cols-2">
         <div>

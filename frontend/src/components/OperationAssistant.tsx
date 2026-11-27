@@ -125,7 +125,10 @@ export function OperationAssistant({
               {formatWei(plan.payment.amountWei)} {unit}
             </strong>
           </p>
-          <p className="break-all">Recipient: {plan.payment.to}</p>
+          <p className="break-all">
+            {plan.intent?.action === "deposit" ? "Into the escrow contract" : "Recipient (developer)"}:{" "}
+            {plan.payment.to}
+          </p>
           {plan.intent?.action === "acceptMilestone" ? (
             <p>{`Confirming accepts milestone #${plan.intent?.milestoneId} "${plan.payment.milestoneTitle}" and releases its payment to the provider.`}</p>
           ) : (
@@ -145,7 +148,7 @@ export function OperationAssistant({
             onClick={confirm}
           >
             {busy === "confirm"
-              ? "Waiting for confirmation…"
+              ? "Recording on the local test chain…"
               : source === "button"
                 ? plan.intent?.action === "deposit"
                   ? "Confirm deposit"

@@ -21,6 +21,7 @@ After installing both sets of dependencies, you can start both local services wi
 ## Two distinct flows
 
 - `/`: describe an agreement and answer the drafting assistant. The server keeps the conversation and current payment summary. Use **Use local test accounts** to explicitly send the two local addresses. Once the remaining questions and unsupported payment terms are resolved, choose **Review agreement**.
+- `/projects`: every project and unfinished conversation saved by the local backend, so a lost URL is not a lost project. Each project page also has **Copy project link**.
 - `/confirm`: review the server-owned payment summary, original text and separate written terms. Acknowledge the payment scope and explicitly confirm the displayed revision. This creates the project and takes you to its generation page.
 - `/projects/:id`: server-owned rule version and confirmation, generation request, polling, final checks, attempt references and source. Conversation-backed agreements are sealed after confirmation. Use **Start a new agreement** to change their terms. Earlier manually created projects retain their versioned editing flow. After the latest confirmed run passes the backend's checks, choose **Deploy generated contract locally**. Deployment is a separate click and uses the local test chain.
 - `/reference-demo`, `/reference-review`, `/reference-projects/:id`: the preserved handwritten-contract demonstration: create, deploy locally, deposit and pay in order. These are not AI-generated contracts.
@@ -49,6 +50,8 @@ The reference demo also supports `VITE_API_MODE=mock`. In local API mode, reopen
 - `src/components/AgreementEditor.tsx`: editable 1–5 milestone fields; optional wallet fields.
 - `src/components/GenerationResultView.tsx`: final validation/source/attempt presentation.
 - `src/components/OperationAssistant.tsx`: plan, confirm and display a receipt-based report for a deployed local escrow.
+- `src/components/EscrowLedger.tsx`: per-milestone amount, recipient, paid state and receipt; transaction history; local-demo limits; project-link copying. Shared by the generated and reference project pages.
+- `src/routes/projects.index.tsx`: saved projects and unfinished conversations.
 - `src/routes/`: new agreement flow and separate reference flow.
 
 Contract definitions: [Project API v2](../shared/PROJECT_API_V2.md), [Generation HTTP v1](../shared/GENERATION_API_V1.md), [Agent handoff v1](../shared/INTERFACES.md).

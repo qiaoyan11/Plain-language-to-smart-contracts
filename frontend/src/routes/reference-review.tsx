@@ -6,7 +6,7 @@ import { api, formatWei, totalWei, type ProjectDraft } from "@/api/client";
 export const Route = createFileRoute("/reference-review")({
   head: () => ({
     meta: [
-      { title: "Review Rules · Smart Contract Escrow (Local Demo)" },
+      { title: "Review payment rules · Accord reference demo" },
       { name: "description", content: "Review project details and milestone payment rules." },
       { property: "og:title", content: "Review Rules · Smart Contract Escrow" },
       { property: "og:description", content: "Review project details and milestone payment rules." },
@@ -55,13 +55,14 @@ function ConfirmPage() {
           <Row label="Developer wallet" value={draft.developerWallet} mono />
           <Row label="Total" value={`${formatWei(totalWei(draft.milestones))} test ETH`} />
           {draft.milestones.map((s, i) => (
-            <Row key={i} label={`Stage ${i + 1} · ${s.title}`} value={`${formatWei(s.amountWei)} ETH`} />
+            <Row key={i} label={`Milestone ${i + 1} · ${s.title}`} value={`${formatWei(s.amountWei)} test ETH`} />
           ))}
           <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
             <li>The client must deposit the full amount before any payment can be approved.</li>
-            <li>Stages must be approved in the order shown above.</li>
-            <li>Each stage can only be paid once.</li>
-            <li>The client confirms delivery. This version has no cancellation or refund.</li>
+            <li>Milestones must be approved in the order shown above.</li>
+            <li>Each milestone can only be paid once.</li>
+            <li>The client confirms delivery. This version has no cancellation, refund or dispute resolution.</li>
+            <li>The built-in local test accounts sign every transaction automatically. No real wallet or money is used.</li>
           </ul>
           {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
           <div className="mt-6 flex gap-3">

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConfirmRouteImport } from './routes/confirm'
 import { Route as ReferenceDemoRouteImport } from './routes/reference-demo'
 import { Route as ReferenceReviewRouteImport } from './routes/reference-review'
+import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsIdRouteImport } from './routes/projects.$id'
 import { Route as ReferenceProjectsIdRouteImport } from './routes/reference-projects.$id'
 
@@ -36,6 +37,11 @@ const ReferenceReviewRoute = ReferenceReviewRouteImport.update({
   path: '/reference-review',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
+  id: '/projects/',
+  path: '/projects/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsIdRoute = ProjectsIdRouteImport.update({
   id: '/projects/$id',
   path: '/projects/$id',
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/reference-review': typeof ReferenceReviewRoute
   '/projects/$id': typeof ProjectsIdRoute
   '/reference-projects/$id': typeof ReferenceProjectsIdRoute
+  '/projects/': typeof ProjectsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/reference-review': typeof ReferenceReviewRoute
   '/projects/$id': typeof ProjectsIdRoute
   '/reference-projects/$id': typeof ReferenceProjectsIdRoute
+  '/projects': typeof ProjectsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,6 +79,7 @@ export interface FileRoutesById {
   '/reference-review': typeof ReferenceReviewRoute
   '/projects/$id': typeof ProjectsIdRoute
   '/reference-projects/$id': typeof ReferenceProjectsIdRoute
+  '/projects/': typeof ProjectsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,6 +90,7 @@ export interface FileRouteTypes {
     | '/reference-review'
     | '/projects/$id'
     | '/reference-projects/$id'
+    | '/projects/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +99,7 @@ export interface FileRouteTypes {
     | '/reference-review'
     | '/projects/$id'
     | '/reference-projects/$id'
+    | '/projects'
   id:
     | '__root__'
     | '/'
@@ -97,6 +108,7 @@ export interface FileRouteTypes {
     | '/reference-review'
     | '/projects/$id'
     | '/reference-projects/$id'
+    | '/projects/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -106,6 +118,7 @@ export interface RootRouteChildren {
   ReferenceReviewRoute: typeof ReferenceReviewRoute
   ProjectsIdRoute: typeof ProjectsIdRoute
   ReferenceProjectsIdRoute: typeof ReferenceProjectsIdRoute
+  ProjectsIndexRoute: typeof ProjectsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -138,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReferenceReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects/': {
+      id: '/projects/'
+      path: '/projects'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof ProjectsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/$id': {
       id: '/projects/$id'
       path: '/projects/$id'
@@ -162,6 +182,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReferenceReviewRoute: ReferenceReviewRoute,
   ProjectsIdRoute: ProjectsIdRoute,
   ReferenceProjectsIdRoute: ReferenceProjectsIdRoute,
+  ProjectsIndexRoute: ProjectsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
