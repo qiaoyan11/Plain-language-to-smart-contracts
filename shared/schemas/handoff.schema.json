@@ -547,6 +547,10 @@
     "ClarifyResult": {
       "type": "object",
       "properties": {
+        "separateTerms": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
         "status": {
           "enum": [
             "needsClarification",

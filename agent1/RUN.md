@@ -42,6 +42,10 @@ V1 only pays on sequential client approval. A revision cap, arbitrator payout, a
 
 Send `{message, history, draftSpec}` as the payload of a v1 clarify envelope. On follow-up, pass the previous draft and the full conversation, including the previous result serialized as an assistant JSON message. This preserves unsupported terms across unrelated follow-ups. Initial drafts get a new project ID; seed draftSpec if the app already owns the ID. Edited drafts keep the ID and increase specVersion. Node owns the final authoritative project, version and confirmation record.
 
+All previously unresolved questions remain open until the extractor identifies an answer in the current user message. Its internal `resolvedQuestions` entries contain the prior `field` and an exact current `userQuote`; absent or old quotations cannot clear a question. An unresolved total stays null even if the old installment values can be summed. Whether a quote actually answers the question still requires semantic interpretation by the model; the program does not infer consent from keywords.
+
+Live `clarify` results also include `separateTerms`, an optional list in the shared schema, so the worker and app can retain the quoted off-chain terms. These terms stay outside `draftSpec` and do not become Agent 2 payment rules. `draft_agreement` retains its `(result, notes)` interface for the standalone worksheet. Old fixtures without `separateTerms` remain valid.
+
 | Example in examples/ | Expected result |
 | --- | --- |
 | complete.json | 1 ETH split 30/70 with objective deliverables; ready for human confirmation |

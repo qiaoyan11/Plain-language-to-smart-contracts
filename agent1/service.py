@@ -19,6 +19,33 @@ OPEN_ENDED = re.compile(
 REVISION_FIELD = 'acceptance.openEndedRevisions'
 
 
+def previous_result(history):
+    """Read the result retained by the caller, including its unresolved questions."""
+    for turn in reversed(history):
+        if turn['role'] != 'assistant':
+            continue
+        try:
+            entry = json.loads(turn['content'])
+        except ValueError:
+            continue
+        if isinstance(entry, dict):
+            result = entry.get('result', entry)
+            if isinstance(result, dict) and 'unsupportedTerms' in result:
+                return result
+    return {}
+
+
+def resolved_question_fields(terms, message):
+    resolutions = terms.get('resolvedQuestions', [])
+    if not isinstance(resolutions, list) or not all(
+            isinstance(item, dict) and isinstance(item.get('field'), str)
+            and item['field'].strip() and isinstance(item.get('userQuote'), str)
+            for item in resolutions):
+        raise ValueError('Question resolutions require a field and a current user quote.')
+    return {item['field'] for item in resolutions
+            if item['userQuote'].strip() and item['userQuote'] in message}
+
+
 def revision_question(message, previous, terms):
     prior = next((q for q in previous.get('questions', []) if q['field'] == REVISION_FIELD), None)
     quote = terms.get('revisionResolutionQuote')
@@ -50,7 +77,11 @@ def value_of(quote, sources, old_amounts, total=None):
     if not match:
         return None
     literal = re.compile(r'(?<![a-zA-Z0-9_.+-])' + re.escape(quote.strip()) + r'(?![a-zA-Z0-9])', re.I)
-    if quote not in old_amounts and not any(literal.search(s) for s in sources):
+    # Do not accept the tail of a grouped amount, e.g. "500 ETH" in "1,500 ETH".
+    # A separator after a nonnumeric word still allows an ordinary amount quote.
+    evidenced = any(not re.search(r"[0-9][,.' \u00a0\u202f]+$", source[:found.start()])
+                    for source in sources for found in literal.finditer(source))
+    if quote not in old_amounts and not evidenced:
         return None
     value = Fraction(match[1])
     unit = match[2].lower()
@@ -74,9 +105,17 @@ def draft_agreement(payload, extractor=extract):
     unsupported = terms['unsupportedTerms']
     if not isinstance(questions, list) or not isinstance(unsupported, list):
         raise ValueError('Expected lists of questions and unsupported terms.')
+    questions, unsupported = list(questions), list(unsupported)
+    previous = previous_result(payload['history'])
+    resolved = resolved_question_fields(terms, payload['message'])
+    pending = [q for q in previous.get('questions', [])
+               if q['field'] != REVISION_FIELD and q['field'] not in resolved]
     def ask(field, question):
         if not any(q['field'] == field for q in questions):
             questions.append({'field': field, 'question': question})
+
+    for question in pending:
+        ask(question['field'], question['question'])
 
     name = terms['name']
     if not name:
@@ -86,7 +125,9 @@ def draft_agreement(payload, extractor=extract):
                  approvalRole='client', refundPolicy='none', deadline=None)
     for field, role in [('clientWallet', 'client'), ('developerWallet', 'provider')]:
         wallet = terms[field]
-        known = wallet and (wallet == old.get(field) or any(wallet in s for s in sources))
+        known = isinstance(wallet, str) and (wallet == old.get(field) or any(
+            re.search(r'(?<![a-zA-Z0-9_])' + re.escape(wallet) + r'(?![a-zA-Z0-9_])', s)
+            for s in sources))
         if not known or not re.fullmatch(r'0x[0-9a-fA-F]{40}', wallet) or int(wallet, 16) == 0:
             wallet = None
             ask(field, f'What is the {role} wallet address?')
@@ -125,22 +166,12 @@ def draft_agreement(payload, extractor=extract):
             total = None
         elif terms['total'] is None:
             total = str(calculated)
+    if any(q['field'] == 'totalAmountWei' for q in pending):
+        total = None
     if not total:
         ask('totalAmountWei', 'What is the total escrow amount in ETH or wei?')
     # A follow-up about a wallet must not accidentally discard a refund condition.
     # The caller supplies the previous result in the assistant history (as chat does).
-    previous = {}
-    for turn in reversed(payload['history']):
-        if turn['role'] == 'assistant':
-            try:
-                entry = json.loads(turn['content'])
-            except ValueError:
-                continue
-            if isinstance(entry, dict):
-                previous = entry.get('result', entry)
-                if isinstance(previous, dict) and 'unsupportedTerms' in previous:
-                    break
-                previous = {}
     withdrawals = terms['withdrawals']
     for condition in previous.get('unsupportedTerms', []):
         removal = next((item['userQuote'] for item in withdrawals
@@ -150,7 +181,10 @@ def draft_agreement(payload, extractor=extract):
                 unsupported.append(condition)
     review = revision_question(payload['message'], previous, terms)
     if review:
-        questions = [review] + [q for q in questions if q['field'] not in (REVISION_FIELD, 'acceptance', 'revision.followup')]
+        pending_fields = {q['field'] for q in pending}
+        questions = [review] + [q for q in questions
+                               if q['field'] in pending_fields or q['field'] not in
+                               (REVISION_FIELD, 'acceptance', 'revision.followup')]
     elif terms['revisionRiskOpen']:
         ask('acceptance', 'What would count as acceptance, how many rounds are included, and '
             'what happens to this payment if the client keeps requesting changes?')
@@ -168,5 +202,5 @@ def draft_agreement(payload, extractor=extract):
 
 
 def clarify(payload, extractor=extract):
-    result, _ = draft_agreement(payload, extractor)
-    return result
+    result, notes = draft_agreement(payload, extractor)
+    return validate('ClarifyResult', dict(result, separateTerms=notes))

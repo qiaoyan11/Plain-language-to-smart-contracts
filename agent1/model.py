@@ -4,9 +4,12 @@ import os
 from urllib.parse import urlsplit
 
 import httpx
+from dotenv import load_dotenv
+from shared.handoff import ROOT
 
 
 def extract(instructions, payload):
+    load_dotenv(ROOT / '.env', override=False, interpolate=False)
     endpoint = os.getenv('AGENT1_BASE_URL', 'https://api.openai.com/v1').rstrip('/')
     location = urlsplit(endpoint)
     local = location.hostname in {'localhost', '127.0.0.1', '::1'}

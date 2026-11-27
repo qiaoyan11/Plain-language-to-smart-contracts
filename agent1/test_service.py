@@ -21,7 +21,7 @@ class AgentTests(unittest.TestCase):
             with self.subTest(case=name):
                 case = example(name)
                 self.assertEqual(clarify(case['request']['payload'], lambda *_: case['exampleExtraction']),
-                                 case['expectedResult'])
+                                 dict(case['expectedResult'], separateTerms=[]))
 
     def test_implicit_revision_wording_in_chinese(self):
         case = example('complete')
@@ -83,6 +83,81 @@ class AgentTests(unittest.TestCase):
         self.assertIsNone(result['draftSpec']['clientWallet'])
         self.assertEqual(result['status'], 'needsClarification')
 
+    def test_total_conflict_persists_until_current_answer(self):
+        case = example('complete')
+        payload, terms = case['request']['payload'], case['exampleExtraction']
+        payload['message'] = payload['message'].replace('(30%)', '(40%)')
+        terms['milestones'][0]['amount'] = '40%'
+        prior = clarify(payload, lambda *_: terms)
+        self.assertIsNone(prior['draftSpec']['totalAmountWei'])
+        followup = dict(message='Keep the same provider wallet.', draftSpec=prior['draftSpec'],
+                        history=[dict(role='user', content=payload['message']),
+                                 dict(role='assistant', content=json.dumps(prior))])
+        terms = example('complete')['exampleExtraction']
+        terms['total'] = None
+        for row, old in zip(terms['milestones'], prior['draftSpec']['milestones']):
+            row['amount'] = old['amountWei'] + ' wei'
+        for resolutions in ([], [dict(field='totalAmountWei', userQuote='Escrow 1 ETH.')]):
+            with self.subTest(resolutions=resolutions):
+                terms['resolvedQuestions'] = resolutions
+                result = clarify(followup, lambda *_: terms)
+                self.assertEqual(result['status'], 'needsClarification')
+                self.assertIsNone(result['draftSpec']['totalAmountWei'])
+                self.assertIn(prior['questions'][0], result['questions'])
+        followup['message'] = 'We change the total to 1.1 ETH and keep both installment amounts.'
+        terms['total'] = '1.1 ETH'
+        terms['resolvedQuestions'] = [dict(field='totalAmountWei', userQuote=followup['message'])]
+        result = clarify(followup, lambda *_: terms)
+        self.assertEqual(result['status'], 'readyForConfirmation')
+        self.assertEqual(result['draftSpec']['totalAmountWei'], '1100000000000000000')
+
+    def test_general_question_persists_until_current_answer(self):
+        case = example('complete')
+        payload, terms = case['request']['payload'], case['exampleExtraction']
+        payload['message'] += ' The parties have not agreed who approves payment.'
+        terms['questions'] = [dict(field='approvalRole', question='Who approves each payment?')]
+        prior = clarify(payload, lambda *_: terms)
+        followup = dict(message='Keep the same wallet.', draftSpec=prior['draftSpec'],
+                        history=[dict(role='user', content=payload['message']),
+                                 dict(role='assistant', content=json.dumps(prior))])
+        terms = example('complete')['exampleExtraction']
+        result = clarify(followup, lambda *_: terms)
+        self.assertEqual(result['status'], 'needsClarification')
+        self.assertEqual(result['questions'], prior['questions'])
+        followup['message'] = 'Both parties agree the client approves each payment.'
+        terms['resolvedQuestions'] = [dict(field='approvalRole', userQuote=followup['message'])]
+        result = clarify(followup, lambda *_: terms)
+        self.assertEqual(result['status'], 'readyForConfirmation')
+
+    def test_amount_quotes_must_match_complete_number(self):
+        for source in ('1,500 ETH', '1, 500 ETH', "1'500 ETH", '1\u202f500 ETH', '1500 ETH'):
+            with self.subTest(source=source):
+                self.assertIsNone(value_of('500 ETH', [source], set()))
+        self.assertEqual(value_of('500 ETH', ['Budget,500 ETH.'], set()), '500000000000000000000')
+        case = example('complete')
+        payload, terms = case['request']['payload'], case['exampleExtraction']
+        payload['message'] = payload['message'].replace('Escrow 1 ETH.', 'Escrow 1,500 ETH.')
+        terms['total'] = '500 ETH'
+        result = clarify(payload, lambda *_: terms)
+        self.assertEqual(result['status'], 'needsClarification')
+        self.assertIsNone(result['draftSpec']['totalAmountWei'])
+
+    def test_wallet_quotes_must_match_complete_address(self):
+        for prefix, suffix in (('', '22'), ('abc', ''), ('', '_suffix')):
+            with self.subTest(prefix=prefix, suffix=suffix):
+                case = example('complete')
+                payload, terms = case['request']['payload'], case['exampleExtraction']
+                wallet = terms['developerWallet']
+                payload['message'] = payload['message'].replace(wallet, prefix + wallet + suffix)
+                result = clarify(payload, lambda *_: terms)
+                self.assertEqual(result['status'], 'needsClarification')
+                self.assertIsNone(result['draftSpec']['developerWallet'])
+        case = example('complete')
+        payload, terms = case['request']['payload'], case['exampleExtraction']
+        wallet = terms['developerWallet']
+        payload['message'] = payload['message'].replace(wallet, '(' + wallet + ')')
+        self.assertEqual(clarify(payload, lambda *_: terms)['status'], 'readyForConfirmation')
+
     def test_refund_persists_across_unrelated_followup(self):
         case = example('refund')
         terms = example('complete')['exampleExtraction']
@@ -96,7 +171,7 @@ class AgentTests(unittest.TestCase):
         terms.update(unsupportedTerms=[], withdrawals=[dict(condition=condition, userQuote=payload['message'])])
         self.assertEqual(clarify(payload, lambda *_: terms)['status'], 'readyForConfirmation')
 
-    def test_separate_terms_only_in_worksheet(self):
+    def test_separate_terms_reach_handoff_without_entering_spec(self):
         from agent1.service import draft_agreement
         from agent1.template import render
         case = example('complete')
@@ -107,12 +182,18 @@ class AgentTests(unittest.TestCase):
         result, notes = draft_agreement(payload, lambda *_: terms)
         self.assertIn(note, render(result, notes))
         self.assertNotIn(note, json.dumps(result))
+        handoff = clarify(payload, lambda *_: terms)
+        self.assertEqual(handoff['separateTerms'], [note])
+        self.assertNotIn(note, json.dumps(handoff['draftSpec']))
         terms['separateTerms'] = ['Invented term']
         with self.assertRaises(ValueError):
             draft_agreement(payload, lambda *_: terms)
 
     def test_transport_and_worker(self):
         case = example('complete')
+        note = 'Both parties keep attribution obligations in a separate agreement.'
+        case['request']['payload']['message'] += '\n' + note
+        case['exampleExtraction']['separateTerms'] = [note]
         bodies = []
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
@@ -131,4 +212,5 @@ class AgentTests(unittest.TestCase):
                 response = dispatch(case['request'])
             thread.join(3)
         self.assertEqual(response['result']['status'], 'readyForConfirmation')
+        self.assertEqual(response['result']['separateTerms'], [note])
         self.assertEqual(bodies[0]['model'], 'local-test')

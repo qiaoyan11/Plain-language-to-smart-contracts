@@ -5,10 +5,24 @@ const { createHash } = require('node:crypto');
 const schema = require('./schemas/handoff.schema.json');
 const ajv = new Ajv({ strict: false });
 addFormats(ajv);
-const kinds = ['Response', 'ClarifyResult', 'GenerateResult', 'PlanResult', 'ReportInput', 'ReportResult'];
+const kinds = ['Response', 'DraftSpec', 'ConfirmedSpec', 'ClarifyResult', 'GenerateResult', 'PlanResult', 'ReportInput', 'ReportResult'];
 const validators = Object.fromEntries(kinds.map(kind => [kind, ajv.compile({ ...schema, $ref: `#/$defs/${kind}` })]));
 function requireThat(condition, message) { if (!condition) throw new Error(message); }
 function check(kind, data) { requireThat(validators[kind](data), `INVALID_${kind}: ${ajv.errorsText(validators[kind].errors)}`); }
+function checkSpec(spec, complete = false) {
+  check(complete ? 'ConfirmedSpec' : 'DraftSpec', spec);
+  const addresses = [spec.clientWallet, spec.developerWallet].filter(Boolean).map(a => a.toLowerCase());
+  requireThat(!addresses.includes('0x' + '0'.repeat(40)) && new Set(addresses).size === addresses.length, 'INVALID_PARTICIPANTS');
+  requireThat(spec.milestones.every((m, i) => m.id === i + 1), 'INVALID_MILESTONE_ORDER');
+  const amounts = spec.milestones.filter(m => m.amountWei !== null).map(m => BigInt(m.amountWei));
+  const max = (1n << 256n) - 1n, sum = amounts.reduce((a, b) => a + b, 0n);
+  requireThat(amounts.every(a => a > 0n && a <= max) && sum <= max, 'INVALID_AMOUNTS');
+  if (spec.totalAmountWei !== null) {
+    const total = BigInt(spec.totalAmountWei);
+    requireThat(total > 0n && total <= max, 'INVALID_TOTAL');
+    if (amounts.length === spec.milestones.length && amounts.length) requireThat(total === sum, 'TOTAL_MISMATCH');
+  }
+}
 function canonical(x) {
   if (Array.isArray(x)) return x.map(canonical);
   if (x && typeof x === 'object') return Object.fromEntries(Object.keys(x).sort().map(k => [k, canonical(x[k])]));
@@ -37,6 +51,13 @@ function validateResponse(request, response) {
   requireThat(kind, 'INVALID_OPERATION');
   check(kind, response.result);
   const result = response.result;
+  if (request.operation === 'clarify') {
+    checkSpec(result.draftSpec, result.status === 'readyForConfirmation');
+    if (request.payload.draftSpec) requireThat(result.draftSpec.projectId === request.payload.draftSpec.projectId, 'DRAFT_PROJECT_MISMATCH');
+    if (result.status === 'readyForConfirmation') requireThat(!result.questions.length && !result.unsupportedTerms.length, 'UNRESOLVED_DRAFT');
+    const sources = request.payload.history.filter(m => m.role === 'user').map(m => m.content).concat(request.payload.message);
+    requireThat((result.separateTerms ?? []).every(term => term.trim() && sources.some(s => s.includes(term))), 'UNSOURCED_SEPARATE_TERM');
+  }
   if (request.operation === 'generate') {
     const { sourceBundle: bundle, validationReport: report, attempts } = result;
     const config = request.payload.runConfig;
