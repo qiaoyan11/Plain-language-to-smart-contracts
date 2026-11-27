@@ -299,6 +299,9 @@ class AgentTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertIsNone(value_of('500 ETH', [source], set()))
         self.assertEqual(value_of('500 ETH', ['Budget,500 ETH.'], set()), '500000000000000000000')
+        # A comma and a space before a number that is not a three-digit group start a new number.
+        self.assertEqual(value_of('24 ETH', ['Stages 3 to 6, 24 ETH in total.'], set()), '24000000000000000000')
+        self.assertIsNone(value_of('5 ETH', ['1,5 ETH'], set()))
         case = example('complete')
         payload, terms = case['request']['payload'], case['exampleExtraction']
         payload['message'] = payload['message'].replace('Escrow 1 ETH.', 'Escrow 1,500 ETH.')
@@ -548,6 +551,95 @@ class FinanceAmountTests(unittest.TestCase):
         self.assertLessEqual(len(title), 120)
         self.assertTrue(title.startswith('Stages 3 through 6: front-end development') and title.endswith('\u2026'))
         self.assertEqual(result['separateTerms'], [])
+
+    def restated_followup(self, first, prior_spec, prior_questions, message):
+        prior = dict(status='needsClarification', draftSpec=prior_spec, questions=prior_questions,
+                     unsupportedTerms=[], separateTerms=[])
+        history = [dict(role='user', content=first),
+                   dict(role='assistant', content=json.dumps(dict(result=prior, question=prior_questions[0])))]
+        return dict(message=message, history=history, draftSpec=prior_spec)
+
+    def test_full_schedule_in_eth_answers_an_open_total_quoted_in_another_currency(self):
+        # Website development contract priced at USD 24,000; the parties then agree an ETH schedule.
+        first = 'Fees: USD 24,000 in total, USD 8,000 for Stages 1 and 2 and USD 16,000 for Stages 3 to 6.'
+        spec = dict(schemaVersion=1, projectId='web-dev', specVersion=3, name='Website Development Agreement',
+                    approvalRole='client', refundPolicy='none', deadline=None, clientWallet=None, developerWallet=None,
+                    milestones=[dict(id=1, title='Stages 1 and 2', amountWei='8000000000000000000'),
+                                dict(id=2, title='Stages 3 to 6', amountWei='16000000000000000000')],
+                    totalAmountWei=None)
+        open_total = dict(field='totalAmountWei', question='What total amount in ETH have both parties agreed?')
+        message = 'Pay in test ETH at 1 ETH = 1,000 USD: 8 ETH for Stages 1 and 2 and 16 ETH for Stages 3 to 6, 24 ETH in total.'
+        terms = dict(separateTerms=[], name='Website Development Agreement', clientWallet=None, developerWallet=None,
+                     total='USD 24,000', milestones=[dict(title='Stages 1 and 2', amount='8 ETH'),
+                                                     dict(title='Stages 3 to 6', amount='16 ETH')],
+                     revisionRiskOpen=False, withdrawals=[], questions=[], unsupportedTerms=[], resolvedQuestions=[])
+        result = clarify(self.restated_followup(first, spec, [open_total], message), lambda *_: terms)
+        self.assertEqual(result['draftSpec']['totalAmountWei'], '24000000000000000000')
+        self.assertEqual({q['field'] for q in result['questions']}, {'clientWallet', 'developerWallet'})
+        # A second candidate amount in the same message is not a complete schedule.
+        undecided = message + ' Or 25 ETH, still undecided.'
+        result = clarify(self.restated_followup(first, spec, [open_total], undecided), lambda *_: terms)
+        self.assertIsNone(result['draftSpec']['totalAmountWei'])
+        self.assertIn('totalAmountWei', {q['field'] for q in result['questions']})
+
+    def test_restructured_schedule_drops_questions_about_the_old_milestones(self):
+        # Career consulting contract: the basic fee moves from one prepayment to three installments.
+        first = '\u57fa\u672c\u670d\u52a1\u8d39 89,800 \u5143\uff084.49 ETH\uff09\u653e\u8fdb\u6258\u7ba1\u3002'
+        spec = dict(schemaVersion=1, projectId='career', specVersion=4, name='Career consulting',
+                    approvalRole='client', refundPolicy='none', deadline=None, clientWallet=None, developerWallet=None,
+                    milestones=[dict(id=1, title='Basic service fee', amountWei='4490000000000000000'),
+                                dict(id=2, title='Salary result deposit', amountWei=None)],
+                    totalAmountWei='4490000000000000000')
+        stale = dict(field='milestones.2.amountWei',
+                     question='Only the basic fee goes into escrow. Should milestone 2 be removed?')
+        message = ('Three installments: 1.347 ETH after the service plan, 1.796 ETH after 100 applications, '
+                   '1.347 ETH after an offer or the end of the service period.')
+        terms = dict(separateTerms=[], name='Career consulting', clientWallet=None, developerWallet=None,
+                     total='4.49 ETH', milestones=[dict(title='Service plan delivered', amount='1.347 ETH'),
+                                                   dict(title='100 applications submitted', amount='1.796 ETH'),
+                                                   dict(title='Offer received or service period ended', amount='1.347 ETH')],
+                     revisionRiskOpen=False, withdrawals=[], questions=[], unsupportedTerms=[], resolvedQuestions=[])
+        result = clarify(self.restated_followup(first, spec, [stale], message), lambda *_: terms)
+        self.assertEqual([m['amountWei'] for m in result['draftSpec']['milestones']],
+                         ['1347000000000000000', '1796000000000000000', '1347000000000000000'])
+        self.assertEqual(result['draftSpec']['totalAmountWei'], '4490000000000000000')
+        self.assertEqual({q['field'] for q in result['questions']}, {'clientWallet', 'developerWallet'})
+
+    def test_conditions_moved_to_the_paper_agreement_do_not_come_back_on_a_wallet_reply(self):
+        case = example('complete')
+        payload, terms = case['request']['payload'], case['exampleExtraction']
+        deadline = 'deadline: Contractor shall complete development by June 23, 2026'
+        flagged = dict(case['expectedResult'], status='unsupported', unsupportedTerms=[deadline])
+        cleared = dict(case['expectedResult'], status='readyForConfirmation', unsupportedTerms=[])
+        keep = 'Keep the deadline and every other clause in our signed paper agreement.'
+        history = [dict(role='user', content=payload['message']), dict(role='assistant', content=json.dumps(flagged)),
+                   dict(role='user', content=keep), dict(role='assistant', content=json.dumps(cleared))]
+        base = dict(history=history, draftSpec=cleared['draftSpec'])
+        for reworded in (deadline, 'Deadline: contractor shall complete development by June 23 2026.'):
+            with self.subTest(reworded=reworded):
+                terms['unsupportedTerms'] = [reworded]
+                result = clarify(dict(base, message='Client wallet ' + terms['clientWallet'] + '.'), lambda *_: terms)
+                self.assertEqual(result['unsupportedTerms'], [])
+                self.assertEqual(result['status'], 'readyForConfirmation')
+        # Raising the condition again in the current message brings it back.
+        terms['unsupportedTerms'] = [deadline]
+        result = clarify(dict(base, message='Actually the contractor shall complete development by June 23, 2026, '
+                                            'or the payment is cancelled.'), lambda *_: terms)
+        self.assertEqual(result['unsupportedTerms'], [deadline])
+
+    def test_percentage_restatement_does_not_settle_an_open_total(self):
+        case = example('complete')
+        prior = case['expectedResult']
+        prior.update(status='needsClarification',
+                     questions=[dict(field='totalAmountWei', question='Is the total 1 ETH or 2 ETH?')])
+        prior['draftSpec']['totalAmountWei'] = None
+        payload = dict(message='Homepage 30%, checkout 70%.', draftSpec=prior['draftSpec'],
+                       history=[dict(role='user', content=case['request']['payload']['message']),
+                                dict(role='assistant', content=json.dumps(prior))])
+        terms = case['exampleExtraction']
+        terms['total'] = None
+        result = clarify(payload, lambda *_: terms)
+        self.assertIn('totalAmountWei', {q['field'] for q in result['questions']})
 
     def test_percentage_expression_may_restate_a_listed_percentage(self):
         total = '20000000000000000'

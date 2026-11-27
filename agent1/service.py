@@ -104,8 +104,14 @@ def quote_in(quote, sources, bare=False):
     for source in sources:
         for found in literal.finditer(source):
             before, after = source[:found.start()], source[found.end():]
-            if re.search(r"[0-9][,.' \u00a0\u202f]+$", before):
-                continue
+            separator = re.search(r"[0-9]([,.' \u00a0\u202f]+)$", before)
+            if separator:
+                # "1, 500 ETH" or "1.5 ETH" continue one number. In "Stages 3 to 6, 24 ETH" a comma
+                # and a space list the next number: a group after ", " always has three digits.
+                digits = re.match(r'[0-9]+', quote.strip())
+                listed = re.fullmatch(r',[ \u00a0\u202f]+', separator[1]) and digits and len(digits[0]) != 3
+                if not listed:
+                    continue
             # A bare quote must not strip an explicit unit or currency from the source.
             if bare and (UNIT_BEFORE.search(before) or UNIT_AFTER.match(after)
                          or re.search(r'[$\u20ac\u00a3\u00a5\u20b9\u20bf]\s*$', before)
@@ -279,6 +285,86 @@ def shorten(text, limit=120):
     return (cut[:space] if space > limit // 2 else cut).rstrip(' ,;:') + '\u2026'
 
 
+def amount_token(text):
+    """A comparable form of one stated amount: wei for ETH and wei, the number for a percentage."""
+    match = AMOUNT.fullmatch(text.strip())
+    if not match:
+        return None
+    unit = match[2].lower().replace('\uff05', '%')
+    if unit == '%':
+        return ('%', Fraction(match[1]))
+    return ('wei', Fraction(match[1]) * (10**18 if unit == 'eth' else 1))
+
+
+def complete_schedule(message, rows, milestones, row_units, total, disputed):
+    """Amount fields settled by one message that states every milestone amount in ETH or wei.
+
+    The total is settled too when the same message states it as the sum, or when the amounts
+    add up to the agreed total. Percentages always add up to the total, so they settle only
+    when the message also states that total. A message that also names another candidate
+    amount, or whose amounts the model disputes this turn, settles nothing.
+    """
+    if not rows or not all(m['amountWei'] for m in milestones):
+        return set()
+    sources = [message]
+    absolute = True
+    allowed = set()
+    for row, milestone, unit in zip(rows, milestones, row_units):
+        quote = row['amount'].strip() if isinstance(row['amount'], str) else None
+        if quote is None or value_of(quote, sources, set(), total, unit) != milestone['amountWei']:
+            return set()
+        match = AMOUNT.fullmatch(quote)
+        if not ((match and match[2].lower() in ('eth', 'wei')) or (NUMBER.fullmatch(quote) and unit in ('eth', 'wei'))):
+            absolute = False
+        allowed.add(amount_token(quote) or ('wei', Fraction(int(milestone['amountWei']))))
+        allowed.add(('wei', Fraction(int(milestone['amountWei']))))
+    calculated = str(sum(int(m['amountWei']) for m in milestones))
+    allowed.add(('wei', Fraction(int(calculated))))
+    # "1 ETH = 1,000 USD" is an exchange rate, not a candidate amount.
+    named = [found for found in AMOUNT.finditer(message)
+             if not re.match(r'\s*(?:=|\uff1d|equals\b|is worth\b)', message[found.end():], re.I)]
+    if any(amount_token(found[0]) not in allowed for found in named):
+        return set()
+    stated = {value_of(found[0], sources, set()) for found in named if found[2].lower() in ('eth', 'wei')}
+    fields = {f'milestones.{m["id"]}.amountWei' for m in milestones}
+    if (fields | {'totalAmountWei'}) & disputed:
+        return set()
+    if calculated in stated:
+        return fields | {'totalAmountWei'}
+    if absolute and total == calculated:
+        return fields | {'totalAmountWei'}
+    return fields if absolute else set()
+
+
+def term_key(term):
+    return ' '.join(re.findall(r'\w+', term.casefold()))
+
+
+def same_term(a, b):
+    """The model rewords a condition slightly between turns; treat close rewordings as one."""
+    if term_key(a) == term_key(b):
+        return True
+    x, y = set(term_key(a).split()), set(term_key(b).split())
+    return bool(x and y) and len(x & y) / len(x | y) >= 0.7
+
+
+def withdrawn_terms(history, previous):
+    """Conditions flagged on an earlier turn and no longer open on the latest one."""
+    earlier = []
+    for turn in history:
+        if turn['role'] != 'assistant':
+            continue
+        try:
+            entry = json.loads(turn['content'])
+        except ValueError:
+            continue
+        result = entry.get('result', entry) if isinstance(entry, dict) else None
+        if isinstance(result, dict) and isinstance(result.get('unsupportedTerms'), list):
+            earlier += [t for t in result['unsupportedTerms'] if isinstance(t, str)]
+    still_open = previous.get('unsupportedTerms', [])
+    return [t for t in earlier if not any(same_term(t, o) for o in still_open)]
+
+
 def title_key(title):
     return ' '.join(title.split()).casefold()
 
@@ -320,7 +406,14 @@ def draft_agreement(payload, extractor=extract):
             and isinstance(item.get('userQuote'), str) for item in changes)
             and all(item['userQuote'].strip() and item['userQuote'] in payload['message'] for item in changes)):
         changed_fields = {canonical_field(item['field']) for item in changes}
-    unsupported = list(unsupported)
+    # The model re-reads the original agreement every turn. A condition the user already moved
+    # out of the contract stays out unless the current message raises it again.
+    withdrawn = withdrawn_terms(payload['history'], previous)
+    said = set(term_key(payload['message']).split())
+    def raised_again(term):
+        words = set(term_key(term).split())
+        return bool(words) and len(words & said) / len(words) >= 0.5
+    unsupported = [t for t in unsupported if raised_again(t) or not any(same_term(t, w) for w in withdrawn)]
     previous['questions'] = [dict(q, field=canonical_field(q['field'])) for q in previous.get('questions', [])]
     prior_questions = previous['questions']
     displayed = previous.get('displayedQuestion', prior_questions[0] if prior_questions else None)
@@ -440,6 +533,18 @@ def draft_agreement(payload, extractor=extract):
                 and direct_answer(f'milestones.{index}.amountWei', row['amount'])
                 and value_of(row['amount'], current_sources, set(), total, row_units[index - 1]) == milestone['amountWei']):
             deterministic.add(f'milestones.{index}.amountWei')
+    disputed = {canonical_field(q['field']) for q in terms['questions'] if q.get('kind') != 'missing'}
+    restated = complete_schedule(payload['message'], rows, milestones, row_units, total, disputed)
+    if restated:
+        # The newest message states the whole schedule itself, so it answers every open amount
+        # question, including a total the model could only quote in another currency.
+        deterministic |= restated
+        if 'totalAmountWei' in restated:
+            total = str(sum(int(m['amountWei']) for m in milestones))
+    if old.get('milestones') and len(rows) != len(old['milestones']):
+        # Numbered questions about the previous schedule no longer point at the same stage.
+        # Missing amounts are asked again below; the model re-raises any doubt that still applies.
+        pending = [q for q in pending if not re.match(r'milestones\.\d+\.', q['field'])]
     questions = [q for q in questions if q['field'] not in deterministic]
     pending = [q for q in pending if q['field'] not in deterministic]
     for question in pending:

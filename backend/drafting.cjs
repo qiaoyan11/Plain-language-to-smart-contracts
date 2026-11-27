@@ -24,7 +24,9 @@ function milestoneLabel(spec, id) {
   const milestone = spec.milestones.find(m => m.id === Number(id));
   return `milestone ${id}${milestone?.title ? ` (\u201c${milestone.title}\u201d)` : ''}`;
 }
-function primaryQuestion(result) {
+// Prices written in another currency cannot be paid by the contract until the parties agree ETH figures.
+const OTHER_CURRENCY = /\b(?:USD|US dollars?|RMB|CNY|EUR|GBP|HKD|euros?|pounds? sterling)\b|[$\u20ac\u00a3\u00a5]|\u4eba\u6c11\u5e01|\d\s*\u5143/i;
+function primaryQuestion(result, texts = []) {
   if (result.unsupportedTerms.length) {
     const more = result.unsupportedTerms.length - 1;
     return { field: 'unsupportedTerms.0',
@@ -46,6 +48,8 @@ function primaryQuestion(result) {
   if (stage) text = stage[2] === 'amountWei'
     ? `What amount in ETH, or percentage of ${result.draftSpec.totalAmountWei ? `the agreed ${eth(result.draftSpec.totalAmountWei)} total` : 'the total'}, is payable for ${milestoneLabel(result.draftSpec, stage[1])}?`
     : `What must be delivered for ${milestoneLabel(result.draftSpec, stage[1])}?`;
+  if (text && (q.field === 'totalAmountWei' || stage?.[2] === 'amountWei') && texts.some(t => OTHER_CURRENCY.test(t)))
+    text += ' The agreement states prices in another currency, and the contract pays only in test ETH, so give the ETH amount both parties agreed.';
   if (!text) {
     // The extraction prompt requests one focused question per field. Keep only its first question
     // for display; all underlying blockers remain in result.questions and block confirmation.
@@ -53,9 +57,9 @@ function primaryQuestion(result) {
   }
   return { field: q.field, question: text };
 }
-function conversationTurn(previous, result, revision, previousTurn) {
+function conversationTurn(previous, result, revision, previousTurn, texts = []) {
   const before = previous?.draftSpec, after = result.draftSpec, lines = [];
-  const question = primaryQuestion(result);
+  const question = primaryQuestion(result, texts);
   if (after.name !== 'Untitled project' && after.name !== before?.name)
     lines.push(`Project recorded: ${after.name}.`);
   if (after.totalAmountWei !== before?.totalAmountWei && after.totalAmountWei)
@@ -88,8 +92,15 @@ function conversationTurn(previous, result, revision, previousTurn) {
     if (after[field] !== before?.[field] && after[field])
       lines.push(`The ${label} is recorded.`);
   }
+  // Say what happened to terms the user dealt with, so they are not silently dropped.
+  const cleared = (previous?.unsupportedTerms ?? []).filter(t => !result.unsupportedTerms.includes(t));
+  if (cleared.length && cleared.length <= 5)
+    lines.push(`${cleared.length === 1 ? 'This term no longer blocks' : 'These terms no longer block'} the draft: ${cleared.map(t => `\u201c${t}\u201d`).join('; ')}.`);
+  else if (cleared.length)
+    lines.push(`${cleared.length} terms no longer block the draft.`);
+  const separate = (result.separateTerms ?? []).length;
   if (JSON.stringify(result.separateTerms ?? []) !== JSON.stringify(previous?.separateTerms ?? []))
-    lines.push(`Separate written terms now contain ${(result.separateTerms ?? []).length} items; they are outside the on-chain payment rules.`);
+    lines.push(`Separate written terms now contain ${separate} item${separate === 1 ? '' : 's'}; they are outside the on-chain payment rules.`);
   // A repeated question must explain what still blocks progress. Do not claim to have
   // accepted an amount merely because the user supplied a number or a model repeated it.
   if (question && question.field === previousTurn?.question?.field) {
@@ -174,7 +185,8 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
       // Node assigns authoritative session identity and revision, never the model.
       result.draftSpec.projectId = s.id;
       result.draftSpec.specVersion = s.revision;
-      const turn = conversationTurn(s.result, result, s.revision, s.turns.at(-1));
+      const turn = conversationTurn(s.result, result, s.revision, s.turns.at(-1),
+        [...s.messages.map(m => m.content), body.message]);
       s.turns.push(turn);
       s.result = result;
       s.messages.push({ role: 'user', content: body.message });

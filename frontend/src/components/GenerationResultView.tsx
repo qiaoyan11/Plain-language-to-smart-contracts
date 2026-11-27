@@ -96,8 +96,8 @@ export function GenerationResultView({
       {noContract && (
         <p className="mt-3 text-sm leading-relaxed">
           The model's reply ended before it contained a complete contract, so no checks ran and
-          nothing can be deployed. This is usually temporary. Start another generation to try
-          again; your confirmed rules stay the same.
+          nothing can be deployed. This is usually temporary. Start another generation to try again;
+          your confirmed rules stay the same.
         </p>
       )}
       {!obsolete && !noContract && run.status === "completed" && !passed && report && (

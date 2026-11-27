@@ -45,7 +45,9 @@ Previous questions can be stale: re-read the original user text before asking ag
 currency is clear, recover earlier quoted allocations rather than asking the user to repeat them.
 For multilingual amounts, retain the exact quote such as "0.01 \u6d4b\u8bd5 ETH", "30%" or "30\uff05"; do not
 translate the unit or replace the fullwidth percent sign in the quote. The program parses these.
-unsupportedTerms is an array of descriptions of every outstanding unsupported requirement.
+unsupportedTerms is an array of descriptions of every outstanding unsupported requirement. Write each entry
+as a short English phrase naming the condition itself, under 20 words, for example "refund of 35% of the fee
+if the client gets no offer" or "payment due by June 30, 2026". Do not explain why it is unsupported.
 Supported on chain: 1–5 ordered milestones, one full upfront deposit in ETH, client approval releases each payment.
 The client's deposit into escrow is not a payment to the provider. If the user wants part of the price paid to
 the provider before any delivery ("half now", "an advance", "a kickoff payment"), never drop it: ask whether it

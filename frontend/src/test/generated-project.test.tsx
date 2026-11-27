@@ -198,6 +198,10 @@ describe("generated project operations", () => {
     fireEvent.click(button);
     await screen.findByText("Ask in plain language");
     expect(deploy).toHaveBeenCalledWith("p", "r", context.confirmation);
+    // The deposit step sits above the deploy button, so focus moves to the escrow section.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("region", { name: "Local escrow" })),
+    );
     first.unmount();
     openPage();
     await screen.findByText("Ask in plain language");

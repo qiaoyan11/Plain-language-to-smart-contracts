@@ -83,10 +83,29 @@ class RulesTest(unittest.TestCase):
 
     def test_deposit_with_milestone_asks(self):
         # "Pay milestone 1" on an unfunded escrow was sometimes read as a deposit with an id.
-        r = rules.decide(parsed('deposit', 1), state())
-        self.assertEqual(r['status'], 'needsClarification')
-        self.assertIsNone(r['intent'])
+        for message in ('Pay milestone 1', 'Deposit and release milestone 1', '\u4ed8\u6b3e\u7b2c\u4e00\u4e2a\u91cc\u7a0b\u7891'):
+            with self.subTest(message=message):
+                payload = state()
+                payload['message'] = message
+                r = rules.decide(parsed('deposit', 1), payload)
+                self.assertEqual(r['status'], 'needsClarification')
+                self.assertIsNone(r['intent'])
+                self.assertIn('not funded yet', r['question'])
+                validate('PlanResult', r)
+
+    def test_deposit_that_names_the_milestone_it_covers_is_prepared(self):
+        # A sublease tenant: "Put the rent for Dec 21-25 into escrow now so Alex knows it's covered."
+        payload = state()
+        payload['message'] = "I'm Sam. Put the rent for Dec 21-25 into escrow now so Alex knows it's covered."
+        r = rules.decide(parsed('deposit', 1), payload)
         validate('PlanResult', r)
+        self.assertEqual(r['status'], 'readyForConfirmation')
+        self.assertEqual(r['intent']['action'], 'deposit')
+        self.assertIsNone(r['intent']['milestoneId'])
+        self.assertIn('One deposit funds every milestone', r['summary'])
+        funded = state(funded=True)
+        funded['message'] = payload['message']
+        self.assertEqual(rules.decide(parsed('deposit', 1), funded)['status'], 'needsClarification')
 
     def test_deposit_twice_blocked(self):
         self.assert_blocked(self.run_rules('deposit', state(funded=True)))

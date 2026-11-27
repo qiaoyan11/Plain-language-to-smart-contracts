@@ -562,3 +562,39 @@ test('confirmation is replayable, seals its source draft and directly supplies t
     assert.deepEqual((await call(projectPath)).body.transactions, []);
   }, { enabled: true, runner: generation.runner });
 });
+
+test('an agreement priced in another currency asks for the agreed ETH figure', async () => {
+  let accounts;
+  await withAPI({ enabled: true, runner: async request => {
+    const response = ready(request, accounts);
+    response.result.status = 'needsClarification';
+    response.result.draftSpec.totalAmountWei = null;
+    response.result.draftSpec.milestones.forEach(m => { m.amountWei = null; });
+    response.result.questions = [{ field: 'totalAmountWei', question: 'What is the total?' }];
+    response.result.separateTerms = ['Warranty for 90 days.'];
+    return response;
+  } }, async ({ call, create, accounts: local }) => {
+    accounts = local;
+    const { path } = await create();
+    const turn = (await call(path + '/messages', message('Fees: USD 24,000, half on design approval. Warranty for 90 days.'))).body.turns[0];
+    assert.equal(turn.question.field, 'totalAmountWei');
+    assert.match(turn.question.question, /^What total amount in ETH have both parties agreed\? The agreement states prices in another currency/);
+    assert.match(turn.reply, /Separate written terms now contain 1 item;/);
+  });
+});
+
+test('a reply that settles flagged terms says which terms no longer block the draft', async () => {
+  let accounts, calls = 0;
+  await withAPI({ enabled: true, runner: async request => {
+    calls++;
+    const response = ready(request, accounts);
+    if (calls === 1) Object.assign(response.result, { status: 'unsupported', unsupportedTerms: ['payment due June 30, 2026'] });
+    return response;
+  } }, async ({ call, create, accounts: local }) => {
+    accounts = local;
+    const { path } = await create();
+    await call(path + '/messages', message('Pay USD 8,000 by June 30, 2026.'));
+    const second = await call(path + '/messages', message('Release it when the client approves, not on a date.', 1, 'draft-message-002'));
+    assert.match(second.body.turns[1].reply, /^This term no longer blocks the draft: \u201cpayment due June 30, 2026\u201d\./);
+  });
+});

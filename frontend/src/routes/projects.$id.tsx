@@ -59,7 +59,9 @@ function currentValidatedSource(context: AgreementContext, run: GenerationRun | 
 
 export function DetailPage({ id }: { id: string }) {
   const cache = useQueryClient(),
-    active = useRef(false);
+    active = useRef(false),
+    // Set after a deploy from this page; the escrow section then scrolls into view once.
+    showEscrow = useRef(false);
   const [busy, setBusy] = useState(false),
     [editing, setEditing] = useState(false),
     [addition, setAddition] = useState(""),
@@ -79,7 +81,9 @@ export function DetailPage({ id }: { id: string }) {
       return { project, context, run };
     },
     refetchOnReconnect: "always",
-    refetchInterval: (q) => reconnectDelay(q.state.error) || (q.state.data?.run && !q.state.data.run.finishedAt ? 2000 : false),
+    refetchInterval: (q) =>
+      reconnectDelay(q.state.error) ||
+      (q.state.data?.run && !q.state.data.run.finishedAt ? 2000 : false),
   });
   const originId = query.data?.context.draftOrigin?.draftId;
   const origin = useQuery({
@@ -159,13 +163,16 @@ export function DetailPage({ id }: { id: string }) {
     run?.generatedDeploymentEnabled;
   const allPaid = project.milestones.every((m) => m.paid);
   const reconnecting = Boolean(reconnectDelay(query.error));
-  const alertText = error || (reconnecting
-    ? source
-      ? "Your contract passed its checks. Reconnecting to the local server to check deployment status automatically. You can also choose Refresh status."
-      : "Reconnecting to the local server to check project status automatically."
-    : query.error?.message || (deploymentUnconfirmed && !generated && !busy && !hasDeployment
-      ? "The server is reachable. No deployment is recorded for this checked contract. You can retry deploying this version."
-      : ""));
+  const alertText =
+    error ||
+    (reconnecting
+      ? source
+        ? "Your contract passed its checks. Reconnecting to the local server to check deployment status automatically. You can also choose Refresh status."
+        : "Reconnecting to the local server to check project status automatically."
+      : query.error?.message ||
+        (deploymentUnconfirmed && !generated && !busy && !hasDeployment
+          ? "The server is reachable. No deployment is recorded for this checked contract. You can retry deploying this version."
+          : ""));
   const draft: ProjectDraft = {
     name: spec.name,
     clientWallet: spec.clientWallet,
@@ -219,20 +226,20 @@ export function DetailPage({ id }: { id: string }) {
         {generated && allPaid
           ? "All milestones are paid and the escrow is empty. This agreement is complete."
           : generated
-          ? "Your generated contract is deployed on the local test chain."
-          : reference
-            ? "This project uses the handwritten reference contract."
-            : hasDeployment
-              ? busy
-                ? "Checking local deployment details…"
-                : "Deployment details could not be matched to this project. Refresh its status to check again."
-              : canDeploy && context.recoveredOnFreshChain
-                ? "Your checked contract was recovered. You can deploy it on this fresh local chain without generating it again."
-                : canDeploy
-                  ? "Your contract passed its checks. Deploy it on the local test chain to start the deposit and payments."
-                  : context.confirmation
-                    ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
-                    : "The agreement changed. Review and confirm this version before generating."}
+            ? "Your generated contract is deployed on the local test chain."
+            : reference
+              ? "This project uses the handwritten reference contract."
+              : hasDeployment
+                ? busy
+                  ? "Checking local deployment details…"
+                  : "Deployment details could not be matched to this project. Refresh its status to check again."
+                : canDeploy && context.recoveredOnFreshChain
+                  ? "Your checked contract was recovered. You can deploy it on this fresh local chain without generating it again."
+                  : canDeploy
+                    ? "Your contract passed its checks. Deploy it on the local test chain to start the deposit and payments."
+                    : context.confirmation
+                      ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
+                      : "The agreement changed. Review and confirm this version before generating."}
       </p>
       {context.recoveredOnFreshChain && !hasDeployment && (
         <p className="-mt-5 mb-5 text-sm text-muted-foreground">
@@ -285,7 +292,18 @@ export function DetailPage({ id }: { id: string }) {
       ) : (
         <>
           {generated ? (
-            <section className="mt-8" aria-label="Local escrow">
+            <section
+              className="mt-8 outline-none"
+              aria-label="Local escrow"
+              tabIndex={-1}
+              ref={(element) => {
+                // The deploy button sat lower on the page; bring the deposit step into view.
+                if (!element || !showEscrow.current) return;
+                showEscrow.current = false;
+                element.scrollIntoView?.({ block: "start" });
+                element.focus({ preventScroll: true });
+              }}
+            >
               <h2>Local escrow</h2>
               <Row label="Contract address" value={deployment.contractAddress} mono />
               <Row
@@ -326,7 +344,11 @@ export function DetailPage({ id }: { id: string }) {
               ))}
               <details className="mt-4">
                 <summary>Participant addresses</summary>
-                <Row label="Client · deposits and approves payments" value={spec.clientWallet} mono />
+                <Row
+                  label="Client · deposits and approves payments"
+                  value={spec.clientWallet}
+                  mono
+                />
                 <Row label="Provider · receives payments" value={spec.developerWallet} mono />
               </details>
             </div>
@@ -367,15 +389,17 @@ export function DetailPage({ id }: { id: string }) {
                 <section className="panel mb-7" aria-label="Next step">
                   <h2>Next step: deploy the checked contract</h2>
                   <p className="mt-2 text-sm leading-relaxed">
-                    Deploys this checked version with your confirmed payment rules on the local
-                    test chain. Deploying makes no model request and moves no funds.
+                    Deploys this checked version with your confirmed payment rules on the local test
+                    chain. Deploying makes no model request and moves no funds.
                   </p>
                   <Button
                     className="mt-4"
                     disabled={busy || query.isError}
                     onClick={() =>
                       action(async () => {
-                        await updateProject(await api.deployGeneration(id, run.id, confirmation));
+                        const deployed = await api.deployGeneration(id, run.id, confirmation);
+                        showEscrow.current = true;
+                        await updateProject(deployed);
                       }, "deployment")
                     }
                   >

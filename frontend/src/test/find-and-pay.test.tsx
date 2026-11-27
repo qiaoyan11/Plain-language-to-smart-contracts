@@ -115,7 +115,9 @@ describe("finding a project again", () => {
     expect(await screen.findByText("Untitled agreement")).toBeVisible();
     expect(screen.getByText(/Questions still open/)).toBeVisible();
     expect(screen.getByText(/No saved projects yet/)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Continue conversation" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue conversation: Untitled agreement" }),
+    );
     expect(select).toHaveBeenCalledWith("d1");
     expect(navigate).toHaveBeenCalledWith({ to: "/" });
   });

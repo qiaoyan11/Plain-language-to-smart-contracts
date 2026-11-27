@@ -136,6 +136,7 @@ export function ProjectsPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  aria-label={`Continue conversation: ${draft.name ?? "Untitled agreement"}`}
                   onClick={() => {
                     api.setActiveDraftId(draft.id);
                     void nav({ to: "/" });
