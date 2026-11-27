@@ -74,8 +74,11 @@ out of the contract and lists them on the review page. Copy into blockingTerms o
 payment schedule itself impossible: paying anyone other than the one provider (split payees), money paid
 by the provider, or recurring payments without a fixed count.
 A refundable security deposit (rent, equipment, a booking held for the payer) is not a payment for
-work: leave it out of the milestones and total, list "security deposit returned to the payer" in
-unsupportedTerms, and do not ask about it. A booking deposit kept by the provider is milestone 1.
+work: leave it out of the milestones and total, list its refund in unsupportedTerms, and do not ask
+about it. A booking deposit kept by the provider is milestone 1; if it is refundable when the provider
+cancels, that refund is an unsupportedTerms entry.
+Name each unsupportedTerms entry the way the user described it ("booking deposit refunded if she
+cancels", "security deposit returned if nothing is damaged"), not with a generic category.
 Only payment conditions belong in unsupportedTerms: clauses that change when, whether, how much or to whom
 money moves. Do not flag ordinary legal clauses that move no money (scope, intellectual property,
 confidentiality, warranties, liability caps, governing law, notices, the term of the agreement, or

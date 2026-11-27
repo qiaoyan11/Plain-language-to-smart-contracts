@@ -77,10 +77,15 @@ function rateLine(rate) {
 function conversationTurn(previous, result, revision, previousTurn, demoWallets = null) {
   const before = previous?.draftSpec, after = result.draftSpec, lines = [];
   const question = primaryQuestion(result);
+  // Amounts written in another currency are repeated in it: "0.39228 ETH (≈ 500 GBP)".
+  const rate = (result.exchangeRates ?? []).length === 1 ? result.exchangeRates[0] : null;
+  const amount = wei => rate
+    ? `${eth(wei)} (\u2248 ${(Number(BigInt(wei) / 10n ** 12n) / 1e6 * Number(rate.unitsPerEth)).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${rate.currency})`
+    : eth(wei);
   if (after.name !== 'Untitled project' && after.name !== before?.name)
     lines.push(`Project recorded: ${after.name}.`);
   if (after.totalAmountWei !== before?.totalAmountWei && after.totalAmountWei)
-    lines.push(`The total is recorded as ${eth(after.totalAmountWei)}.`);
+    lines.push(`The total is recorded as ${amount(after.totalAmountWei)}.`);
   if (JSON.stringify(after.milestones) !== JSON.stringify(before?.milestones ?? []) && after.milestones.length) {
     const scheduleChanged = JSON.stringify(after.milestones.map(m => [m.id, m.title]))
       !== JSON.stringify((before?.milestones ?? []).map(m => [m.id, m.title]));
@@ -92,13 +97,13 @@ function conversationTurn(previous, result, revision, previousTurn, demoWallets 
       const matchesTotal = after.totalAmountWei && after.milestones.reduce((sum, m) => sum + BigInt(m.amountWei), 0n) === BigInt(after.totalAmountWei);
       lines.push(equal && matchesTotal
         ? (after.milestones.length === 1
-          ? `1 milestone of ${eth(after.milestones[0].amountWei)}, the full total.`
-          : `${after.milestones.length} milestones at ${eth(after.milestones[0].amountWei)} each, for a total of ${eth(after.totalAmountWei)}.`)
-        : `The milestone payments are ${after.milestones.map(m => eth(m.amountWei)).join(', ')} in order.`);
+          ? `1 milestone of ${amount(after.milestones[0].amountWei)}, the full total.`
+          : `${after.milestones.length} milestones at ${amount(after.milestones[0].amountWei)} each, for a total of ${amount(after.totalAmountWei)}.`)
+        : `The milestone payments are ${after.milestones.map(m => amount(m.amountWei)).join(', ')} in order.`);
     }
     else {
       const known = after.milestones.filter(m => m.amountWei);
-      if (known.length) lines.push(`Recorded payments: ${known.map(m => `${milestoneLabel(after, m.id)}: ${eth(m.amountWei)}`).join('; ')}.`);
+      if (known.length) lines.push(`Recorded payments: ${known.map(m => `${milestoneLabel(after, m.id)}: ${amount(m.amountWei)}`).join('; ')}.`);
       lines.push(missing.length === 1
         ? `An agreed payment amount is still needed for ${milestoneLabel(after, missing[0].id)}.`
         : `Agreed payment amounts are still needed for milestones ${missing.map(m => m.id).join(', ')}.`);

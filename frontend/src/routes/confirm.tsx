@@ -53,8 +53,8 @@ export function ConfirmPage() {
     <Shell step="Review & confirm" progress={2}>
       <h1>Review your agreement</h1>
       <p className="intro">
-        Check the payment amounts and both wallets. Confirming saves this version for contract
-        generation.
+        Check the payments and the conditions the contract will not enforce. Confirming saves this
+        version for contract generation.
       </p>
       {session ? (
         <>

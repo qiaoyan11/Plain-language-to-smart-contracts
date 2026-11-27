@@ -3,8 +3,8 @@ import re
 from decimal import Context, Decimal
 
 # A deposit funds the whole escrow, so a deposit request that also names the milestone it covers
-# ("put the rent for Dec 21-25 into escrow") is still a deposit. Words about paying the provider
-# mean the model may have misread "pay milestone 1" on an unfunded escrow, so those still ask.
+# ("put the rent for Dec 21-25 into escrow") is still a deposit. Without any deposit word the model
+# may have misread "pay milestone 1" on an unfunded escrow, so that still asks first.
 DEPOSIT_WORDS = re.compile(r'\b(?:deposit|fund|funds|funding|top\s*up|put|lock|escrow)\b|\u5b58\u5165|\u5145\u503c|\u6258\u7ba1', re.I)
 PAY_WORDS = re.compile(r'\b(?:pay|pays|paid|paying|release|approve|approved|accept|accepted)\b|\u652f\u4ed8|\u4ed8\u6b3e|\u653e\u6b3e|\u9a8c\u6536', re.I)
 
@@ -24,8 +24,8 @@ TEXT = {
         'deposit': 'Deposit {total} test ETH into the escrow. {done}',
         'deposit_named': 'Deposit {total} test ETH into the escrow. One deposit funds every milestone; '
                          'milestone #{id} is paid to the provider only after you accept it. {done}',
-        'deposit_or_pay': 'The escrow is not funded yet, so no milestone can be paid. Do you want to deposit '
-                          '{total} test ETH first? Ask to deposit, or use the deposit button.',
+        'deposit_or_pay': 'The escrow is not funded yet, so no milestone can be paid. Deposit the full {total} test ETH '
+                          'first? Reply "yes" and I will prepare the deposit for you to review.',
         'already_funded': 'The escrow is already funded, so it cannot be deposited again. {done}',
         'all_paid': 'All milestones are already paid. {done}',
         'unknown_id': 'Milestone #{id} does not exist in this project. {done}',
@@ -107,7 +107,7 @@ def decide(parsed, payload):
             message = payload.get('message') or ''
             if funded or mid not in [m['id'] for m in milestones]:
                 return clarify(lang)
-            if PAY_WORDS.search(message) or not DEPOSIT_WORDS.search(message):
+            if not DEPOSIT_WORDS.search(message):
                 # Possibly "pay milestone 1" on an unfunded escrow: say what has to happen first.
                 return {'status': 'needsClarification', 'intent': None,
                         'question': _t(lang, 'deposit_or_pay', total=total),
@@ -129,7 +129,11 @@ def decide(parsed, payload):
     if target is None:
         return _blocked(lang, 'unknown_id', id=mid)
     if not funded:
-        return _blocked(lang, 'unfunded')
+        # Funding comes first, as on escrow platforms: offer the deposit instead of a dead end.
+        # A "yes" reply comes back with this question attached (Node keeps it briefly).
+        return {'status': 'needsClarification', 'intent': None,
+                'question': _t(lang, 'deposit_or_pay', total=format_eth(snap['totalAmountWei'])),
+                'summary': _t(lang, 'unfunded')}
     if target['paid']:
         return _blocked(lang, 'is_paid', id=mid)
     if mid != lowest['id']:

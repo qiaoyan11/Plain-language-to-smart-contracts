@@ -223,7 +223,7 @@ export function CreatePage() {
                   <strong>Use local test accounts</strong> to answer the wallet question.
                 </p>
               )}
-              {context.data?.clarificationEnabled && !session?.pendingMessage && (
+              {context.data?.clarificationEnabled && !session?.pendingMessage && walletQuestion && (
                 <Button
                   className="mt-3"
                   type="button"

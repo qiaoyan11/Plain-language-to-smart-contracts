@@ -81,6 +81,15 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-27 · Jiahao Zhang · Everyday requests reach confirmation without format knowledge
+
+- Ten requests written the way first-time users write them (a $500 logo, "half upfront, rest when it's live", 厨房翻新 3万8 with 剩下的, 家教 20 节每节 300 块, a £500 wedding booking deposit, €9,000 in 3 equal payments, a vague "translate my book", a sublet with a security deposit, ¥80,000 JPY, plain ETH). Before: 4 reached confirmation in one message. Now: 9 in one message, the vague one in two (it needed the price).
+- What changed: amounts in any currency are converted at the live ETH price (CoinGecko, then Coinbase, cached; the rate is locked per draft and shown); Chinese numerals and everyday phrases are understood; share words match by meaning, since the model translates them; built-in test accounts replace wallet questions; conditions the contract cannot enforce, including open-ended revisions, become review-page notes. The raw extraction of every live turn is kept in `data/private/agent1-traces.jsonl` (git-ignored), which found most of these causes and can seed the local model's training data.
+- Agent 3 prepares the next unpaid milestone for "approve it" and reads a short reply with the question it answers. Project pages show "≈ 500 USD" next to test ETH. Unfinished conversations can be discarded. `npm run demo:live` starts all three agents.
+- Product choices, from Upwork (14-day review then auto-release), Fiverr (3 days) and Escrow.com (1–30-day inspection): a review window with auto-release is the missing contract capability, so it is the first v2 item; asking users to define "satisfied" is not. Contract v2 and shared hosted links are not started: the frozen interface and validation suite cover v1 only, and hosting needs real wallets and sign-in.
+- Browser check after the restart: "Wedding photographer, £1,800. £500 deposit to book the date, the rest after we get the edited photos. If she cancels we get the deposit back." reached review in one message (live GBP rate, ≈ GBP beside each amount, the cancellation refund listed as not enforced), passed 24/24 checks, deployed, and was paid in full with "pay her the booking fee" (answered "yes" to "deposit first?") and "the photos came in and they look amazing!" (blocks 84–86).
+- Tests: contracts 26, HTTP 60, handoff 18, Agent 1/2/3 60/29/71, frontend 89; tsc passes. Needs a decision: none.
+
 ### 2026-11-27 · Jiahao Zhang · Real contracts end to end (round 3)
 
 - Five agreements went through the whole flow with paid model calls: a NY sublease (rent as one milestone, security deposit kept on paper), a three-milestone SOW, a USD website agreement (1 ETH = 1,000 USD), a Chinese career-consulting contract (RMB, restructured into three installments, Agent 3 commands in Chinese) and a casual "half upfront, revise until I'm happy" request. Each was confirmed, passed 24/24 checks, deployed, funded and paid in full; every project shows deploy, deposit and one receipt per milestone (blocks 62–82), no duplicates.

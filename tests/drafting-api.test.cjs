@@ -628,3 +628,19 @@ test('an unfinished conversation can be discarded; a confirmed one cannot', asyn
     assert.match(refused.body.error, /confirmed/);
   });
 });
+
+test('replies repeat converted amounts in the currency the user wrote', async () => {
+  let accounts;
+  await withAPI({ enabled: true, runner: async request => {
+    const response = ready(request, accounts);
+    response.result.draftSpec.milestones = [{ id: 1, title: 'Book the date', amountWei: '392280000000000000' }];
+    response.result.draftSpec.totalAmountWei = '392280000000000000';
+    response.result.exchangeRates = [{ currency: 'GBP', unitsPerEth: '1274.6', source: 'live', asOf: '2026-11-27T18:07:00Z', provider: 'CoinGecko' }];
+    return response;
+  } }, async ({ call, create, accounts: local }) => {
+    accounts = local;
+    const { path } = await create();
+    const reply = (await call(path + '/messages', message('£500 to book the date.'))).body.turns[0].reply;
+    assert.match(reply, /The total is recorded as 0\.39228 ETH \(≈ 500 GBP\)\./);
+  });
+});

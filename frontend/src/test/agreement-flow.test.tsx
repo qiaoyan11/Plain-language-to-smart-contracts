@@ -278,12 +278,12 @@ describe("server-owned agreement conversation", () => {
   it("recovers a completed reply after a lost response without submitting it again", async () => {
     api.setActiveDraftId(empty.id);
     openPage(<CreatePage />);
-    await screen.findByText("Use local test accounts");
     vi.mocked(api.sendDraftMessage).mockImplementation(async () => {
       vi.mocked(api.getDraft).mockResolvedValue(ready);
       throw new Error("Connection lost");
     });
     type("Build a website for 1 ETH.");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await screen.findByText("The payment details are ready for your review.");
     expect(screen.getByLabelText("Describe your agreement or add a detail")).toHaveValue("");
@@ -302,10 +302,10 @@ describe("server-owned agreement conversation", () => {
       }),
     );
     const first = openPage(<CreatePage />);
-    await screen.findByText("Use local test accounts");
     expect(api.createDraft).not.toHaveBeenCalled();
     type("Build a website for 1 ETH.");
     const button = screen.getByRole("button", { name: "Send message" });
+    await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
     fireEvent.click(button);
     await waitFor(() => expect(api.sendDraftMessage).toHaveBeenCalledTimes(1));
@@ -324,13 +324,12 @@ describe("server-owned agreement conversation", () => {
     expect(api.sendDraftMessage).toHaveBeenCalledTimes(1);
     expect(screen.getByText("We will document maintenance separately.")).toBeTruthy();
   });
-  it("uses the local accounts only after an explicit button click", async () => {
+  it("offers the local accounts only when the assistant asks for a wallet", async () => {
+    // The backend fills the built-in accounts, so a first-time user never sees this button.
     openPage(<CreatePage />);
-    fireEvent.click(await screen.findByText("Use local test accounts"));
-    await waitFor(() => expect(api.sendDraftMessage).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(api.sendDraftMessage).mock.calls[0]![1]).toBe(
-      `For this local test, use ${context.clientWallet} as the client wallet and ${context.developerWallet} as the provider wallet.`,
-    );
+    type("Build a website for 1 ETH.");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
+    expect(screen.queryByText("Use local test accounts")).toBeNull();
   });
   it.each(["needsClarification", "unsupported"] as const)(
     "keeps %s drafts out of review and confirmation",
@@ -406,8 +405,8 @@ describe("server-owned agreement conversation", () => {
   it("shows request failures and never replaces them with simulated results", async () => {
     vi.mocked(api.sendDraftMessage).mockRejectedValue(new Error("Draft service unavailable"));
     openPage(<CreatePage />);
-    await screen.findByText("Use local test accounts");
     type("Build a website");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("Draft service unavailable"),

@@ -74,7 +74,7 @@
     "message": "Release the payment for milestone 1.",
     "state": "unfunded",
     "expect": {
-      "status": "blocked",
+      "status": "needsClarification",
       "action": null,
       "milestoneId": null
     }
@@ -154,7 +154,7 @@
     "message": "Pay the first milestone now.",
     "state": "unfunded",
     "expect": {
-      "status": "blocked",
+      "status": "needsClarification",
       "action": null,
       "milestoneId": null
     }
@@ -241,7 +241,7 @@
     "message": "Accept milestone 1.",
     "state": "unfunded",
     "expect": {
-      "status": "blocked",
+      "status": "needsClarification",
       "action": null,
       "milestoneId": null
     },
@@ -329,7 +329,7 @@
     "message": "Pay the first stage before anything else.",
     "state": "unfunded",
     "expect": {
-      "status": "blocked",
+      "status": "needsClarification",
       "action": null,
       "milestoneId": null
     },

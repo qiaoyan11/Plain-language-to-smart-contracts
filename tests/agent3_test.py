@@ -87,7 +87,7 @@ class RulesTest(unittest.TestCase):
 
     def test_deposit_with_milestone_asks(self):
         # "Pay milestone 1" on an unfunded escrow was sometimes read as a deposit with an id.
-        for message in ('Pay milestone 1', 'Deposit and release milestone 1', '\u4ed8\u6b3e\u7b2c\u4e00\u4e2a\u91cc\u7a0b\u7891'):
+        for message in ('Pay milestone 1', '\u4ed8\u6b3e\u7b2c\u4e00\u4e2a\u91cc\u7a0b\u7891'):
             with self.subTest(message=message):
                 payload = state()
                 payload['message'] = message
@@ -96,6 +96,16 @@ class RulesTest(unittest.TestCase):
                 self.assertIsNone(r['intent'])
                 self.assertIn('not funded yet', r['question'])
                 validate('PlanResult', r)
+        # Saying "deposit", or answering "yes" to the deposit question, prepares the deposit.
+        for message in ('Deposit and release milestone 1',
+                        'Pay her the booking fee.\n(Assistant asked: "The escrow is not funded yet, so no milestone '
+                        'can be paid. Deposit the full 1 test ETH first?" The user replied: "yes")'):
+            with self.subTest(message=message):
+                payload = state()
+                payload['message'] = message
+                r = rules.decide(parsed('deposit', 1), payload)
+                self.assertEqual(r['status'], 'readyForConfirmation')
+                self.assertEqual(r['intent']['action'], 'deposit')
 
     def test_deposit_that_names_the_milestone_it_covers_is_prepared(self):
         # A sublease tenant: "Put the rent for Dec 21-25 into escrow now so Alex knows it's covered."
@@ -130,8 +140,11 @@ class RulesTest(unittest.TestCase):
     def test_accept_unknown_id_blocked(self):
         self.assert_blocked(self.run_rules('acceptMilestone', state(True), mid=5))
 
-    def test_accept_unfunded_blocked(self):
-        self.assert_blocked(self.run_rules('acceptMilestone', state(False), mid=1))
+    def test_accept_unfunded_offers_the_deposit_first(self):
+        r = self.run_rules('acceptMilestone', state(False), mid=1)
+        self.assertEqual(r['status'], 'needsClarification')
+        self.assertIsNone(r['intent'])
+        self.assertIn('Deposit the full', r['question'])
 
     def test_accept_paid_blocked(self):
         self.assert_blocked(self.run_rules('acceptMilestone', state(True, (1,)), mid=1))
@@ -380,7 +393,8 @@ class ServiceTest(unittest.TestCase):
         self.live(fake(parsed('acceptMilestone', 1)))
         response = dispatch(copy.deepcopy(REQUEST))
         self.assertEqual(response['status'], 'ok')
-        self.assertEqual(response['result']['status'], 'blocked')
+        # The example escrow is unfunded, so approving offers the deposit first.
+        self.assertEqual(response['result']['status'], 'needsClarification')
 
     def test_ready_passes_handoff(self):
         self.live(fake(parsed('acceptMilestone', 1)))
