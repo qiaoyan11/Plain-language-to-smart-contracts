@@ -148,6 +148,13 @@ def quote_in(quote, sources, bare=False):
     return False
 
 
+def same_money(quote, sources):
+    """"$800" for the user's "800 dollars": the same currency and amount, only written differently."""
+    wanted = currency.parse(quote)
+    return bool(wanted) and any(currency.parse(found[0]) == wanted for source in sources
+                                for found in re.finditer(currency.AMOUNT_TEXT, source, re.I))
+
+
 def leading_amount(text):
     """The amount that starts text: "0.02 ETH", "$1,000" or "1,000 USD"."""
     amount = AMOUNT.match(text)
@@ -186,7 +193,7 @@ def value_of(quote, sources, old_amounts, total=None, unit=None):
             return value_of(found[0], sources, old_amounts, total, unit)
     if not AMOUNT.fullmatch(quote.strip()) and currency.parse(quote):
         # "$8,000" or "89,800 元": converted to test ETH, so the user never has to.
-        if quote not in old_amounts and not quote_in(quote, sources):
+        if quote not in old_amounts and not quote_in(quote, sources) and not same_money(quote, sources):
             return None
         wei = currency.to_wei(quote, sources)
         return str(wei) if wei and wei <= MAX_UINT else None

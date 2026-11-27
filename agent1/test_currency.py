@@ -222,6 +222,17 @@ class EverydayRequestTests(unittest.TestCase):
         self.assertIsNone(cumulative_share('30%', ['\u5408\u540c\u7b7e\u8ba2\u540e\u81f3\u5f00\u5de5\u524d\u652f\u4ed830%']))
         self.assertIsNone(cumulative_share('50%', ['Pay 50% on delivery.']))
 
+    def test_an_amount_the_model_rewrites_in_symbols_still_counts(self):
+        message = ("my nephew is making a website for my nail salon, I'm giving him 800 dollars. "
+                   "half when he shows me the design and the rest once it's online")
+        # The model's actual quote was "$800", not the user's "800 dollars".
+        result = self.run_case(message, '$800', ['half', 'the rest'])
+        self.assertEqual(round(int(result['draftSpec']['totalAmountWei']) / 1e18 * 1667.36), 800)
+        self.assertNotIn('totalAmountWei', [q['field'] for q in result['questions']])
+        # A different currency or figure is not the same money.
+        self.assertIsNone(self.run_case(message, '\u20ac800', ['half', 'the rest'])['draftSpec']['totalAmountWei'])
+        self.assertIsNone(self.run_case(message, '$900', ['half', 'the rest'])['draftSpec']['totalAmountWei'])
+
     def test_a_share_word_counts_only_as_a_whole_word_the_user_wrote(self):
         from agent1.service import natural_word
         self.assertIsNone(natural_word('the rest', ['Redo my restaurant website for $2,400.']))
