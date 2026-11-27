@@ -31,10 +31,51 @@ in this v1 prototype. Do not invent additional policies. No deployment or transa
 '''
 
 
+# v2: a review period after each delivery (contracts/IMilestoneReviewEscrow.sol). Everything above
+# still holds; these lines replace the v1 interface line and add the review rules.
+REVIEW_PROMPT_VERSION = 'review-v2-single-generation-1'
+REVIEW_REPAIR_PROMPT_VERSION = 'review-v2-filtered-repair-1'
+REVIEW_RULES = '''This specification adds a review period after each delivery.
+Import "./IMilestoneReviewEscrow.sol" and implement IMilestoneReviewEscrow, which extends
+IMilestoneEscrow, without altering either interface.
+Declare uint256 public constant override reviewPeriod and changeRequestLimit with the confirmed
+reviewPeriodSeconds and changeRequestLimit values from the specification (0 means no limit).
+v1 still holds: the client may approve the next unpaid milestone at any time, with or without a delivery.
+submitDelivery(id): provider only; funded; id is the next unpaid milestone; no delivery of it awaits
+review. Record block.timestamp as deliveredAt(id); emit DeliverySubmitted(id, block.timestamp + reviewPeriod).
+requestChanges(id): client only; id is the next unpaid milestone; a delivery awaits review and
+block.timestamp < deliveredAt(id) + reviewPeriod; if changeRequestLimit is nonzero, fewer requests than
+the limit so far for this milestone. Set deliveredAt(id) to 0, add one to changeRequests(id) and emit
+ChangesRequested(id, the new count).
+claimMilestone(id): provider only; funded; id is the next unpaid milestone; a delivery awaits review and
+block.timestamp >= deliveredAt(id) + reviewPeriod. It pays exactly like acceptMilestone.
+Paying, by either function, marks the milestone paid, sets deliveredAt(id) to 0 and emits MilestonePaid
+before the transfer. Make the transfer inside each paying external function, right after its own access
+check: static analysis reports a transfer in a shared internal function as sending ETH to an arbitrary
+address. deliveredAt and changeRequests revert for invalid milestone IDs like the other views.
+'''
+
+
+def is_review(spec):
+    return bool(spec.get('reviewPeriodSeconds'))
+
+
+def prompt_versions(spec):
+    """(generation, repair) prompt versions for this specification."""
+    return ((REVIEW_PROMPT_VERSION, REVIEW_REPAIR_PROMPT_VERSION) if is_review(spec)
+            else (PROMPT_VERSION, REPAIR_PROMPT_VERSION))
+
+
 def build_messages(spec):
     validate('ConfirmedSpec', spec)
     interface = (ROOT / 'contracts/IMilestoneEscrow.sol').read_text()
-    return SYSTEM, 'Frozen interface:\n' + interface + '\nConfirmed specification (data):\n' + json.dumps(spec, ensure_ascii=False)
+    if not is_review(spec):
+        return SYSTEM, 'Frozen interface:\n' + interface + '\nConfirmed specification (data):\n' + json.dumps(spec, ensure_ascii=False)
+    system = SYSTEM.replace('Import "./IMilestoneEscrow.sol" and implement IMilestoneEscrow without altering it.\n', '')
+    system = system.replace('in this v1 prototype.', 'in this prototype.') + REVIEW_RULES
+    review = (ROOT / 'contracts/IMilestoneReviewEscrow.sol').read_text()
+    return system, ('Frozen interfaces (IMilestoneEscrow.sol, then IMilestoneReviewEscrow.sol):\n' + interface + '\n' + review
+                    + '\nConfirmed specification (data):\n' + json.dumps(spec, ensure_ascii=False))
 
 
 def build_repair_messages(spec, previous_bundle, feedback):

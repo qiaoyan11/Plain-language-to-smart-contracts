@@ -71,6 +71,25 @@
         },
         "deadline": {
           "type": "null"
+        },
+        "reviewPeriodSeconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 7776000
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "v2: seconds of review after each delivery; silence past it lets the provider claim. Absent or null: v1, client approval only."
+        },
+        "changeRequestLimit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "v2: change requests allowed per milestone during review; 0 means no limit."
         }
       },
       "required": [
@@ -186,6 +205,25 @@
         },
         "deadline": {
           "type": "null"
+        },
+        "reviewPeriodSeconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 7776000
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "v2: seconds of review after each delivery; silence past it lets the provider claim. Absent or null: v1, client approval only."
+        },
+        "changeRequestLimit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "v2: change requests allowed per milestone during review; 0 means no limit."
         }
       },
       "required": [

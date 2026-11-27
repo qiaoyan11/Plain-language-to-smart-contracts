@@ -87,7 +87,9 @@ contract MilestoneReviewEscrow is IMilestoneReviewEscrow {
 
     function acceptMilestone(uint256 id) external override onlyClient {
         checkNext(id);
-        pay(id);
+        uint256 amount = markPaid(id);
+        (bool sent, ) = payable(provider).call{value: amount}("");
+        if (!sent) revert TransferFailed();
     }
 
     function submitDelivery(uint256 id) external override onlyProvider {
@@ -112,17 +114,18 @@ contract MilestoneReviewEscrow is IMilestoneReviewEscrow {
         checkNext(id);
         uint256 at = delivered[id];
         if (at == 0 || block.timestamp < at + reviewPeriod) revert InvalidState();
-        pay(id);
+        uint256 amount = markPaid(id);
+        (bool sent, ) = payable(provider).call{value: amount}("");
+        if (!sent) revert TransferFailed();
     }
 
-    function pay(uint256 id) private {
-        uint256 amount = amounts[id - 1];
-        // Commit effects before calling the recipient; failure reverts both.
+    // Effects before the transfer, which each caller makes right after its own access check;
+    // a failed transfer reverts these effects too.
+    function markPaid(uint256 id) private returns (uint256 amount) {
+        amount = amounts[id - 1];
         ++nextMilestone;
         delivered[id] = 0;
         emit MilestonePaid(id, provider, amount);
-        (bool sent, ) = payable(provider).call{value: amount}("");
-        if (!sent) revert TransferFailed();
     }
 
     function checkNext(uint256 id) private view {

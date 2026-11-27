@@ -49,12 +49,12 @@ test('a two-request limit is enforced and confirmed', { timeout: 120000 }, () =>
 });
 
 const MUTANTS = [
-  ['claim one second early', 'if (at == 0 || block.timestamp < at + reviewPeriod) revert InvalidState();\n        pay(id);',
-    'if (at == 0 || block.timestamp + 1 < at + reviewPeriod) revert InvalidState();\n        pay(id);', 'review-claim-after-period'],
+  ['claim one second early', 'if (at == 0 || block.timestamp < at + reviewPeriod) revert InvalidState();\n        uint256 amount = markPaid(id);',
+    'if (at == 0 || block.timestamp + 1 < at + reviewPeriod) revert InvalidState();\n        uint256 amount = markPaid(id);', 'review-claim-after-period'],
   ['anyone can claim', 'function claimMilestone(uint256 id) external override onlyProvider {',
     'function claimMilestone(uint256 id) external override {', 'review-access'],
-  ['claim without a delivery', 'if (at == 0 || block.timestamp < at + reviewPeriod) revert InvalidState();\n        pay(id);',
-    'if (block.timestamp < at + reviewPeriod) revert InvalidState();\n        pay(id);', 'review-claim-needs-delivery'],
+  ['claim without a delivery', 'if (at == 0 || block.timestamp < at + reviewPeriod) revert InvalidState();\n        uint256 amount = markPaid(id);',
+    'if (block.timestamp < at + reviewPeriod) revert InvalidState();\n        uint256 amount = markPaid(id);', 'review-claim-needs-delivery'],
   ['late change request accepted', 'if (at == 0 || block.timestamp >= at + reviewPeriod) revert InvalidState();',
     'if (at == 0 || block.timestamp > at + reviewPeriod) revert InvalidState();', 'review-changes-too-late'],
   ['change request keeps the delivery', '        delivered[id] = 0;\n        uint256 count',

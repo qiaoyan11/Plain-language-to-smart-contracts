@@ -6,7 +6,7 @@ from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langsmith import tracing_context
 from agent2.model import call_model, ModelError, model_allowed
-from agent2.prompts import build_messages, build_repair_messages, PROMPT_VERSION, REPAIR_PROMPT_VERSION
+from agent2.prompts import build_messages, build_repair_messages, is_review, prompt_versions
 from agent2.compiler import compile_bundle
 from shared.handoff import ROOT, validate, validate_request, validate_response, source_hash
 
@@ -44,8 +44,20 @@ def empty_result(status):
 
 
 def trusted_validate(spec, bundle):
+    if is_review(spec):
+        return review_validator().validate_review(spec, bundle)
     from validation import validate_development
     return validate_development(spec, bundle)
+
+
+def review_validator():
+    """The independent v2 validator (tests/v2/review_validation.py), loaded by file path so a
+    third-party package named "tests" can never stand in for it."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('accord_review_validation', ROOT / 'tests/v2/review_validation.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def allowed_feedback(report, setting):
@@ -87,7 +99,7 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
             result = {'status': 'generated', 'sourceBundle': copy.deepcopy(initial_bundle), 'validationReport': None,
                       'attempts': [{'attempt': 0, 'sourceHash': initial_bundle['sourceHash'], 'reportId': None, 'feedbackUsed': []}]}
             validate_response(request, envelope(request, result))
-        return {'prompts': {'version': PROMPT_VERSION, 'system': system, 'user': user},
+        return {'prompts': {'version': prompt_versions(request['payload']['spec'])[0], 'system': system, 'user': user},
                 'compilation': None, 'error': None, 'result': result,
                 'history': [], 'modelCalls': [], 'feedback': [], 'stopReason': None}
 
@@ -113,9 +125,11 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
 
     def package(state):
         spec = state['request']['payload']['spec']
-        bundle = {'projectId': spec['projectId'], 'specVersion': spec['specVersion'],
-                  'sources': {'GeneratedMilestoneEscrow.sol': state['modelOutput']['source'],
-                              'IMilestoneEscrow.sol': (ROOT / 'contracts/IMilestoneEscrow.sol').read_text()},
+        sources = {'GeneratedMilestoneEscrow.sol': state['modelOutput']['source'],
+                   'IMilestoneEscrow.sol': (ROOT / 'contracts/IMilestoneEscrow.sol').read_text()}
+        if is_review(spec):
+            sources['IMilestoneReviewEscrow.sol'] = (ROOT / 'contracts/IMilestoneReviewEscrow.sol').read_text()
+        bundle = {'projectId': spec['projectId'], 'specVersion': spec['specVersion'], 'sources': sources,
                   'entryFile': 'GeneratedMilestoneEscrow.sol', 'entryContract': 'GeneratedMilestoneEscrow',
                   'compilerVersion': '0.8.28', 'buildSettings': {'evmVersion': 'paris', 'optimizer': {'enabled': True, 'runs': 200}},
                   'dependencies': []}
@@ -181,7 +195,7 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
     def prepare_repair(state):
         system, user = build_repair_messages(state['request']['payload']['spec'],
                                             state['result']['sourceBundle'], state['feedback'])
-        return {'prompts': {'version': REPAIR_PROMPT_VERSION, 'system': system, 'user': user}}
+        return {'prompts': {'version': prompt_versions(state['request']['payload']['spec'])[1], 'system': system, 'user': user}}
 
     graph = StateGraph(State)
     for name, fn in [('check_input', check_input), ('generate_source', generate), ('package_source', package),
