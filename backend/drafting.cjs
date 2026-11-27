@@ -61,7 +61,7 @@ function conversationTurn(previous, result, revision, previousTurn) {
     const scheduleChanged = JSON.stringify(after.milestones.map(m => [m.id, m.title]))
       !== JSON.stringify((before?.milestones ?? []).map(m => [m.id, m.title]));
     if (scheduleChanged)
-      lines.push(`Recorded ${after.milestones.length} delivery milestones: ${after.milestones.map(m => `${m.id}. ${m.title}`).join('; ')}.`);
+      lines.push(`Recorded ${after.milestones.length} delivery milestone${after.milestones.length === 1 ? '' : 's'}: ${after.milestones.map(m => `${m.id}. ${m.title}`).join('; ')}.`);
     const missing = after.milestones.filter(m => !m.amountWei);
     if (!missing.length) {
       const equal = after.milestones.every(m => m.amountWei === after.milestones[0].amountWei);
@@ -195,6 +195,18 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
   }
   function markConfirmed(id, projectId) { state(id).confirmedProjectId = projectId; }
   function get(id) { return snapshot(state(id)); }
-  return { enabled, create, get, message, confirmationCandidate, markConfirmed, exportState };
+  // Unconfirmed conversations, newest first, so a closed tab does not lose a draft.
+  function list() {
+    return [...sessions.values()]
+      .filter(s => !s.confirmedProjectId && (s.messages.length || s.pendingMessage))
+      .map(s => {
+        const name = s.result?.draftSpec?.name;
+        return { id: s.id, name: name && name !== 'Untitled project' ? name : null,
+          createdAt: s.createdAt, updatedAt: s.updatedAt, status: s.result?.status ?? null,
+          messageCount: s.messages.length, awaitingReply: s.busy || Boolean(s.pendingMessage) };
+      })
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+  return { enabled, create, get, list, message, confirmationCandidate, markConfirmed, exportState };
 }
 module.exports = { createDrafting };

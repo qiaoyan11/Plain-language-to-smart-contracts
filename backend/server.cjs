@@ -119,6 +119,30 @@ async function buildServer({ generation: generationOptions, operations: operatio
     }
   }
   const sealed = p => draftOrigins.has(p.id) || recoveredProjectIds.has(p.id);
+  // Read-only project summary so a user can find a project again without its URL.
+  async function summary(p) {
+    const context = generation.context(p), deployment = deployments.get(p.id);
+    const kind = deployment ? (deployment.kind === 'reference' ? 'reference' : 'agreement')
+      : sealed(p) || context.confirmation || context.latestRunId ? 'agreement' : 'reference';
+    const base = { id: p.id, name: p.name, kind, createdAt: p.createdAt, contractAddress: p.contractAddress,
+      totalAmountWei: p.totalAmountWei, milestoneCount: p.milestones.length };
+    let current;
+    try { current = await snapshot(p); }
+    catch { return { ...base, stage: 'unknown', funded: false, escrowBalanceWei: null, paidCount: null }; }
+    const paidCount = current.milestones.filter(m => m.paid).length;
+    let stage;
+    if (current.contractAddress)
+      stage = paidCount === current.milestones.length ? 'complete' : current.funded ? 'paying' : 'awaitingDeposit';
+    else if (kind === 'reference') stage = 'notDeployed';
+    else if (!context.confirmation) stage = 'needsConfirmation';
+    else if (!context.latestRunId) stage = 'readyToGenerate';
+    else {
+      const run = generation.getRun(p, context.latestRunId);
+      stage = !run.finishedAt ? 'generating' : run.generatedDeploymentEnabled ? 'readyToDeploy' : 'checksNotPassed';
+    }
+    return { ...base, stage, funded: current.funded, totalAmountWei: current.totalAmountWei,
+      escrowBalanceWei: current.escrowBalanceWei, paidCount };
+  }
   // All projects use the same disposable signer, so serialize its transactions.
   let busy = false;
   const hostnames = new Set(['127.0.0.1', 'localhost']);
@@ -198,6 +222,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
       if (req.method === 'GET' && path === '/api/local-accounts') return send(200, { ...accounts, chainId: CHAIN_ID, mode: 'local-chain' });
       if (req.method === 'GET' && path === '/api/drafts/context')
         return send(200, { clarificationEnabled: drafting.enabled, mode: 'local-chain', ...accounts });
+      if (req.method === 'GET' && path === '/api/drafts') return send(200, { drafts: drafting.list() });
       if (req.method === 'POST' && path === '/api/drafts') return send(201, drafting.create(await body(req)));
       const dr = path.match(/^\/api\/drafts\/([^/]+)(?:\/(messages|confirmation))?$/);
       if (dr) {
@@ -219,6 +244,10 @@ async function buildServer({ generation: generationOptions, operations: operatio
           return send(201, { project: p, agreement: agreement(p, context) });
         }
         fail(405, 'Method not allowed');
+      }
+      if (req.method === 'GET' && path === '/api/projects') {
+        const list = await Promise.all([...projects.values()].map(summary));
+        return send(200, { projects: list.sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
       }
       if (req.method === 'POST' && path === '/api/projects') {
         const b = await body(req);

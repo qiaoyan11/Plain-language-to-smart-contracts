@@ -8,7 +8,7 @@
     "demo": "node scripts/demo.cjs",
     "demo:web": "node scripts/web-demo.cjs",
     "backend": "node backend/server.cjs",
-    "test:api": "node --test tests/api.test.cjs tests/generation-api.test.cjs tests/operations-api.test.cjs tests/drafting-api.test.cjs",
+    "test:api": "node --test tests/api.test.cjs tests/generation-api.test.cjs tests/operations-api.test.cjs tests/drafting-api.test.cjs tests/project-list-api.test.cjs",
     "test:agent1": "node scripts/test-agent1.cjs",
     "test:handoff": "node scripts/test-handoff.cjs",
     "e2e": "npm run test:handoff && node --test tests/python-bridge.test.cjs",
