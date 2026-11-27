@@ -172,6 +172,15 @@ async function createServer({ generation: generationOptions, operations: operati
         }
         fail(405, 'Method not allowed');
       }
+      const known = path.match(/^\/api\/projects\/([^/]+)\/action-plans$/);
+      if (known) {
+        const p = projects.get(known[1]);
+        if (!p) fail(404, 'Project not found. Local projects reset when the backend restarts.');
+        if (req.method !== 'POST') fail(405, 'Method not allowed');
+        if (!p.contractAddress) fail(409, 'Deploy the contract first');
+        if (busy) fail(409, 'Another transaction is in progress; retry after it completes');
+        return send(200, operations.planKnown(p, await body(req), deployments.get(p.id), await snapshot(p)));
+      }
       const op = path.match(/^\/api\/projects\/([^/]+)\/plans(?:\/([^/]+)\/confirmation)?$/);
       if (op) {
         const p = projects.get(op[1]);

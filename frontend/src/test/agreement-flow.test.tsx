@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -113,6 +113,121 @@ afterEach(() => {
 });
 
 describe("server-owned agreement conversation", () => {
+  it("pairs saved assistant replies with each user message and restores them without another request", async () => {
+    const draft: DraftSession = {
+      ...ready,
+      revision: 2,
+      messages: [
+        { role: "user", content: "Build a website." },
+        { role: "user", content: "The total is 1 ETH." },
+      ],
+      turns: [
+        {
+          revision: 1,
+          reply: "Recorded a website milestone.",
+          question: { field: "totalAmountWei", question: "What is the total payment?" },
+        },
+        {
+          revision: 2,
+          reply: "The total is now 1 ETH.",
+          question: { field: "clientWallet", question: "Which wallet will deposit and approve?" },
+        },
+      ],
+      result: {
+        ...ready.result!,
+        status: "needsClarification",
+        questions: [
+          { field: "clientWallet", question: "Which wallet will deposit and approve?" },
+          { field: "developerWallet", question: "Which wallet will receive payment?" },
+        ],
+      },
+    };
+    api.setActiveDraftId(draft.id);
+    vi.mocked(api.getDraft).mockResolvedValue(draft);
+    const first = openPage(<CreatePage />);
+    await screen.findByText("The total is now 1 ETH.");
+    const log = screen.getByRole("log");
+    const replies = within(log).getAllByText("Agreement assistant");
+    expect(replies).toHaveLength(2);
+    expect(Array.from(log.children).map((child) => child.textContent)).toEqual([
+      "YouBuild a website.",
+      "Agreement assistantRecorded a website milestone.What is the total payment?",
+      "YouThe total is 1 ETH.",
+      "Agreement assistantThe total is now 1 ETH.Which wallet will deposit and approve?",
+    ]);
+    expect(screen.getAllByText("Which wallet will deposit and approve?")).toHaveLength(1);
+    expect(
+      screen.getByText("Which wallet will receive payment?").closest("details"),
+    ).not.toHaveAttribute("open");
+    expect(screen.getByText("Other items to resolve (1)")).toBeTruthy();
+    first.unmount();
+    openPage(<CreatePage />);
+    await screen.findByText("The total is now 1 ETH.");
+    expect(within(screen.getByRole("log")).getAllByText("Agreement assistant")).toHaveLength(2);
+    expect(api.sendDraftMessage).not.toHaveBeenCalled();
+    expect(api.createDraft).not.toHaveBeenCalled();
+  });
+  it("keeps Chinese conversation labels and sends Chinese local-account messages after address-only replies", async () => {
+    const draft: DraftSession = {
+      ...ready,
+      revision: 2,
+      messages: [
+        { role: "user", content: "请开发一个网站，总价 1 ETH。" },
+        { role: "user", content: context.clientWallet },
+      ],
+      turns: [
+        {
+          revision: 1,
+          reply: "已记录网站交付和总金额 1 ETH。",
+          question: { field: "clientWallet", question: "客户的钱包地址是什么？" },
+        },
+        {
+          revision: 2,
+          reply: "已更新客户钱包。",
+          question: { field: "developerWallet", question: "服务方的钱包地址是什么？" },
+        },
+      ],
+      result: {
+        ...ready.result!,
+        status: "needsClarification",
+        questions: [{ field: "developerWallet", question: "服务方的钱包地址是什么？" }],
+      },
+    };
+    api.setActiveDraftId(draft.id);
+    vi.mocked(api.getDraft).mockResolvedValue(draft);
+    openPage(<CreatePage />);
+    await screen.findByText("已更新客户钱包。");
+    expect(screen.getByText("付款摘要")).toBeTruthy();
+    expect(screen.getAllByText("服务方的钱包地址是什么？")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "核对协议" })).toBeDisabled();
+    expect(api.sendDraftMessage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "使用本机测试账户" }));
+    await waitFor(() => expect(api.sendDraftMessage).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.sendDraftMessage).mock.calls[0]![1]).toBe(
+      `本次本地测试，请使用 ${context.clientWallet} 作为客户钱包，${context.developerWallet} 作为服务方钱包。`,
+    );
+  });
+  it("loads older sessions without inventing assistant replies for previous messages", async () => {
+    const draft: DraftSession = {
+      ...ready,
+      messages: [
+        { role: "user", content: "Build a website." },
+        { role: "user", content: "The total is 1 ETH." },
+      ],
+    };
+    api.setActiveDraftId(draft.id);
+    vi.mocked(api.getDraft).mockResolvedValue(draft);
+    openPage(<CreatePage />);
+    await screen.findByText("The total is 1 ETH.");
+    const log = screen.getByRole("log");
+    expect(within(log).getAllByText("Agreement assistant")).toHaveLength(1);
+    expect(
+      within(log).getByText(
+        "Your current payment summary is loaded. Check the rules alongside this conversation.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Review agreement" })).toBeEnabled();
+  });
   it("recovers a completed reply after a lost response without submitting it again", async () => {
     api.setActiveDraftId(empty.id);
     openPage(<CreatePage />);

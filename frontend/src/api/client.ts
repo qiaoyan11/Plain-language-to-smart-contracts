@@ -67,6 +67,7 @@ export interface OperationPlan {
     action: "query" | "deposit" | "acceptMilestone";
     milestoneId: number | null;
   } | null;
+  payment?: { amountWei: string; from: string; to: string; milestoneTitle: string | null } | null;
 }
 export interface OperationReport {
   outcome: "confirmed" | "failed" | "unverified";
@@ -354,6 +355,12 @@ export const api = {
   async planOperation(id: string, message: string): Promise<OperationPlan> {
     if (MOCK_MODE) throw new Error(AGENT3_LOCAL_ONLY);
     return request(`/projects/${encodeURIComponent(id)}/plans`, { message });
+  },
+  async planKnownOperation(id: string, action: { action: "deposit" } | { action: "acceptMilestone"; milestoneId: number }): Promise<OperationPlan> {
+    if (MOCK_MODE) throw new Error("Payment controls need local API mode.");
+    const body = action.action === "deposit" ? { action: action.action }
+      : { action: action.action, milestoneId: action.milestoneId };
+    return request(`/projects/${encodeURIComponent(id)}/action-plans`, body);
   },
   async confirmOperation(
     id: string,

@@ -338,6 +338,15 @@ test('a confirmed generation deploys the report bytecode once, then Agent 3 oper
       assert.equal(plans.at(-1).contractAddress, address);
       assert.equal(body.project.escrowBalanceWei, action === 'deposit' ? initial.body.totalAmountWei : draft.milestones[1].amountWei);
     }
+    const known = await call(path + '/action-plans', { action: 'acceptMilestone', milestoneId: 2 });
+    assert.equal(known.status, 200);
+    assert.equal(known.body.intent.contractAddress, address);
+    assert.equal(known.body.payment.amountWei, draft.milestones[1].amountWei);
+    const finalPayment = await call(path + '/plans/' + known.body.planId + '/confirmation', { approved: true });
+    assert.equal(finalPayment.body.report.outcome, 'confirmed');
+    assert.equal(finalPayment.body.project.escrowBalanceWei, '0');
+    assert.equal(finalPayment.body.project.milestones.every(m => m.paid), true);
+    assert.equal(plans.length, 2); // The button plan did not call the model planner again.
   }, operations);
 });
 

@@ -110,6 +110,7 @@ export interface DraftSession {
   createdAt: string;
   updatedAt: string;
   messages: Array<{ role: "user"; content: string }>;
+  turns?: Array<{ revision: number; reply: string; question: { field: string; question: string } | null }>;
   result: ClarifyResult | null;
   busy: boolean;
   pendingMessage: { content: string; requestKey: string; expectedRevision: number } | null;

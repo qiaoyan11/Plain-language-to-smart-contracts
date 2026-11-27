@@ -72,6 +72,83 @@ test('disabled drafting reports its mode and never dispatches a message or confi
   });
 });
 
+test('Chinese conversation turns show one stable question while retaining every internal blocker', async () => {
+  let accounts, phase = 'incomplete', reverse = false, calls = 0;
+  await withAPI({ enabled: true, runner: async request => {
+    calls++;
+    const response = ready(request, accounts);
+    response.result.draftSpec.totalAmountWei = '10000000000000000';
+    response.result.draftSpec.milestones[0].amountWei = '3000000000000000';
+    response.result.draftSpec.milestones[1].amountWei = '7000000000000000';
+    if (phase !== 'ready') {
+      response.result.status = 'needsClarification';
+      response.result.draftSpec.clientWallet = response.result.draftSpec.developerWallet = null;
+      response.result.questions = [
+        { field: 'developerWallet', question: 'What is the provider wallet?' },
+        { field: 'clientWallet', question: 'What is the client wallet?' },
+      ];
+      if (phase === 'incomplete') {
+        response.result.draftSpec.totalAmountWei = null;
+        response.result.draftSpec.milestones.forEach(m => { m.amountWei = null; });
+        response.result.questions.push({ field: 'totalAmountWei', question: 'What is the total?' },
+          { field: 'milestones.1.amountWei', question: 'What is the first payment?' });
+      }
+      if (reverse) response.result.questions.reverse();
+    }
+    return response;
+  } }, async ({ call, create, accounts: local }) => {
+    accounts = local;
+    const { path } = await create();
+    const first = await call(path + '/messages', message('我要做一个网站，分首页和整站验收。'));
+    assert.equal(first.status, 200);
+    assert.equal(first.body.result.questions.length, 4);
+    const turn = first.body.turns[0];
+    assert.equal(turn.revision, 1);
+    assert.equal(turn.question.field, 'totalAmountWei');
+    assert.match(turn.question.question, /总额/);
+    assert.equal((turn.question.question.match(/[?？]/g) ?? []).length, 1);
+    assert.equal(turn.reply.includes(turn.question.question), false);
+    reverse = true;
+    const second = await call(path + '/messages', message('暂时还没有确定。', 1, 'chat-turn-two'));
+    assert.deepEqual(second.body.turns[0], turn);
+    assert.deepEqual(second.body.turns[1].question, turn.question);
+    assert.equal((await call(path + '/confirmation', { approved: true, expectedRevision: 2 })).status, 409);
+    phase = 'wallets';
+    const third = await call(path + '/messages', message('总额 0.01 测试 ETH，30%/70%。', 2, 'chat-turn-three'));
+    assert.equal(third.body.turns[2].question.field, 'clientWallet');
+    assert.match(third.body.turns[2].reply, /0\.01 ETH/);
+    assert.match(third.body.turns[2].reply, /0\.003 ETH、0\.007 ETH/);
+    phase = 'ready';
+    const finalBody = message(accounts.clientWallet + ' ' + accounts.developerWallet, 3, 'chat-turn-four');
+    const final = await call(path + '/messages', finalBody);
+    assert.equal(final.body.turns[3].question, null);
+    assert.match(final.body.turns[3].reply, /核对摘要后明确确认/);
+    assert.match(final.body.turns[3].reply, /客户存款地址/);
+    assert.equal(final.body.turns.length, final.body.messages.length);
+    assert.deepEqual((await call(path)).body.turns, final.body.turns);
+    assert.deepEqual((await call(path + '/messages', finalBody)).body.turns, final.body.turns);
+    assert.equal(calls, 4);
+  });
+});
+
+test('unsupported terms take priority without hiding the remaining questions', async () => {
+  let accounts;
+  await withAPI({ enabled: true, runner: async request => ready(request, accounts, {
+    status: 'unsupported', unsupportedTerms: ['逾期自动退款，当前合约没有退款操作。'],
+    questions: [{ field: 'clientWallet', question: '客户钱包是什么？' },
+      { field: 'acceptance', question: '用哪份设计稿验收？需要几轮修改？' }],
+  }) }, async ({ call, create, accounts: local }) => {
+    accounts = local;
+    const { path } = await create();
+    const result = await call(path + '/messages', message('逾期需要自动退款，还要明确验收标准。'));
+    assert.equal(result.status, 200);
+    assert.equal(result.body.turns[0].question.field, 'unsupportedTerms.0');
+    assert.equal((result.body.turns[0].question.question.match(/[?？]/g) ?? []).length, 1);
+    assert.equal(result.body.result.questions.length, 2);
+    assert.equal((await call(path + '/confirmation', { approved: true, expectedRevision: 1 })).status, 409);
+  });
+});
+
 test('busy drafts survive refresh and a lost response can be replayed without another model call', async () => {
   const worker = controlledWorker();
   await withAPI({ enabled: true, runner: worker.runner }, async ({ call, create, accounts }) => {
@@ -87,6 +164,7 @@ test('busy drafts survive refresh and a lost response can be replayed without an
       assert.equal(refreshing.result, null);
       assert.equal(refreshing.pendingMessage.content, body.message);
       assert.deepEqual(refreshing.messages, []);
+      assert.deepEqual(refreshing.turns, []);
       assert.equal('history' in refreshing, false);
       assert.equal('keys' in refreshing, false);
       assert.equal((await call(path + '/messages', body)).status, 409);
@@ -103,6 +181,8 @@ test('busy drafts survive refresh and a lost response can be replayed without an
       }, 'Accepted message was not recoverable after disconnect');
       assert.equal(recovered.pendingMessage, null);
       assert.deepEqual(recovered.messages, [{ role: 'user', content: body.message }]);
+      assert.equal(recovered.turns.length, 1);
+      assert.equal(recovered.turns[0].question, null);
       const replay = await call(path + '/messages', body);
       assert.equal(replay.status, 200);
       assert.deepEqual(replay.body, recovered);
@@ -186,7 +266,7 @@ test('full prior results and sourced separate terms reach subsequent clarificati
     assert.deepEqual(seen[1].payload.draftSpec, first.body.result.draftSpec);
     assert.deepEqual(seen[1].payload.history, [
       { role: 'user', content: firstMessage.message },
-      { role: 'assistant', content: JSON.stringify({ result: first.body.result, separateTerms: [note] }) }
+      { role: 'assistant', content: JSON.stringify({ result: first.body.result, separateTerms: [note], question: first.body.turns[0].question }) }
     ]);
     assert.deepEqual(second.body.result.separateTerms, [note]);
     assert.deepEqual(second.body.messages, [firstMessage, secondMessage].map(item => ({ role: 'user', content: item.message })));
@@ -215,6 +295,7 @@ test('failed follow-ups preserve the last draft and the pending message until th
     assert.equal(recovered.busy, false);
     assert.deepEqual(recovered.result, first.result);
     assert.deepEqual(recovered.messages, first.messages);
+    assert.deepEqual(recovered.turns, first.turns);
     assert.deepEqual(recovered.pendingMessage, { content: followup.message, requestKey: followup.requestKey, expectedRevision: 1 });
     assert.ok(recovered.lastError);
     assert.equal((await call(path + '/confirmation', { approved: true, expectedRevision: 1 })).status, 409);
@@ -227,6 +308,7 @@ test('failed follow-ups preserve the last draft and the pending message until th
     assert.equal(retried.body.pendingMessage, null);
     assert.equal(retried.body.lastError, null);
     assert.equal(retried.body.messages.length, 2);
+    assert.equal(retried.body.turns.length, 2);
     assert.deepEqual(seen[2].payload, seen[1].payload);
     assert.equal((await call(path + '/messages', followup)).body.revision, 2);
     assert.equal(seen.length, 3);

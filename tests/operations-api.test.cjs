@@ -87,6 +87,51 @@ test('deposit then acceptance: Node executes the stored intent and reports from 
   });
 });
 
+test('payment buttons use trusted amounts and recipients without a planning model or Agent 3 live mode', async () => {
+  const seen = [];
+  await withAPI({ enabled: false, runner: (request, options) => {
+    seen.push(request.operation);
+    assert.equal(request.operation, 'reportAction');
+    return runPython(request, options); // Deterministic receipt formatter; no language model.
+  } }, async ({ call, path, act, confirm, plan }) => {
+    const button = body => call(path + '/action-plans', body);
+    assert.equal((await button({ action: 'deposit' })).status, 409);
+    await act('deploy');
+    const original = (await call(path)).body;
+    assert.equal((await plan('deposit')).status, 503);
+    for (const body of [{ action: 'deposit', amountWei: '1' }, { action: 'deposit', to: original.developerWallet },
+      { action: 'acceptMilestone', milestoneId: 1, contractAddress: original.contractAddress },
+      { action: 'acceptMilestone', milestoneId: '1' }, { action: 'deploy' }])
+      assert.equal((await button(body)).status, 400);
+    const deposit = await button({ action: 'deposit' });
+    assert.equal(deposit.status, 200);
+    assert.deepEqual(deposit.body.payment, { amountWei: original.totalAmountWei,
+      from: original.clientWallet, to: original.contractAddress, milestoneTitle: null });
+    assert.equal((await call(path)).body.funded, false);
+    assert.deepEqual(seen, []);
+    assert.equal((await confirm(deposit.body.planId, { approved: false })).status, 400);
+    const funded = await confirm(deposit.body.planId);
+    assert.equal(funded.status, 200);
+    assert.equal(funded.body.report.outcome, 'confirmed');
+    assert.equal(funded.body.project.escrowBalanceWei, original.totalAmountWei);
+    assert.equal((await confirm(deposit.body.planId)).status, 409);
+    assert.equal((await button({ action: 'deposit' })).status, 409);
+    assert.equal((await button({ action: 'acceptMilestone', milestoneId: 2 })).status, 409);
+    const firstPayment = await button({ action: 'acceptMilestone', milestoneId: 1 });
+    assert.equal(firstPayment.status, 200);
+    assert.deepEqual(firstPayment.body.payment, { amountWei: '3000000000000000',
+      from: original.contractAddress, to: original.developerWallet, milestoneTitle: 'Homepage' });
+    const paid = await confirm(firstPayment.body.planId);
+    assert.equal(paid.body.report.outcome, 'confirmed');
+    assert.equal(paid.body.project.milestones[0].paid, true);
+    assert.equal(paid.body.project.milestones[1].paid, false);
+    assert.equal(paid.body.project.escrowBalanceWei, '7000000000000000');
+    assert.equal((await button({ action: 'acceptMilestone', milestoneId: 1 })).status, 409);
+    assert.deepEqual(seen, ['reportAction', 'reportAction']);
+    assert.deepEqual(paid.body.project.transactions.map(tx => tx.action), ['deploy', 'deposit', 'acceptMilestone']);
+  });
+});
+
 test('the browser cannot change, forge or reuse a plan', async () => {
   const w = worker(() => ({ action: 'deposit' }));
   await withAPI({ enabled: true, runner: w.runner }, async ({ act, plan, confirm, call, path }) => {
@@ -112,6 +157,11 @@ test('a plan that no longer fits the chain state sends no transaction', async ()
     assert.equal(refused.status, 409);
     assert.match(refused.body.error, /No transaction has been sent/);
     assert.equal((await call(path)).body.transactions.length, 3);
+    const known = await call(path + '/action-plans', { action: 'acceptMilestone', milestoneId: 2 });
+    assert.equal(known.status, 200);
+    assert.equal((await act('acceptMilestone', 2)).status, 200);
+    assert.equal((await confirm(known.body.planId)).status, 409);
+    assert.equal((await call(path)).body.transactions.length, 4);
   });
 });
 

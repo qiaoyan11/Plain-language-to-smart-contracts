@@ -140,7 +140,7 @@ describe("generated project operations", () => {
       pendingMessage: null,
       lastError: null,
       confirmedProjectId: project.id,
-      messages: [{ role: "user", content: "Our original website agreement." }],
+      messages: [{ role: "user", content: "这是双方确认的网站开发约定。" }],
       result: {
         status: "readyForConfirmation",
         draftSpec: context.spec,
@@ -150,11 +150,13 @@ describe("generated project operations", () => {
       },
     });
     openPage();
-    await screen.findByText("Our original website agreement.");
+    await screen.findByText("这是双方确认的网站开发约定。");
     expect(getDraft).toHaveBeenCalledWith("draft-origin");
     expect(screen.getByText("Maintenance will be agreed separately.")).toBeTruthy();
     expect(screen.queryByText("Add or change agreement details")).toBeNull();
     expect(screen.getByText("Start a new agreement to change these terms")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重新生成并检查" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "部署已验证合约到本机" })).toBeTruthy();
   });
   it("deploys only on click, restores the generated contract after reload and updates the escrow after confirmation", async () => {
     serve(project, context, run);
@@ -257,6 +259,14 @@ describe("generated project operations", () => {
     openPage();
     await screen.findByText(/Plain-language operations are disabled/);
     expect(screen.getByText(deployment.contractAddress)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Deposit .* test ETH/ })).toBeEnabled();
+  });
+  it("uses Chinese project titles for payment controls when no source conversation is available", async () => {
+    serve(deployed, { ...context, spec: { ...context.spec, name: "网站开发" }, deployment, operationsEnabled: false }, run);
+    openPage();
+    await screen.findByRole("button", { name: /存入 .* 测试 ETH/ });
+    expect(screen.getByRole("heading", { name: "付款操作" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
   });
   it("reports a rejected deployment and keeps Agent 3 unavailable", async () => {
