@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Shell, Row } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { AgreementEditor } from "@/components/AgreementEditor";
@@ -16,6 +16,7 @@ import {
   TransactionHistory,
 } from "@/components/EscrowLedger";
 import { approximately, rateText, singleRate } from "@/lib/money";
+import { takeAutoDeploy } from "@/lib/autoDeploy";
 import {
   api,
   formatWei,
@@ -115,6 +116,27 @@ export function DetailPage({ id }: { id: string }) {
       setBusy(false);
     }
   }
+  // Right after confirming, the checked contract is set up on the test chain without another
+  // click (see lib/autoDeploy). Anything else keeps the explicit set-up button.
+  const data = query.data;
+  useEffect(() => {
+    const confirmation = data?.context.confirmation;
+    const latest = data?.run;
+    if (!data || !confirmation || !latest || busy || data.project.contractAddress) return;
+    if (data.context.deployment || !data.context.generatedDeploymentEnabled) return;
+    if (!latest.generatedDeploymentEnabled) return;
+    if (!takeAutoDeploy(id, confirmation.confirmationId)) return;
+    void action(async () => {
+      const deployed = await api.deployGeneration(id, latest.id, confirmation);
+      showEscrow.current = true;
+      await cache.cancelQueries({ queryKey: key });
+      cache.setQueryData<typeof data>(
+        key,
+        (current) => current && { ...current, project: deployed },
+      );
+    }, "deployment");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, busy, id]);
   if (!query.data)
     return (
       <Shell step="Agreement">
@@ -213,10 +235,8 @@ export function DetailPage({ id }: { id: string }) {
     : "Writes the contract with AI, then compiles it, runs static analysis and tests every payment rule. It usually takes a few minutes and may incur model costs.";
   return (
     <Shell
-      step={editing ? "Revise agreement" : generated ? "Local escrow" : "Generate & check"}
-      progress={
-        editing || !context.confirmation ? 2 : generated || reference ? 5 : canDeploy ? 4 : 3
-      }
+      step={editing ? "Revise agreement" : generated ? "Local escrow" : "Set up contract"}
+      progress={editing || !context.confirmation ? 2 : generated || reference ? 4 : 3}
       complete={Boolean(generated && allPaid)}
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -239,7 +259,9 @@ export function DetailPage({ id }: { id: string }) {
                 : canDeploy && context.recoveredOnFreshChain
                   ? "Your checked contract was recovered. You can deploy it on this fresh local chain without generating it again."
                   : canDeploy
-                    ? "Your contract passed its checks. Deploy it on the local test chain to start the deposit and payments."
+                    ? busy
+                      ? "Your contract passed its checks. Setting up the escrow on the local test chain…"
+                      : "Your contract passed its checks. Set up the escrow on the local test chain to start the deposit and payments."
                     : context.confirmation
                       ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
                       : "The agreement changed. Review and confirm this version before generating."}
@@ -396,10 +418,10 @@ export function DetailPage({ id }: { id: string }) {
               )}
               {canDeploy && (
                 <section className="panel mb-7" aria-label="Next step">
-                  <h2>Next step: deploy the checked contract</h2>
+                  <h2>Next step: set up the escrow</h2>
                   <p className="mt-2 text-sm leading-relaxed">
-                    Deploys this checked version with your confirmed payment rules on the local test
-                    chain. Deploying makes no model request and moves no funds.
+                    Puts this checked contract, with your confirmed payment rules, on the local test
+                    chain. It makes no model request and moves no money.
                   </p>
                   <Button
                     className="mt-4"
@@ -412,7 +434,7 @@ export function DetailPage({ id }: { id: string }) {
                       }, "deployment")
                     }
                   >
-                    {busy ? "Deploying…" : "Deploy generated contract locally"}
+                    {busy ? "Setting up…" : "Set up the escrow"}
                   </Button>
                 </section>
               )}

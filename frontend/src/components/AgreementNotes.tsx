@@ -1,6 +1,7 @@
 import type { Workspace } from "@/api/workspace";
-import type { DraftSpec } from "@/api/types";
+import type { DraftSpec, ExchangeRate } from "@/api/types";
 import { formatWei } from "@/api/client";
+import { inCurrency } from "@/lib/money";
 export function AgreementNotes({ workspace }: { workspace: Workspace | null }) {
   return (
     <details className="agreement-summary">
@@ -28,28 +29,53 @@ export function AgreementNotes({ workspace }: { workspace: Workspace | null }) {
     </details>
   );
 }
-export function PaymentRules({ spec }: { spec?: DraftSpec | undefined }) {
-  const first = spec?.milestones[0]?.amountWei;
-  const remaining =
-    spec?.totalAmountWei && first && spec.milestones.length > 1
-      ? BigInt(spec.totalAmountWei) - BigInt(first)
-      : null;
+/**
+ * What the contract will do, in three plain steps with the real amounts, so the user knows what
+ * to expect before it is written. Shown on the review page right above the confirmation.
+ */
+export function PaymentRules({
+  spec,
+  rate,
+}: {
+  spec?: DraftSpec | undefined;
+  rate?: ExchangeRate | undefined;
+}) {
+  const money = (wei: string) =>
+    rate
+      ? `${inCurrency(wei, rate)} ${rate.currency} (${formatWei(wei)} test ETH)`
+      : `${formatWei(wei)} test ETH`;
+  const milestones = spec?.milestones.filter((m) => m.amountWei) ?? [];
+  const complete = Boolean(spec?.totalAmountWei) && milestones.length === spec?.milestones.length;
   return (
     <section className="my-7 border-y border-border py-5">
-      <h2 className="mb-3">What happens to your deposit?</h2>
-      <p className="text-sm leading-relaxed">
-        The client deposits the full price, checks each delivery, and approves each payment once, in
-        order.
-      </p>
-      {remaining !== null && remaining > 0n && first && (
-        <p className="mt-3 text-sm leading-relaxed">
-          {`After the first payment of ${formatWei(first)} test ETH, this escrow will still hold ${formatWei(remaining.toString())} test ETH.`}
-        </p>
-      )}
+      <h2 className="mb-3">How the contract will work</h2>
+      <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed">
+        <li>
+          {complete
+            ? `The client deposits the full ${money(spec!.totalAmountWei!)} into the contract before the first payment.`
+            : "The client deposits the full price into the contract before the first payment."}
+        </li>
+        <li>
+          {complete && milestones.length === 1
+            ? `When the client approves “${milestones[0]!.title}”, the whole amount goes to the provider.`
+            : "Each time the client approves a milestone, its payment goes straight to the provider, one at a time and in this order:"}
+          {complete && milestones.length > 1 && (
+            <ul className="mt-1 list-disc pl-5">
+              {milestones.map((m) => (
+                <li key={m.id}>{`“${m.title}”: ${money(m.amountWei!)}`}</li>
+              ))}
+            </ul>
+          )}
+        </li>
+        <li>
+          That is all it does. It has no refunds, deadlines, penalties or automatic approval; your
+          written agreement covers those.
+        </li>
+      </ol>
       <p className="mt-3 text-sm font-medium leading-relaxed">
-        If the client never approves another payment, unpaid funds can remain locked forever. The
-        client cannot withdraw them and the provider cannot claim them. Even mutual agreement cannot
-        trigger a refund.
+        If the client never approves a payment, that money can remain locked in the contract
+        forever. The client cannot take it back and the provider cannot claim it, even if both
+        agree.
       </p>
     </section>
   );

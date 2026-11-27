@@ -79,9 +79,9 @@ afterEach(() => {
 });
 
 describe("main flow guidance", () => {
-  it("shows where the agreement is in the five-step flow", () => {
+  it("shows where the agreement is in the four-step flow", () => {
     render(
-      <Shell step="Generate & check" progress={3}>
+      <Shell step="Set up contract" progress={3}>
         <p>Page</p>
       </Shell>,
     );
@@ -91,9 +91,8 @@ describe("main flow guidance", () => {
     expect(steps.map((step) => step.textContent)).toEqual([
       "✓Describe(done)",
       "✓Confirm(done)",
-      "3Generate & check",
-      "4Deploy",
-      "5Fund & pay",
+      "3Set up contract",
+      "4Fund & pay",
     ]);
     expect(steps[2]).toHaveAttribute("aria-current", "step");
   });

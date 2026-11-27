@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { DraftSummary, DraftSource, draftReady } from "@/components/DraftSummary";
 import { PaymentRules, ScopeAcknowledgement } from "@/components/AgreementNotes";
+import { singleRate } from "@/lib/money";
+import { markAutoDeploy } from "@/lib/autoDeploy";
 import { useActiveDraft } from "@/hooks/use-active-draft";
 import { api, reconnectDelay } from "@/api/client";
 import { Button } from "@/components/ui/button";
@@ -40,8 +42,10 @@ export function ConfirmPage() {
       // Confirming is the go-ahead: start writing and checking the contract straight away, so the
       // project page opens on its progress. The project page can still start it if this fails.
       const agreement = confirmed.agreement;
-      if (agreement.generationEnabled && agreement.confirmation && !agreement.latestRunId)
+      if (agreement.generationEnabled && agreement.confirmation && !agreement.latestRunId) {
+        markAutoDeploy(confirmed.project.id, agreement.confirmation.confirmationId);
         await api.startGeneration(confirmed.project.id, agreement).catch(() => undefined);
+      }
       await nav({ to: "/projects/$id", params: { id: confirmed.project.id } });
     } catch (caught) {
       setError((caught as Error).message);
@@ -76,7 +80,10 @@ export function ConfirmPage() {
             </Button>
           ) : (
             <>
-              <PaymentRules spec={ready ? session.result?.draftSpec : undefined} />
+              <PaymentRules
+                spec={ready ? session.result?.draftSpec : undefined}
+                rate={singleRate(session.result?.exchangeRates)}
+              />
               <ScopeAcknowledgement
                 notEnforced={Boolean(session.settledTerms?.length)}
                 checked={ackRevision === session.revision}
@@ -90,8 +97,8 @@ export function ConfirmPage() {
                 {busy ? "Confirming…" : "Confirm agreement"}
               </Button>
               <p className="mt-3 text-xs text-muted-foreground">
-                Next, Accord writes the contract and checks it automatically. Nothing is deployed
-                and no funds move until you choose to.
+                Next, Accord writes the contract, checks it and sets it up on the local test chain.
+                No money moves until you choose to deposit.
               </p>
               {!draftReady(session) && (
                 <p className="mt-3 text-sm">

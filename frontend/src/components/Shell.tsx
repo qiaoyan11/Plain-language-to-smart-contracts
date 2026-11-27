@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { FileText } from "lucide-react";
 
-const FLOW = ["Describe", "Confirm", "Generate & check", "Deploy", "Fund & pay"] as const;
+const FLOW = ["Describe", "Confirm", "Set up contract", "Fund & pay"] as const;
 
-/** The five stages of an agreement, so a first-time user can see where they are and what comes next. */
+/** The four stages of an agreement, so a first-time user can see where they are and what comes next. */
 function FlowSteps({ current, complete }: { current: number; complete: boolean }) {
   return (
     <ol aria-label="Agreement progress" className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
@@ -40,7 +40,7 @@ export function Shell({
   children,
 }: {
   step: string;
-  /** 1–5 for pages inside the agreement flow; omit elsewhere. */
+  /** 1–4 for pages inside the agreement flow; omit elsewhere. */
   progress?: number;
   complete?: boolean;
   children: ReactNode;
