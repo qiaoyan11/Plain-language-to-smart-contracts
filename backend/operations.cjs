@@ -9,12 +9,14 @@ const PLAN_TIMEOUT_MS = 12000, REPORT_TIMEOUT_MS = 10000, PLAN_TTL_MS = 10 * 60 
 const copy = value => structuredClone(value);
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
 
+const KNOWN_ACTIONS = ['deposit', 'acceptMilestone', 'submitDelivery', 'requestChanges', 'claimMilestone'];
 function createOperations({ runner = runPython, enabled = process.env.AGENT3_MODE === 'live', now = () => Date.now() } = {}) {
   const plans = new Map(); // One current plan per project; a new request replaces the earlier plan.
+  // Money moves only on a deposit, an approval or a v2 claim; a delivery or a change request moves none.
   function paymentDetails(intent, snapshot) {
-    if (!intent || intent.action === 'query') return null;
+    if (!intent || !['deposit', 'acceptMilestone', 'claimMilestone'].includes(intent.action)) return null;
     const milestone = snapshot.milestones.find(m => m.id === intent.milestoneId);
-    if (intent.action === 'acceptMilestone' && !milestone) return null;
+    if (intent.action !== 'deposit' && !milestone) return null;
     const deposit = intent.action === 'deposit';
     return { amountWei: deposit ? snapshot.totalAmountWei : milestone.amountWei,
       from: deposit ? snapshot.clientWallet : snapshot.contractAddress,
@@ -60,18 +62,24 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
   }
   // Buttons select a known operation. Amounts, recipients and contract identity always come from Node.
   function planKnown(p, body, deployment, snapshot) {
-    if (!['deposit', 'acceptMilestone'].includes(body?.action)) fail(400, 'Choose a deposit or milestone acceptance');
+    const actions = snapshot.review ? KNOWN_ACTIONS : ['deposit', 'acceptMilestone'];
+    if (!actions.includes(body?.action)) fail(400, 'Choose a deposit or a milestone action this contract supports');
     fields(body, body.action === 'deposit' ? ['action'] : ['action', 'milestoneId']);
-    if (body.action === 'acceptMilestone' && (!Number.isInteger(body.milestoneId) || body.milestoneId < 1))
+    if (body.action !== 'deposit' && (!Number.isInteger(body.milestoneId) || body.milestoneId < 1))
       fail(400, 'Choose a valid milestone');
     const intent = { projectId: p.id, chainId: deployment.chainId, contractAddress: deployment.contractAddress,
       action: body.action, milestoneId: body.action === 'deposit' ? null : body.milestoneId };
     recheck(p, { intent }, deployment.chainId, snapshot);
     const payment = paymentDetails(intent, snapshot);
-    const amount = formatEther(payment.amountWei);
-    const summary = intent.action === 'deposit'
-      ? `Review a deposit of ${amount} test ETH into escrow. No transaction has been sent.`
-      : `Confirm acceptance of milestone #${intent.milestoneId} "${payment.milestoneTitle}" and payment of ${amount} test ETH. No transaction has been sent.`;
+    const title = snapshot.milestones.find(m => m.id === intent.milestoneId)?.title;
+    const days = Math.round((snapshot.review?.periodSeconds ?? 0) / 86400 * 10) / 10;
+    const summary = {
+      deposit: () => `Review a deposit of ${formatEther(payment.amountWei)} test ETH into escrow.`,
+      acceptMilestone: () => `Confirm acceptance of milestone #${intent.milestoneId} "${title}" and payment of ${formatEther(payment.amountWei)} test ETH.`,
+      claimMilestone: () => `Claim milestone #${intent.milestoneId} "${title}": its review period ended without a change request, so ${formatEther(payment.amountWei)} test ETH goes to the provider.`,
+      submitDelivery: () => `Mark milestone #${intent.milestoneId} "${title}" as delivered. The client then has ${days} days to approve it or ask for changes; after that the provider can claim the payment.`,
+      requestChanges: () => `Ask for changes to milestone #${intent.milestoneId} "${title}". The delivery is withdrawn and the review starts again when the provider delivers again.`,
+    }[intent.action]() + ' No transaction has been sent.';
     return savePlan(p, { status: 'readyForConfirmation', question: null, summary, intent }, snapshot);
   }
   // Returns the stored plan for one execution. Call only when the signer is free.
@@ -91,8 +99,16 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
     const { intent } = stored, m = snapshot.milestones.find(x => x.id === intent.milestoneId);
     const sameContract = intent.projectId === p.id && intent.chainId === chainId && p.contractAddress &&
       intent.contractAddress.toLowerCase() === p.contractAddress.toLowerCase();
-    const allowed = intent.action === 'deposit' ? !snapshot.funded
-      : Boolean(m) && snapshot.funded && !m.paid && snapshot.milestones.every(x => x.id >= m.id || x.paid);
+    const next = Boolean(m) && snapshot.funded && !m.paid && snapshot.milestones.every(x => x.id >= m.id || x.paid);
+    const time = snapshot.review?.chainTime ?? 0, ends = m?.deliveredAt ? m.deliveredAt + (snapshot.review?.periodSeconds ?? 0) : null;
+    const limit = snapshot.review?.changeRequestLimit ?? 0;
+    const allowed = {
+      deposit: () => !snapshot.funded,
+      acceptMilestone: () => next,
+      submitDelivery: () => next && Boolean(snapshot.review) && !m.deliveredAt,
+      requestChanges: () => next && ends !== null && time < ends && (limit === 0 || m.changeRequests < limit),
+      claimMilestone: () => next && ends !== null && time >= ends,
+    }[intent.action]?.() ?? false;
     if (!sameContract || !allowed) fail(409, 'The escrow state changed after this plan was made. No transaction has been sent; ask again.');
   }
   async function report(p, stored, receipt, snapshot) {

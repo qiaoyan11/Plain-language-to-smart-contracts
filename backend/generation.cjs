@@ -19,7 +19,8 @@ function specFromProject(p, specVersion) {
   return { schemaVersion: 1, projectId: p.id, specVersion, name: p.name,
     clientWallet: p.clientWallet, developerWallet: p.developerWallet,
     milestones: p.milestones.map(m => ({ id: m.id, title: m.title, amountWei: m.amountWei })),
-    totalAmountWei: p.totalAmountWei, approvalRole: 'client', refundPolicy: 'none', deadline: null };
+    totalAmountWei: p.totalAmountWei, approvalRole: 'client', refundPolicy: 'none', deadline: null,
+    ...(p.reviewPeriodSeconds ? { reviewPeriodSeconds: p.reviewPeriodSeconds, changeRequestLimit: p.changeRequestLimit ?? 0 } : {}) };
 }
 function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MODE === 'live',
   saved, onChange = () => {} } = {}) {

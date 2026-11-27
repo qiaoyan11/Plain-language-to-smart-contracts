@@ -927,7 +927,10 @@
                   "enum": [
                     "query",
                     "deposit",
-                    "acceptMilestone"
+                    "acceptMilestone",
+                    "submitDelivery",
+                    "requestChanges",
+                    "claimMilestone"
                   ]
                 },
                 "milestoneId": {
@@ -1201,6 +1204,16 @@
               },
               "paid": {
                 "type": "boolean"
+              },
+              "deliveredAt": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "v2: chain time of the delivery awaiting review; 0 when none."
+              },
+              "changeRequests": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "v2: change requests made for this milestone."
               }
             },
             "required": [
@@ -1223,7 +1236,10 @@
                 "enum": [
                   "deploy",
                   "deposit",
-                  "acceptMilestone"
+                  "acceptMilestone",
+                  "submitDelivery",
+                  "requestChanges",
+                  "claimMilestone"
                 ]
               },
               "hash": {
@@ -1253,6 +1269,42 @@
             ],
             "additionalProperties": false
           }
+        },
+        "review": {
+          "type": "object",
+          "description": "v2 only: the contract's review period and the chain time it is measured against.",
+          "properties": {
+            "periodSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "changeRequestLimit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "chainTime": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "periodSeconds",
+            "changeRequestLimit",
+            "chainTime"
+          ],
+          "additionalProperties": false
+        },
+        "reviewPeriodSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 7776000,
+          "description": "v2: the confirmed review period."
+        },
+        "changeRequestLimit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "v2: the confirmed change-request limit; 0 means no limit."
         }
       },
       "required": [
@@ -1296,7 +1348,10 @@
             "action": {
               "enum": [
                 "deposit",
-                "acceptMilestone"
+                "acceptMilestone",
+                "submitDelivery",
+                "requestChanges",
+                "claimMilestone"
               ]
             },
             "milestoneId": {

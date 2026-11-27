@@ -28,6 +28,8 @@ function canonical(x) {
   if (x && typeof x === 'object') return Object.fromEntries(Object.keys(x).sort().map(k => [k, canonical(x[k])]));
   return x;
 }
+// Actions that name a milestone: v1 approval, and the v2 review-period actions.
+const MILESTONE_ACTIONS = ['acceptMilestone', 'submitDelivery', 'requestChanges', 'claimMilestone'];
 function receiptOutcome({ projectId, intent, receipt, snapshot }) {
   if (!receipt || projectId !== snapshot.id || intent.projectId !== snapshot.id ||
       snapshot.contractAddress?.toLowerCase() !== intent.contractAddress.toLowerCase()) return 'unverified';
@@ -36,7 +38,11 @@ function receiptOutcome({ projectId, intent, receipt, snapshot }) {
     tx.hash.toLowerCase() === receipt.hash.toLowerCase() && tx.blockNumber === receipt.blockNumber &&
     tx.status === receipt.status && tx.action === intent.action && (tx.milestoneId ?? null) === intent.milestoneId);
   if (!recorded || !snapshot.funded) return 'unverified';
-  if (intent.action === 'acceptMilestone' && !snapshot.milestones.some(m => m.id === intent.milestoneId && m.paid)) return 'unverified';
+  // The receipt is confirmed only when the state it should have produced is on chain now.
+  const milestone = snapshot.milestones.find(m => m.id === intent.milestoneId);
+  const expected = { acceptMilestone: m => m.paid, claimMilestone: m => m.paid,
+    submitDelivery: m => m.paid || (m.deliveredAt ?? 0) > 0, requestChanges: m => (m.changeRequests ?? 0) > 0 }[intent.action];
+  if (expected && !(milestone && expected(milestone))) return 'unverified';
   return 'confirmed';
 }
 function validateGenerationRequest(request) {
@@ -100,13 +106,13 @@ function validateResponse(request, response) {
     if (intent) {
       const { deployment, projectId } = request.payload;
       requireThat(intent.projectId === projectId && intent.chainId === deployment.chainId && intent.contractAddress.toLowerCase() === deployment.contractAddress.toLowerCase(), 'INTENT_DEPLOYMENT_MISMATCH');
-      requireThat((intent.milestoneId !== null) === (intent.action === 'acceptMilestone'), 'INVALID_MILESTONE');
+      requireThat((intent.milestoneId !== null) === MILESTONE_ACTIONS.includes(intent.action), 'INVALID_MILESTONE');
     }
   }
   if (request.operation === 'reportAction') {
     check('ReportInput', request.payload);
     const { intent } = request.payload;
-    requireThat((intent.milestoneId !== null) === (intent.action === 'acceptMilestone'), 'INVALID_MILESTONE');
+    requireThat((intent.milestoneId !== null) === MILESTONE_ACTIONS.includes(intent.action), 'INVALID_MILESTONE');
     requireThat(result.outcome === receiptOutcome(request.payload), 'REPORT_OUTCOME_MISMATCH');
   }
 }

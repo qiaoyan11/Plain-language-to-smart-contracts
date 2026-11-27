@@ -26,6 +26,14 @@ function readMilestones(value) {
   });
   return { milestones, totalAmountWei: total.toString() };
 }
+// v2: a review period after each delivery (docs/REVIEW_PERIOD_V2.md). Absent: a v1 agreement.
+function readReview(b) {
+  if (b.reviewPeriodSeconds === undefined || b.reviewPeriodSeconds === null) return {};
+  const period = b.reviewPeriodSeconds, limit = b.changeRequestLimit ?? 0;
+  if (!Number.isInteger(period) || period < 60 || period > 90 * 86400) fail(400, 'The review period must be 1 minute to 90 days');
+  if (!Number.isInteger(limit) || limit < 0 || limit > 20) fail(400, 'The change-request limit must be 0 (no limit) to 20');
+  return { reviewPeriodSeconds: period, changeRequestLimit: limit };
+}
 async function createServer(options = {}) {
   const store = options.stateDirectory ? openStateStore(options.stateDirectory) : null;
   try {
@@ -50,6 +58,9 @@ async function buildServer({ generation: generationOptions, operations: operatio
   const projects = new Map(saved?.projects), deployments = new Map(saved?.deployments);
   const draftOrigins = new Map(saved?.draftOrigins), recoveredProjectIds = new Set(saved?.recoveredProjectIds);
   let committedChain = chain?.chainState(), storageFailure = null, closed = false;
+  // Chain time follows the wall clock (plus any demo fast-forward), also across restarts, so a
+  // review period keeps running while the backend is stopped. Saved with the chain history.
+  let clockOffset = Number.isInteger(saved?.clock?.offsetSeconds) ? saved.clock.offsetSeconds : 0;
   const generation = createGeneration({ ...generationOptions, saved: saved?.generation, onChange: persist });
   const operations = createOperations(operationsOptions);
   const drafting = createDrafting({ demoWallets: accounts, ...draftingOptions, saved: saved?.drafts, onChange: persist });
@@ -57,7 +68,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
     if (!store || closed) return;
     if (storageFailure) fail(503, 'Local storage is unavailable. Changes cannot be confirmed.');
     try {
-      store.write({ chain: committedChain, projects: [...projects], deployments: [...deployments],
+      store.write({ chain: committedChain, clock: { offsetSeconds: clockOffset }, projects: [...projects], deployments: [...deployments],
         draftOrigins: [...draftOrigins], recoveredProjectIds: [...recoveredProjectIds],
         drafts: drafting.exportState(), generation: generation.exportState() });
     } catch (error) { storageFailure = error; throw error; }
@@ -76,7 +87,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
     let a, d;
     try { a = getAddress(b.clientWallet); d = getAddress(b.developerWallet); } catch { fail(400, 'Invalid wallet address'); }
     if (a !== accounts.clientWallet || d !== accounts.developerWallet) fail(400, 'Use the local demo accounts. External wallets are not supported in this mode.');
-    return { name: b.name.trim(), clientWallet: a, developerWallet: d, ...readMilestones(b.milestones) };
+    return { name: b.name.trim(), clientWallet: a, developerWallet: d, ...readMilestones(b.milestones), ...readReview(b) };
   }
   function newProject(terms, id = randomUUID()) {
     return { schemaVersion: 2, id, ...terms, contractAddress: null, escrowBalanceWei: '0', funded: false,
@@ -146,31 +157,48 @@ async function buildServer({ generation: generationOptions, operations: operatio
   // All projects use the same disposable signer, so serialize its transactions.
   let busy = false;
   const hostnames = new Set(['127.0.0.1', 'localhost']);
+  async function latestTime() { return Number((await provider.getBlock('latest')).timestamp); }
+  async function chainTime() { return Math.max(await latestTime(), Math.floor(Date.now() / 1000) + clockOffset); }
+  // Every transaction is mined at the current chain time (never before the previous block).
+  async function stampNextBlock() {
+    const next = Math.max(await latestTime() + 1, Math.floor(Date.now() / 1000) + clockOffset);
+    await provider.send('evm_setNextBlockTimestamp', [next]);
+  }
+  const hasReview = p => Boolean(deployments.get(p.id)?.abi?.some(item => item.type === 'function' && item.name === 'claimMilestone'));
   async function snapshot(p) {
     if (!p.contractAddress) return { ...p };
     const contract = new Contract(p.contractAddress, deployments.get(p.id).abi, client);
     const blockTag = await provider.send('eth_blockNumber', []);
+    const review = hasReview(p);
     const milestones = await Promise.all(p.milestones.map(async m => ({ ...m,
       amountWei: (await contract.milestoneAmount(m.id, { blockTag })).toString(),
-      paid: await contract.isPaid(m.id, { blockTag })
+      paid: await contract.isPaid(m.id, { blockTag }),
+      ...(review ? { deliveredAt: Number(await contract.deliveredAt(m.id, { blockTag })),
+        changeRequests: Number(await contract.changeRequests(m.id, { blockTag })) } : {})
     })));
     return { ...p, milestones,
       clientWallet: await contract.client({ blockTag }), developerWallet: await contract.provider({ blockTag }),
       totalAmountWei: (await contract.totalAmount({ blockTag })).toString(),
       funded: await contract.funded({ blockTag }),
-      escrowBalanceWei: BigInt(await provider.send('eth_getBalance', [p.contractAddress, blockTag])).toString() };
+      escrowBalanceWei: BigInt(await provider.send('eth_getBalance', [p.contractAddress, blockTag])).toString(),
+      ...(review ? { review: { periodSeconds: Number(await contract.reviewPeriod({ blockTag })),
+        changeRequestLimit: Number(await contract.changeRequestLimit({ blockTag })), chainTime: await chainTime() } } : {}) };
   }
-  // Sends one state-changing call with the local client signer and returns its receipt.
+  // Sends one state-changing call and returns its receipt. The client signs deposits, approvals
+  // and change requests; the provider signs v2 deliveries and claims (both local test accounts).
+  const PROVIDER_ACTIONS = new Set(['submitDelivery', 'claimMilestone']);
   async function transact(p, action, milestoneId) {
-    const c = new Contract(p.contractAddress, deployments.get(p.id).abi, client);
+    const signer = PROVIDER_ACTIONS.has(action) ? developer : client;
+    const c = new Contract(p.contractAddress, deployments.get(p.id).abi, signer);
     try {
-      const tx = action === 'deposit' ? await c.deposit({ value: BigInt(p.totalAmountWei) }) : await c.acceptMilestone(milestoneId);
+      await stampNextBlock();
+      const tx = action === 'deposit' ? await c.deposit({ value: BigInt(p.totalAmountWei) }) : await c[action](milestoneId);
       const receipt = await tx.wait();
       await commitReceipt(p, action, milestoneId, receipt);
       return receipt;
     } catch (error) { await captureRevert(p, action, milestoneId, error); throw error; }
   }
-  const record = (p, action, milestoneId, receipt) => p.transactions.push({ action, ...(action === 'acceptMilestone' ? { milestoneId } : {}),
+  const record = (p, action, milestoneId, receipt) => p.transactions.push({ action, ...(milestoneId !== undefined && milestoneId !== null ? { milestoneId } : {}),
     hash: receipt.hash, blockNumber: receipt.blockNumber, status: receipt.status });
   async function captureRevert(p, action, milestoneId, error) {
     if (!chain) return;
@@ -193,6 +221,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
   async function deploy(p, artifact, terms, kind, runId, sourceHash) {
     try {
       const factory = new ContractFactory(artifact.abi, artifact.bytecode, client);
+      await stampNextBlock();
       const contract = await factory.deploy(terms.clientWallet, terms.developerWallet, terms.milestones.map(m => BigInt(m.amountWei)));
       const receipt = await contract.deploymentTransaction().wait();
       if (receipt?.status !== 1 || !receipt.contractAddress) fail(409, 'Deployment was not confirmed');
@@ -295,6 +324,20 @@ async function buildServer({ generation: generationOptions, operations: operatio
           return send(started.replay ? 200 : 202, started.run);
         }
         fail(405, 'Method not allowed');
+      }
+      // Local demo only: move chain time forward so a review period can end during a demo.
+      const clock = path.match(/^\/api\/projects\/([^/]+)\/clock$/);
+      if (clock) {
+        const p = projects.get(clock[1]);
+        if (!p) fail(404, 'Project not found in this local workspace.');
+        if (req.method !== 'POST') fail(405, 'Method not allowed');
+        const b = await body(req);
+        fields(b, ['advanceSeconds']);
+        if (!Number.isInteger(b.advanceSeconds) || b.advanceSeconds < 1 || b.advanceSeconds > 90 * 86400) fail(400, 'Advance by 1 second to 90 days');
+        if (!hasReview(p)) fail(409, 'This agreement has no review period');
+        if (busy) fail(409, 'Another transaction is in progress; retry after it completes');
+        clockOffset += b.advanceSeconds;
+        return send(200, await snapshot(p));
       }
       const known = path.match(/^\/api\/projects\/([^/]+)\/action-plans$/);
       if (known) {

@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const local = path.join(root, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 const python = process.env.PYTHON_BIN || (fs.existsSync(local) ? local : 'python3');
 const steps = [
-  [process.execPath, ['--test', '--test-concurrency=4', 'tests/v2/review-escrow.test.cjs']],
+  [process.execPath, ['--test', '--test-concurrency=4', 'tests/v2/review-escrow.test.cjs', 'tests/v2/review-api.test.cjs']],
   [python, ['-m', 'unittest', 'discover', '-s', 'tests/v2', '-p', 'test_*.py', '-v']],
 ];
 for (const [command, args] of steps) {

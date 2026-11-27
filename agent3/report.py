@@ -1,15 +1,21 @@
 """Report the outcome of a confirmed action from the transaction receipt. No model call."""
+from datetime import datetime, timezone
 from shared.handoff import receipt_outcome, validate
 from agent3.rules import format_eth
 
 OUTCOMES = ('confirmed', 'failed', 'unverified')
-ACTIONS = ('deposit', 'acceptMilestone')
+ACTIONS = ('deposit', 'acceptMilestone', 'submitDelivery', 'requestChanges', 'claimMilestone')
+MILESTONE_ACTIONS = ACTIONS[1:]
 
 TEXT = {
     'en': {
         'deposit_ok': 'Deposit confirmed. Current escrow balance: {balance} test ETH. Transaction {tx}, block {block}.',
         'accept_ok': 'Milestone #{id} "{title}" is paid: {eth} test ETH was sent to the provider wallet {wallet}. '
                      'Transaction {tx}, block {block}.',
+        'delivered_ok': 'Milestone #{id} "{title}" is marked delivered. The client can approve it or ask for changes '
+                        'until {ends}; after that the provider can claim the payment. Transaction {tx}, block {block}.',
+        'changes_ok': 'Changes requested for milestone #{id} "{title}" (request {count}). The delivery is withdrawn; '
+                      'the review starts again when the provider delivers again. Transaction {tx}, block {block}.',
         'reverted': 'Transaction {tx} reverted. This attempt failed.',
         'no_receipt': 'No receipt is available yet. Check the transaction status before retrying.',
         'unverified': 'The project records and contract state do not verify this operation. '
@@ -28,9 +34,9 @@ def _check(payload):
              'Invalid report input')
     validate('ProjectSnapshot', payload['snapshot'])
     intent, receipt = payload['intent'], payload['receipt']
-    _require(isinstance(intent, dict) and intent.get('action') in ACTIONS, 'Report needs a deposit or acceptance intent')
+    _require(isinstance(intent, dict) and intent.get('action') in ACTIONS, 'Report needs a deposit or milestone intent')
     mid = intent.get('milestoneId')
-    _require((mid is not None) == (intent['action'] == 'acceptMilestone'), 'Invalid milestone argument')
+    _require((mid is not None) == (intent['action'] in MILESTONE_ACTIONS), 'Invalid milestone argument')
     _require(mid is None or (type(mid) is int and 1 <= mid <= 5), 'Invalid milestone argument')
     _require(isinstance(intent.get('contractAddress'), str), 'Invalid contract address')
     if receipt is not None:
@@ -62,6 +68,16 @@ def report_result(payload):
     if action == 'deposit':
         return _result('confirmed', text['deposit_ok'].format(
             balance=format_eth(snap['escrowBalanceWei']), tx=tx, block=receipt['blockNumber']))
+    delivered = next((m for m in snap['milestones'] if m['id'] == mid and m.get('deliveredAt')), None)
+    if action == 'submitDelivery' and snap.get('review') and delivered:
+        target = delivered
+        ends = datetime.fromtimestamp(target['deliveredAt'] + snap['review']['periodSeconds'], timezone.utc)
+        return _result('confirmed', text['delivered_ok'].format(
+            id=mid, title=target['title'], ends=ends.strftime('%Y-%m-%d %H:%M UTC'), tx=tx, block=receipt['blockNumber']))
+    if action == 'requestChanges':
+        target = next(m for m in snap['milestones'] if m['id'] == mid)
+        return _result('confirmed', text['changes_ok'].format(
+            id=mid, title=target['title'], count=target.get('changeRequests', 1), tx=tx, block=receipt['blockNumber']))
     target = next(m for m in snap['milestones'] if m['id'] == mid and m['paid'])
     wallet = snap['developerWallet']
     return _result('confirmed', text['accept_ok'].format(
