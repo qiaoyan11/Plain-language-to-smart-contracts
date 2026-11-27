@@ -230,6 +230,54 @@ class RulesTest(unittest.TestCase):
         self.assertIn(title, result['summary'])
 
 
+def review_state(funded=True, delivered=0, requests=0, now=1_000_000, period=864000, limit=0):
+    payload = state(funded)
+    snap = payload['snapshot']
+    snap['review'] = {'periodSeconds': period, 'changeRequestLimit': limit, 'chainTime': now}
+    for m in snap['milestones']:
+        m['deliveredAt'], m['changeRequests'] = (delivered, requests) if m['id'] == 1 else (0, 0)
+    return payload
+
+
+class ReviewPeriodRuleTests(unittest.TestCase):
+    """v2: deliveries, change requests and claims, explained before the contract would refuse them."""
+
+    def run_rules(self, kind, payload, mid=None):
+        result = rules.decide(parsed(kind, mid), payload)
+        validate('PlanResult', result)
+        return result
+
+    def test_a_contract_without_a_review_period_has_none_of_these_actions(self):
+        for kind in ('submitDelivery', 'requestChanges', 'claimMilestone'):
+            result = self.run_rules(kind, state(True))
+            self.assertEqual(result['status'], 'blocked')
+            self.assertIn('no review period', result['summary'])
+
+    def test_delivery_then_changes_then_claim(self):
+        ready = self.run_rules('submitDelivery', review_state())
+        self.assertEqual((ready['status'], ready['intent']['action'], ready['intent']['milestoneId']), ('readyForConfirmation', 'submitDelivery', 1))
+        self.assertIn('10 days to approve it or ask for changes', ready['summary'])
+        in_review = review_state(delivered=999_000)
+        self.assertEqual(self.run_rules('submitDelivery', in_review)['status'], 'blocked')
+        self.assertEqual(self.run_rules('requestChanges', in_review)['intent']['action'], 'requestChanges')
+        claim_early = self.run_rules('claimMilestone', in_review)
+        self.assertEqual(claim_early['status'], 'blocked')
+        self.assertIn('runs until', claim_early['summary'])
+        ended = review_state(delivered=100_000, now=100_000 + 864000)
+        self.assertIn('can no longer be requested', self.run_rules('requestChanges', ended)['summary'])
+        claim = self.run_rules('claimMilestone', ended)
+        self.assertEqual((claim['intent']['action'], claim['intent']['milestoneId']), ('claimMilestone', 1))
+        self.assertIn('review ended without a response', claim['summary'])
+
+    def test_no_delivery_no_review_and_the_change_limit(self):
+        self.assertIn('nothing to claim', self.run_rules('claimMilestone', review_state())['summary'])
+        self.assertIn('nothing to review', self.run_rules('requestChanges', review_state())['summary'])
+        capped = review_state(delivered=999_000, requests=2, limit=2)
+        self.assertIn('have been used', self.run_rules('requestChanges', capped)['summary'])
+        unfunded = self.run_rules('submitDelivery', review_state(funded=False))
+        self.assertEqual(unfunded['status'], 'needsClarification')
+
+
 def body(text, **extra):
     data = {'status': 'completed',
             'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': text}]}]}

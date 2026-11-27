@@ -35,6 +35,21 @@ TEXT = {
         'accept': 'Accept milestone #{id} "{title}" and pay {eth} test ETH to the provider wallet {wallet}.{more} {done}',
         'accept_more': ' After it, {count} more milestone{s} ({eth} test ETH) stay{verb} in escrow; each is paid only '
                        'when you approve it.',
+        'no_review': 'This contract has no review period: the client approves each payment, and nothing is delivered '
+                     'or claimed on chain. {done}',
+        'deliver': 'Mark milestone #{id} "{title}" as delivered. The client then has {days} to approve it or ask for '
+                   'changes; after that the provider can claim the payment. {done}',
+        'already_delivered': 'Milestone #{id} is already delivered and in review until {ends}. {done}',
+        'not_delivered': 'Milestone #{id} has no delivery awaiting review, so there is nothing to {what}. {done}',
+        'review_running': 'The review of milestone #{id} runs until {ends}; the provider can claim the payment after that '
+                          'if the client has not responded. {done}',
+        'review_over': 'The review of milestone #{id} ended at {ends}, so changes can no longer be requested; the client can '
+                       'still approve it, or the provider can claim it. {done}',
+        'limit_reached': 'All {limit} change request(s) for milestone #{id} have been used. {done}',
+        'request_changes': 'Ask for changes to milestone #{id} "{title}". The delivery is withdrawn, and the review starts '
+                           'again when the provider delivers again. {done}',
+        'claim': 'Claim milestone #{id} "{title}": its review ended without a response, so {eth} test ETH goes to the '
+                 'provider wallet {wallet}.{more} {done}',
         'model_error': 'The request could not be understood because of a service error. Please try again. {done}',
         'too_long': 'The message is too long. Please shorten it and try again. {done}',
         'bad_ids': 'The project data is not in the expected form, so the request cannot be handled. {done}',
@@ -75,7 +90,7 @@ def _ready(payload, action, milestone_id, summary):
     return {'status': 'readyForConfirmation', 'question': None, 'summary': summary,
             'intent': {'projectId': payload['projectId'], 'chainId': d['chainId'],
                        'contractAddress': d['contractAddress'], 'action': action,
-                       'milestoneId': milestone_id if action == 'acceptMilestone' else None}}
+                       'milestoneId': None if action in ('deposit', 'query') else milestone_id}}
 
 
 def decide(parsed, payload):
@@ -118,6 +133,8 @@ def decide(parsed, payload):
         if funded:
             return _blocked(lang, 'already_funded')
         return _ready(payload, 'deposit', None, _t(lang, 'deposit', total=total))
+    if kind in ('submitDelivery', 'requestChanges', 'claimMilestone'):
+        return _review_action(kind, mid, payload, lang)
     # acceptMilestone
     unpaid = [m for m in milestones if not m['paid']]
     if not unpaid:
@@ -149,3 +166,60 @@ def decide(parsed, payload):
     summary = _t(lang, 'accept', id=mid, title=target['title'], eth=format_eth(target['amountWei']),
                  wallet=wallet[:6] + '…' + wallet[-4:], more=more)
     return _ready(payload, 'acceptMilestone', mid, summary)
+
+
+def _when(seconds):
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(seconds, timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+
+
+def _review_action(kind, mid, payload, lang):
+    """v2: a delivery by the provider, a change request by the client, or the provider's claim.
+    The contract enforces the same rules; these only explain why a request cannot go ahead."""
+    snap = payload['snapshot']
+    review = snap.get('review')
+    if not review:
+        return _blocked(lang, 'no_review')
+    milestones = snap['milestones']
+    unpaid = [m for m in milestones if not m['paid']]
+    if not unpaid:
+        return _blocked(lang, 'all_paid')
+    if not snap['funded']:
+        return {'status': 'needsClarification', 'intent': None,
+                'question': _t(lang, 'deposit_or_pay', total=format_eth(snap['totalAmountWei'])),
+                'summary': _t(lang, 'unfunded')}
+    lowest = min(unpaid, key=lambda m: m['id'])
+    mid = lowest['id'] if mid is None else mid
+    target = next((m for m in milestones if m['id'] == mid), None)
+    if target is None:
+        return _blocked(lang, 'unknown_id', id=mid)
+    if target['paid']:
+        return _blocked(lang, 'is_paid', id=mid)
+    if mid != lowest['id']:
+        return _blocked(lang, 'out_of_order', next_id=lowest['id'])
+    period, now = review['periodSeconds'], review['chainTime']
+    delivered = target.get('deliveredAt') or 0
+    ends = delivered + period
+    if kind == 'submitDelivery':
+        if delivered:
+            return _blocked(lang, 'already_delivered', id=mid, ends=_when(ends))
+        days = round(period / 86400, 1)
+        days_text = f'{days:g} day' + ('' if days == 1 else 's') if period >= 86400 else f'{period // 60} minutes'
+        return _ready(payload, 'submitDelivery', mid, _t(lang, 'deliver', id=mid, title=target['title'], days=days_text))
+    if not delivered:
+        return _blocked(lang, 'not_delivered', id=mid, what='review' if kind == 'requestChanges' else 'claim')
+    if kind == 'requestChanges':
+        if now >= ends:
+            return _blocked(lang, 'review_over', id=mid, ends=_when(ends))
+        limit = review['changeRequestLimit']
+        if limit and target.get('changeRequests', 0) >= limit:
+            return _blocked(lang, 'limit_reached', id=mid, limit=limit)
+        return _ready(payload, 'requestChanges', mid, _t(lang, 'request_changes', id=mid, title=target['title']))
+    if now < ends:
+        return _blocked(lang, 'review_running', id=mid, ends=_when(ends))
+    wallet = snap['developerWallet']
+    later = [m for m in unpaid if m['id'] != mid]
+    more = _t(lang, 'accept_more', count=len(later), s='' if len(later) == 1 else 's', verb='s' if len(later) == 1 else '',
+              eth=format_eth(sum(int(m['amountWei']) for m in later))) if later else ''
+    return _ready(payload, 'claimMilestone', mid, _t(lang, 'claim', id=mid, title=target['title'],
+                                                     eth=format_eth(target['amountWei']), wallet=wallet[:6] + '…' + wallet[-4:], more=more))

@@ -12,7 +12,7 @@ from shared.local_model import as_responses, chat_request, configured
 DEFAULT_MODEL = 'gpt-5.6-luna'
 ALLOWED_MODELS = {DEFAULT_MODEL}
 TOTAL_TIMEOUT_SECONDS = 8
-KINDS = ['query', 'deposit', 'acceptMilestone', 'unsupported', 'unclear']
+KINDS = ['query', 'deposit', 'acceptMilestone', 'submitDelivery', 'requestChanges', 'claimMilestone', 'unsupported', 'unclear']
 LANGUAGES = ['zh', 'en']
 OUTPUT_SCHEMA = {
     'type': 'object',
