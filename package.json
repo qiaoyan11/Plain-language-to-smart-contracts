@@ -16,7 +16,8 @@
     "test:agent2": "node scripts/test-agent2.cjs",
     "test:agent3": "node scripts/test-agent3.cjs",
     "test:validation": "node scripts/test-validation.cjs",
-    "eval:agent1": "node scripts/eval-agent1.cjs"
+    "eval:agent1": "node scripts/eval-agent1.cjs",
+    "test:v2": "node --test --test-concurrency=4 tests/v2/review-escrow.test.cjs"
   },
   "engines": {
     "node": ">=20 <23"
