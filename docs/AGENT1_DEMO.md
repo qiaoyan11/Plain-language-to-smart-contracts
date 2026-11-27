@@ -32,6 +32,12 @@ Agent 1 asked for the client wallet, then the provider wallet. Agent 2 passed co
 
 The [earlier November 27 walkthrough](https://github.com/qiaoyan11/Plain-language-to-smart-contracts/blob/ab383c8/docs/AGENT1_DEMO.md) contains the receipts referenced in the previous worklog entry.
 
+## Try answering in fragments
+
+Start with `I want build a finance application`. When the assistant asks for the total **in ETH**, answer `0.08`. Next, describe four deliverables in your own words: market display, a chatbot, trade alerts and UI design, each for `0.02`. Check that the draft shows **0.08 test ETH total** and **0.02 test ETH per milestone** before providing any wallets.
+
+If you are clarifying the first milestone separately, try `25% of 0.08 ETH will be paid for milstone 1`. In the five-message live replay, the first milestone remained **0.02 ETH**, the other three kept their agreed amounts, and the next question asked for the client's funding address. The draft does not authorize payment.
+
 ## What the app records
 
 The backend keeps the agreement text, each clarification, the confirmed rules and the chain receipts. The browser restores a draft by ID. A failed message can be retried with its original request key. Once a draft is confirmed, a new agreement is needed to change its terms. Restarting the backend clears the local drafts, projects and chain.

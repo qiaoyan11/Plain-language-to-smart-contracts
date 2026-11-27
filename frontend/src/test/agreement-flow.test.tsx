@@ -13,6 +13,7 @@ import { ConfirmPage } from "@/routes/confirm";
 import { GenerationResultView } from "@/components/GenerationResultView";
 import { api, type Project, type AgreementContext } from "@/api/client";
 import type { DraftSession, GenerationRun } from "@/api/types";
+import { financeBefore, financeAfter } from "./fixtures/finance-conversation";
 
 const context = {
   clarificationEnabled: true,
@@ -113,6 +114,51 @@ afterEach(() => {
 });
 
 describe("server-owned agreement conversation", () => {
+  it("keeps the finance-app payment schedule and moves to wallets after the user repeats the first milestone percentage", async () => {
+    api.setActiveDraftId(financeBefore.id);
+    vi.mocked(api.getDraft).mockResolvedValue(financeBefore);
+    vi.mocked(api.sendDraftMessage).mockResolvedValue(financeAfter);
+    const first = openPage(<CreatePage />);
+    await screen.findByText("0.08 test ETH");
+    const message = financeAfter.messages.at(-1)!.content;
+    type(message);
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await screen.findByText(message);
+    expect(api.sendDraftMessage).toHaveBeenCalledWith(
+      financeBefore.id,
+      message,
+      financeBefore.revision,
+      expect.any(String),
+    );
+    const summary = within(screen.getByLabelText("Current agreement draft"));
+    expect(summary.getByText("0.08 test ETH")).toBeTruthy();
+    expect(summary.getAllByText("0.02 test ETH")).toHaveLength(4);
+    expect(summary.queryByText("Amount needed")).toBeNull();
+    for (const milestone of financeAfter.result.draftSpec.milestones)
+      expect(summary.getByText(`${milestone.id}. ${milestone.title}`)).toBeTruthy();
+    const log = screen.getByRole("log");
+    expect(within(log).getAllByText("Agreement assistant")).toHaveLength(5);
+    const latest = log.lastElementChild!;
+    expect(latest).toHaveTextContent("The draft is unchanged.");
+    expect(latest).toHaveTextContent(
+      "What wallet address will the client use to fund the contract?",
+    );
+    expect(latest).not.toHaveTextContent(
+      /milestone 1|amount unresolved|Your latest message is recorded/,
+    );
+    expect(log).toHaveTextContent("4 milestones at 0.02 ETH each, for a total of 0.08 ETH.");
+    expect(screen.getByRole("button", { name: "Review agreement" })).toBeDisabled();
+    expect(api.confirmDraft).not.toHaveBeenCalled();
+
+    first.unmount();
+    vi.mocked(api.getDraft).mockResolvedValue(financeAfter);
+    openPage(<CreatePage />);
+    await screen.findByText(message);
+    expect(within(screen.getByRole("log")).getAllByText("Agreement assistant")).toHaveLength(5);
+    expect(screen.getByRole("button", { name: "Review agreement" })).toBeDisabled();
+    expect(api.sendDraftMessage).toHaveBeenCalledTimes(1);
+    expect(api.createDraft).not.toHaveBeenCalled();
+  });
   it("pairs saved assistant replies with each user message and restores them without another request", async () => {
     const draft: DraftSession = {
       ...ready,

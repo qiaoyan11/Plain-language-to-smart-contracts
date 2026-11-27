@@ -149,6 +149,119 @@ test('unsupported terms take priority without hiding the remaining questions', a
   });
 });
 
+test('finance agreement replies retain the displayed context and progress from amounts to the missing wallets', async () => {
+  // These are injected, validated Agent1 results. Amount interpretation is covered by
+  // Agent1's parser tests; this regression checks what chat actually sends and retains.
+  const messages = [
+    'I want build a finance application',
+    '0.08',
+    'Part A need to check whether part B make a good application. the evaluation stage would be functions in application completed by part B. for example, if part B finished market display function, Part A need to pay 0.02, and if part B finished chat bot section, part A pay 0.02, and then is trade signal alert section (0.02), and user UI design 0.02',
+    '0.08 ETH in total.',
+    '25% of 0.08 ETH will be paid for milstone 1',
+  ];
+  const titles = ['Market display', 'Chat bot', 'Trade signal alert', 'User UI design'];
+  const seen = [], snapshots = [];
+  let accounts;
+  await withAPI({ enabled: true, runner: async request => {
+    seen.push(copy(request));
+    const phase = seen.length;
+    const response = ready(request, accounts);
+    Object.assign(response.result.draftSpec, {
+      name: 'Finance application', clientWallet: null, developerWallet: null,
+      totalAmountWei: phase === 1 ? null : '80000000000000000',
+      milestones: phase < 3 ? [] : titles.map((title, i) => ({ id: i + 1, title, amountWei: '20000000000000000' })),
+    });
+    response.result.status = 'needsClarification';
+    response.result.questions = [
+      { field: 'developerWallet', question: 'What is the provider wallet?' },
+      { field: 'clientWallet', question: 'What is the client wallet?' },
+      ...(phase < 3 ? [{ field: 'milestones', question: 'Which deliverables are paid in order?' }] : []),
+      ...(phase === 1 ? [{ field: 'totalAmountWei', question: 'What is the total amount in ETH?' }] : []),
+    ];
+    return response;
+  } }, async ({ call, create, accounts: local }) => {
+    accounts = local;
+    const { path } = await create();
+    for (const [index, text] of messages.entries()) {
+      const response = await call(path + '/messages', message(text, index, `finance-message-${index + 1}`));
+      assert.equal(response.status, 200);
+      snapshots.push(response.body);
+      const request = seen[index];
+      assert.equal(request.payload.message, text);
+      assert.deepEqual(request.payload.history.filter(m => m.role === 'user').map(m => m.content), messages.slice(0, index));
+      assert.equal(request.payload.history.length, 2 * index);
+      if (index) {
+        const prior = snapshots[index - 1];
+        const visible = prior.turns.at(-1);
+        assert.deepEqual(request.payload.draftSpec, prior.result.draftSpec);
+        assert.deepEqual(JSON.parse(request.payload.history.at(-1).content), {
+          result: prior.result, separateTerms: [], reply: visible.reply, question: visible.question,
+        });
+        assert.deepEqual(response.body.turns.slice(0, -1), prior.turns);
+      }
+    }
+    assert.equal(snapshots[0].turns[0].question.field, 'totalAmountWei');
+    assert.equal(snapshots[1].turns[1].question.field, 'milestones');
+    assert.match(snapshots[1].turns[1].reply, /0\.08 ETH/);
+    for (const snapshot of snapshots.slice(2)) {
+      assert.equal(snapshot.turns.at(-1).question.field, 'clientWallet');
+      assert.equal(snapshot.result.draftSpec.totalAmountWei, '80000000000000000');
+      assert.deepEqual(snapshot.result.draftSpec.milestones.map(m => m.amountWei), Array(4).fill('20000000000000000'));
+      assert.equal(snapshot.result.questions.some(q => /amountWei|totalAmountWei/.test(q.field)), false);
+    }
+    assert.match(snapshots[2].turns[2].reply, /Market display.*Chat bot.*Trade signal alert.*User UI design/);
+    assert.match(snapshots[2].turns[2].reply, /4 milestones at 0\.02 ETH each, for a total of 0\.08 ETH/);
+    assert.equal((snapshots[2].turns[2].reply.match(/0\.02 ETH/g) ?? []).length, 1);
+    const final = snapshots.at(-1);
+    assert.deepEqual(final.messages.map(m => m.content), messages);
+    assert.deepEqual((await call(path)).body, final);
+    assert.equal((await call(path + '/confirmation', { approved: true, expectedRevision: 5 })).status, 409);
+    assert.equal((await call(path)).body.confirmedProjectId, null);
+    assert.equal(seen.length, 5);
+  });
+});
+
+test('unresolved stage payments identify the delivery and accepted answer formats without inventing amounts', async () => {
+  let accounts, calls = 0;
+  const seen = [];
+  const titles = ['Market display', 'Chat bot', 'Trade signal alert', 'User UI design'];
+  await withAPI({ enabled: true, runner: async request => {
+    seen.push(copy(request));
+    calls++;
+    const response = ready(request, accounts);
+    Object.assign(response.result.draftSpec, {
+      name: 'Finance application', totalAmountWei: '80000000000000000',
+      milestones: titles.map((title, i) => ({ id: i + 1, title, amountWei: calls === 3 && i === 0 ? '20000000000000000' : null })),
+    });
+    response.result.status = 'needsClarification';
+    response.result.questions = response.result.draftSpec.milestones.filter(m => !m.amountWei).reverse()
+      .map(m => ({ field: `milestones.${m.id}.amountWei`, question: 'What is the payment?' }));
+    return response;
+  } }, async ({ call, create, accounts: local }) => {
+    accounts = local;
+    const { path } = await create();
+    const first = (await call(path + '/messages', message('Four deliveries: market display, chat bot, trade signal alert, user UI design. Total 0.08 ETH.'))).body;
+    assert.match(first.turns[0].reply, /milestones 1, 2, 3, 4/);
+    assert.doesNotMatch(first.turns[0].reply, /amount unresolved/);
+    assert.match(first.turns[0].question.question, /milestone 1.*Market display/);
+    assert.match(first.turns[0].question.question, /0\.08 ETH/);
+    const repeat = (await call(path + '/messages', message('The first amount is undecided.', 1, 'stage-amount-002'))).body;
+    assert.match(repeat.turns[1].reply, /milestone 1.*Market display.*not yet resolved/);
+    assert.match(repeat.turns[1].reply, /amount followed by ETH.*percentage/);
+    assert.equal(repeat.result.draftSpec.milestones.every(m => m.amountWei === null), true);
+    assert.equal((await call(path + '/confirmation', { approved: true, expectedRevision: 2 })).status, 409);
+    const third = (await call(path + '/messages', message('25%', 2, 'stage-amount-003'))).body;
+    assert.equal(JSON.parse(seen[2].payload.history.at(-1).content).question.field, 'milestones.1.amountWei');
+    assert.equal(JSON.parse(seen[2].payload.history.at(-1).content).reply, repeat.turns[1].reply);
+    assert.equal(third.turns[2].question.field, 'milestones.2.amountWei');
+    assert.match(third.turns[2].question.question, /Chat bot/);
+    assert.match(third.turns[2].reply, /Market display.*0\.02 ETH/);
+    assert.match(third.turns[2].reply, /milestones 2, 3, 4/);
+    assert.deepEqual(third.result.draftSpec.milestones.map(m => m.amountWei), ['20000000000000000', null, null, null]);
+    assert.equal((await call(path + '/confirmation', { approved: true, expectedRevision: 3 })).status, 409);
+  });
+});
+
 test('busy drafts survive refresh and a lost response can be replayed without another model call', async () => {
   const worker = controlledWorker();
   await withAPI({ enabled: true, runner: worker.runner }, async ({ call, create, accounts }) => {
@@ -266,7 +379,7 @@ test('full prior results and sourced separate terms reach subsequent clarificati
     assert.deepEqual(seen[1].payload.draftSpec, first.body.result.draftSpec);
     assert.deepEqual(seen[1].payload.history, [
       { role: 'user', content: firstMessage.message },
-      { role: 'assistant', content: JSON.stringify({ result: first.body.result, separateTerms: [note], question: first.body.turns[0].question }) }
+      { role: 'assistant', content: JSON.stringify({ result: first.body.result, separateTerms: [note], reply: first.body.turns[0].reply, question: first.body.turns[0].question }) }
     ]);
     assert.deepEqual(second.body.result.separateTerms, [note]);
     assert.deepEqual(second.body.messages, [firstMessage, secondMessage].map(item => ({ role: 'user', content: item.message })));

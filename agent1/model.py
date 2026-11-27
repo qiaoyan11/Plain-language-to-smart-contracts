@@ -20,9 +20,13 @@ def extract(instructions, payload):
     model = os.getenv('AGENT1_MODEL') or ('gpt-5.4-mini' if hosted else None)
     if not model or (hosted and not key):
         raise ValueError('Configure the Agent 1 model and credentials.')
+    # A reply such as "0.08" directly follows the assistant turn that asked for ETH.
+    # Keep the draft alongside the new message as data, separate from the quoted chat history.
+    current_turn = {'message': payload['message'], 'draftSpec': payload['draftSpec']}
     body = {'model': model, 'messages': [
         {'role': 'system', 'content': instructions},
-        {'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}],
+        *payload['history'],
+        {'role': 'user', 'content': json.dumps(current_turn, ensure_ascii=False)}],
         'response_format': {'type': 'json_object'}}
     headers = {'Authorization': f'Bearer {key}'} if key else {}
     with httpx.Client(timeout=45, follow_redirects=False, trust_env=not local) as client:

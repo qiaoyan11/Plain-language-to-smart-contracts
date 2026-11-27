@@ -20,6 +20,10 @@ function questionPriority(field) {
   if (field === 'name') return 90;
   return 40;
 }
+function milestoneLabel(spec, id) {
+  const milestone = spec.milestones.find(m => m.id === Number(id));
+  return `milestone ${id}${milestone?.title ? ` (\u201c${milestone.title}\u201d)` : ''}`;
+}
 function primaryQuestion(result) {
   if (result.unsupportedTerms.length) return { field: 'unsupportedTerms.0',
     question: `The current contract cannot enforce "${result.unsupportedTerms[0]}". Should this remain a draft, or have both parties agreed a replacement?` };
@@ -37,8 +41,8 @@ function primaryQuestion(result) {
   const stage = /^milestones\.(\d+)\.(amountWei|title)$/.exec(q.field);
   let text = fixed[q.field];
   if (stage) text = stage[2] === 'amountWei'
-    ? `What amount in ETH, or percentage of the total, is payable for milestone ${stage[1]}?`
-    : `What must be delivered for milestone ${stage[1]}?`;
+    ? `What amount in ETH, or percentage of ${result.draftSpec.totalAmountWei ? `the agreed ${eth(result.draftSpec.totalAmountWei)} total` : 'the total'}, is payable for ${milestoneLabel(result.draftSpec, stage[1])}?`
+    : `What must be delivered for ${milestoneLabel(result.draftSpec, stage[1])}?`;
   if (!text) {
     // The extraction prompt requests one focused question per field. Keep only its first question
     // for display; all underlying blockers remain in result.questions and block confirmation.
@@ -46,15 +50,33 @@ function primaryQuestion(result) {
   }
   return { field: q.field, question: text };
 }
-function conversationTurn(previous, result, revision) {
+function conversationTurn(previous, result, revision, previousTurn) {
   const before = previous?.draftSpec, after = result.draftSpec, lines = [];
+  const question = primaryQuestion(result);
   if (after.name !== 'Untitled project' && after.name !== before?.name)
     lines.push(`Project recorded: ${after.name}.`);
   if (after.totalAmountWei !== before?.totalAmountWei && after.totalAmountWei)
     lines.push(`The total is recorded as ${eth(after.totalAmountWei)}.`);
   if (JSON.stringify(after.milestones) !== JSON.stringify(before?.milestones ?? []) && after.milestones.length) {
-    const amounts = after.milestones.map(m => m.amountWei ? eth(m.amountWei) : 'amount unresolved');
-    lines.push(`Recorded ${after.milestones.length} delivery milestones, with payments of ${amounts.join(', ')} in order.`);
+    const scheduleChanged = JSON.stringify(after.milestones.map(m => [m.id, m.title]))
+      !== JSON.stringify((before?.milestones ?? []).map(m => [m.id, m.title]));
+    if (scheduleChanged)
+      lines.push(`Recorded ${after.milestones.length} delivery milestones: ${after.milestones.map(m => `${m.id}. ${m.title}`).join('; ')}.`);
+    const missing = after.milestones.filter(m => !m.amountWei);
+    if (!missing.length) {
+      const equal = after.milestones.every(m => m.amountWei === after.milestones[0].amountWei);
+      const matchesTotal = after.totalAmountWei && after.milestones.reduce((sum, m) => sum + BigInt(m.amountWei), 0n) === BigInt(after.totalAmountWei);
+      lines.push(equal && matchesTotal
+        ? `${after.milestones.length} milestones at ${eth(after.milestones[0].amountWei)} each, for a total of ${eth(after.totalAmountWei)}.`
+        : `The milestone payments are ${after.milestones.map(m => eth(m.amountWei)).join(', ')} in order.`);
+    }
+    else {
+      const known = after.milestones.filter(m => m.amountWei);
+      if (known.length) lines.push(`Recorded payments: ${known.map(m => `${milestoneLabel(after, m.id)}: ${eth(m.amountWei)}`).join('; ')}.`);
+      lines.push(missing.length === 1
+        ? `An agreed payment amount is still needed for ${milestoneLabel(after, missing[0].id)}.`
+        : `Agreed payment amounts are still needed for milestones ${missing.map(m => m.id).join(', ')}.`);
+    }
   }
   for (const [field, label] of [['clientWallet', 'client funding address'],
     ['developerWallet', 'provider payment address']]) {
@@ -63,10 +85,20 @@ function conversationTurn(previous, result, revision) {
   }
   if (JSON.stringify(result.separateTerms ?? []) !== JSON.stringify(previous?.separateTerms ?? []))
     lines.push(`Separate written terms now contain ${(result.separateTerms ?? []).length} items; they are outside the on-chain payment rules.`);
-  if (!lines.length) lines.push('Your latest message is recorded.');
+  // A repeated question must explain what still blocks progress. Do not claim to have
+  // accepted an amount merely because the user supplied a number or a model repeated it.
+  if (question && question.field === previousTurn?.question?.field) {
+    const stage = /^milestones\.(\d+)\.amountWei$/.exec(question.field);
+    if (stage) lines.push(`The payment for ${milestoneLabel(after, stage[1])} is not yet resolved; reply with an agreed amount followed by ETH or a percentage of the total.`);
+    else if (question.field === 'totalAmountWei')
+      lines.push('The total payment is not yet resolved; reply with the agreed total followed by ETH, or say it is still undecided.');
+  }
+  if (!lines.length) lines.push(question
+    ? 'The draft is unchanged. The question below still needs an answer before confirmation.'
+    : 'The draft is unchanged.');
   if (result.status === 'readyForConfirmation') lines.push('The payment rules are complete. Review the summary before explicitly confirming.');
   else if (result.status === 'unsupported') lines.push('Some terms remain outside the current contract’s capabilities, so the draft cannot be confirmed yet.');
-  return { revision, reply: lines.join(' '), question: primaryQuestion(result) };
+  return { revision, reply: lines.join(' '), question };
 }
 
 function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE === 'live' } = {}) {
@@ -128,12 +160,12 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
       // Node assigns authoritative session identity and revision, never the model.
       result.draftSpec.projectId = s.id;
       result.draftSpec.specVersion = s.revision;
-      const turn = conversationTurn(s.result, result, s.revision);
+      const turn = conversationTurn(s.result, result, s.revision, s.turns.at(-1));
       s.turns.push(turn);
       s.result = result;
       s.messages.push({ role: 'user', content: body.message });
       s.history.push({ role: 'user', content: body.message },
-        { role: 'assistant', content: JSON.stringify({ result, separateTerms: result.separateTerms ?? [], question: turn.question }) });
+        { role: 'assistant', content: JSON.stringify({ result, separateTerms: result.separateTerms ?? [], reply: turn.reply, question: turn.question }) });
       s.updatedAt = new Date().toISOString();
       s.keys.set(body.requestKey, { message: body.message, revision: body.expectedRevision });
       s.pendingMessage = null;

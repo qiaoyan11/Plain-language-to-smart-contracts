@@ -172,7 +172,7 @@ export function CreatePage() {
                 <ArrowUp />
               </Button>
               <p className="mt-3 text-xs text-muted-foreground">
-                Each message starts an AI request and may incur model costs. Your conversation and
+                Messages may use a paid AI model. Your conversation and
                 draft are saved on this local backend.
               </p>
               {context.data?.clarificationEnabled && !session?.pendingMessage && (
