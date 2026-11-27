@@ -122,9 +122,12 @@ export function OperationAssistant({
     }
   };
 
+  // Milestones still unpaid after the one in the current preview.
+  const later = project.milestones.filter((m) => !m.paid && m.id !== plan?.intent?.milestoneId);
   const review = plan && (
     <div className="mt-4 border-t border-border pt-4 text-sm">
-      {(source === "language" || !executable) && (
+      {/* A payment ready to send is described by the box below; other answers are the text. */}
+      {!(executable && plan.payment) && (
         <p className="whitespace-pre-wrap break-words">{plan.question ?? plan.summary}</p>
       )}
       {executable && plan.payment && (
@@ -144,6 +147,14 @@ export function OperationAssistant({
               ? "It stays in escrow until the client approves each payment. This cannot be undone."
               : `Accepts milestone #${plan.intent?.milestoneId} “${plan.payment.milestoneTitle}”. This cannot be undone.`}
           </p>
+          {plan.intent?.action === "acceptMilestone" && later.length > 0 && (
+            <p className="text-muted-foreground">
+              {`After it, ${later.length} more milestone${later.length === 1 ? "" : "s"} (${amountText(
+                later.reduce((sum, m) => sum + BigInt(m.amountWei), 0n).toString(),
+                rate,
+              )}) ${later.length === 1 ? "stays" : "stay"} in escrow until approved.`}
+            </p>
+          )}
         </div>
       )}
       {executable && (

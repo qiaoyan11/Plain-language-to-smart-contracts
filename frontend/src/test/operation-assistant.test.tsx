@@ -93,6 +93,19 @@ describe("plain-language operations", () => {
     expect(confirm).toHaveBeenCalledWith("p1", "plan-1");
     expect(onProject).toHaveBeenCalledWith(paid);
   });
+  it("shows a payment asked for in words as one preview, with what stays in escrow after it", async () => {
+    vi.spyOn(api, "planOperation").mockResolvedValue(buttonPlan("acceptMilestone"));
+    render(<OperationAssistant project={schedule} disabled={false} onProject={vi.fn()} />);
+    type("the homepage is done, pay her");
+    fireEvent.click(screen.getByText("Ask"));
+    const preview = await screen.findByLabelText("Payment confirmation details");
+    expect(preview).toHaveTextContent("Accepts milestone #1 “Homepage”. This cannot be undone.");
+    expect(preview).toHaveTextContent(
+      "After it, 1 more milestone (0.007 test ETH) stays in escrow until approved.",
+    );
+    // The assistant's own sentence would repeat the preview, so it is not shown as well.
+    expect(screen.queryByText("Accept milestone #1. No transaction has been sent.")).toBeNull();
+  });
   it("offers no confirm button for a query, a question or a refusal", async () => {
     const plan = vi.spyOn(api, "planOperation");
     render(<OperationAssistant project={project} disabled={false} onProject={vi.fn()} />);
