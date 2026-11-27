@@ -209,6 +209,24 @@ describe("reading contract files", () => {
       "The fee is $500.",
     ]);
   });
+  it("keeps the fee schedule even when the product description says 'delivery' everywhere", () => {
+    const features = Array.from(
+      { length: 400 },
+      (_, n) => `Feature ${n}: drivers accept delivery orders and customers track each delivery.`,
+    );
+    const contract = [
+      "SOFTWARE DEVELOPMENT AGREEMENT",
+      ...features,
+      "4. Fee Payment Schedule",
+      "Fees: The Fees for the Project shall be $279,000.00",
+      "20% Deposit ($55,800.00) to be paid at the start of the project.",
+    ].join("\n");
+    const fitted = condense(contract, 6000);
+    expect(fitted.text).toContain(
+      "4. Fee Payment Schedule\nFees: The Fees for the Project shall be $279,000.00",
+    );
+    expect(fitted.text).toContain("20% Deposit ($55,800.00)");
+  });
   it("keeps every payment clause of a long contract within one message", () => {
     const clauses = Array.from(
       { length: 300 },

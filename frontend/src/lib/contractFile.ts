@@ -291,8 +291,12 @@ export function unwrapLines(lines: string[]) {
 
 // ---------------------------------------------------------------- Long contracts
 
-const PAYMENT_WORDS =
-  /pay|fee|price|amount|cost|compensat|invoice|deposit|refund|milestone|instal|retain|escrow|accept|deliver|terminat|cancel|penalt|bonus|\$|€|£|¥|usd|eur|gbp|rmb|cny|付款|支付|费用|价款|价格|金额|报酬|定金|订金|押金|保证金|退款|退还|分期|首付|尾款|验收|交付|里程碑|阶段|违约|终止|元/i;
+/** Paragraphs that state money: an amount, a percentage or a payment term. Kept first. */
+const MONEY =
+  /[$€£¥￥]\s?\d|\d[\d,.]*\s?(?:%|％|usd|eur|gbp|rmb|cny|dollars?|euros?|pounds?|元|万元)|\b(?:fees?|price|payments?|payable|pay|paid|invoices?|deposit|retainer|instal(?:l)?ments?|compensation|balance|refund(?:s|ed)?)\b|付款|支付|费用|价款|价格|金额|报酬|定金|订金|押金|保证金|退款|退还|分期|首付|尾款/i;
+/** Paragraphs about delivery, acceptance and ending the agreement. Kept while room remains. */
+const TERMS =
+  /milestone|accept|deliverabl|terminat|cancel|penalt|bonus|warrant|escrow|验收|交付|里程碑|阶段|违约|终止|解除/i;
 
 /** Normalised paragraphs: collapses blank runs and spaces left by layout. */
 export function tidy(text: string) {
@@ -322,14 +326,18 @@ export function condense(text: string, limit = MAX_TEXT_CHARS) {
     used += size;
     return true;
   };
+  // A paragraph with its heading line ("4. Fee Payment Schedule"), when it has a short one.
+  const takeWithHeading = (index: number) => {
+    if (paragraphs[index - 1] && paragraphs[index - 1]!.trim().length < 80) take(index - 1);
+    take(index);
+  };
   // The opening names the parties and the work.
-  for (let i = 0; i < paragraphs.length && used < limit * 0.2; i++) take(i);
-  // Then every payment-related paragraph, with its heading line when it has one.
-  for (let i = 0; i < paragraphs.length; i++) {
-    if (!PAYMENT_WORDS.test(paragraphs[i]!)) continue;
-    if (paragraphs[i - 1] && paragraphs[i - 1]!.length < 80) take(i - 1);
-    if (!take(i)) break;
-  }
+  for (let i = 0; i < paragraphs.length && used < limit * 0.15; i++) take(i);
+  // Every paragraph that states money comes next, wherever it is; then delivery and acceptance
+  // terms while there is room. Words like "deliver" also fill product descriptions, so they rank
+  // below amounts and payment terms.
+  paragraphs.forEach((paragraph, i) => MONEY.test(paragraph) && takeWithHeading(i));
+  paragraphs.forEach((paragraph, i) => TERMS.test(paragraph) && takeWithHeading(i));
   const out: string[] = [];
   let skipped = false;
   paragraphs.forEach((paragraph, index) => {
