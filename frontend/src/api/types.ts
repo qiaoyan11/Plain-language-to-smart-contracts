@@ -94,6 +94,27 @@ export interface ClarifyResult {
     question: string;
   }>;
   unsupportedTerms: string[];
+  separateTerms?: string[];
+}
+
+export interface DraftContext {
+  clarificationEnabled: boolean;
+  mode: "local-chain";
+  clientWallet: string;
+  developerWallet: string;
+}
+
+export interface DraftSession {
+  id: string;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+  messages: Array<{ role: "user"; content: string }>;
+  result: ClarifyResult | null;
+  busy: boolean;
+  pendingMessage: { content: string; requestKey: string; expectedRevision: number } | null;
+  lastError: string | null;
+  confirmedProjectId: string | null;
 }
 
 export interface BuildSettings {
@@ -203,6 +224,7 @@ export interface AgreementContext {
   generationEnabled: boolean;
   generatedDeploymentEnabled: boolean;
   operationsEnabled?: boolean;
+  draftOrigin?: { draftId: string; revision: number };
   deployment?:
     | (Omit<DeploymentRecord, "abi"> & {
         kind: "generated" | "reference";

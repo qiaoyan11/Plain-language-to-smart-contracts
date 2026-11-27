@@ -7,6 +7,7 @@ import { AgreementEditor } from "@/components/AgreementEditor";
 import { AgreementNotes, ScopeAcknowledgement, PaymentRules } from "@/components/AgreementNotes";
 import { GenerationResultView } from "@/components/GenerationResultView";
 import { OperationAssistant } from "@/components/OperationAssistant";
+import { DraftSource } from "@/components/DraftSummary";
 import {
   api,
   formatWei,
@@ -69,6 +70,13 @@ export function DetailPage({ id }: { id: string }) {
       return { project, context, run };
     },
     refetchInterval: (q) => (q.state.data?.run && !q.state.data.run.finishedAt ? 2000 : false),
+  });
+  const originId = query.data?.context.draftOrigin?.draftId;
+  const origin = useQuery({
+    queryKey: ["draft", originId],
+    queryFn: () => api.getDraft(originId!),
+    enabled: Boolean(originId),
+    retry: false,
   });
   async function action(work: () => Promise<unknown>) {
     if (active.current) return;
@@ -180,10 +188,29 @@ export function DetailPage({ id }: { id: string }) {
                 ? "Checking local deployment details…"
                 : "Deployment details could not be matched to this project. Refresh its status to check again."
               : context.confirmation
-                ? "Agent 2 generates a contract from your confirmed payment rules. You can deploy it locally after its development checks pass."
+                ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
                 : "The agreement changed. Review and confirm this version before generating."}
       </p>
-      <AgreementNotes workspace={notes} />
+      {context.draftOrigin ? (
+        origin.data ? (
+          <DraftSource session={origin.data} />
+        ) : (
+          <p className="mt-4 text-sm text-muted-foreground">
+            {origin.error
+              ? `Original conversation could not be loaded. ${origin.error.message}`
+              : "Loading original conversation…"}
+          </p>
+        )
+      ) : (
+        <AgreementNotes workspace={notes} />
+      )}
+      {context.draftOrigin && (
+        <Button asChild variant="link" className="mt-4 px-0">
+          <Link to="/" onClick={() => api.setActiveDraftId(null)}>
+            Start a new agreement to change these terms
+          </Link>
+        </Button>
+      )}
       {editing ? (
         <div className="mt-7">
           <label className="mb-7 block">
@@ -240,14 +267,16 @@ export function DetailPage({ id }: { id: string }) {
           )}
           {!hasDeployment && (
             <>
-              <Button
-                variant="ghost"
-                className="mb-5 -ml-3"
-                disabled={busy}
-                onClick={() => setEditing(true)}
-              >
-                Add or change agreement details
-              </Button>
+              {!context.draftOrigin && (
+                <Button
+                  variant="ghost"
+                  className="mb-5 -ml-3"
+                  disabled={busy}
+                  onClick={() => setEditing(true)}
+                >
+                  Add or change agreement details
+                </Button>
+              )}
               {!context.confirmation && (
                 <div className="mb-7">
                   <PaymentRules />
@@ -287,8 +316,7 @@ export function DetailPage({ id }: { id: string }) {
               </Button>
               {context.generationEnabled && (
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Starts a paid model request with up to 3 repairs. It stops early when checks pass
-                  or a tool fails.
+                  Starts AI generation and contract checks. This request may incur model costs.
                 </p>
               )}
             </>

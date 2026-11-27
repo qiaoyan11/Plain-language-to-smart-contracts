@@ -5,9 +5,7 @@ import { FileText } from "lucide-react";
 export function Shell({ step, children }: { step: string; children: ReactNode }) {
   return (
     <div className="min-h-screen">
-      <div className="prototype-label">
-        Local development · Test funds only · Conversation guidance is scripted
-      </div>
+      <div className="prototype-label">Local test chain · Test funds only</div>
       <header className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-7">
         <Link to="/" className="flex items-center gap-2 font-display text-lg font-semibold">
           <FileText className="size-5 text-primary" />
@@ -27,19 +25,33 @@ export function Shell({ step, children }: { step: string; children: ReactNode })
         {children}
       </main>
       <footer className="mx-auto max-w-3xl border-t border-border px-6 py-5 text-xs leading-relaxed text-muted-foreground">
-        Conversation notes stay in this browser tab. Confirmed payment rules go to the local
-        backend. No public blockchain is connected.
+        Your conversation and confirmed rules are saved on the local backend. Restarting it clears
+        local drafts, projects and test-chain records.
       </footer>
     </div>
   );
 }
-export function Row({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
+export function Row({
+  label,
+  value,
+  mono,
+  stacked,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+  stacked?: boolean;
+}) {
   return (
-    <div className="flex flex-col gap-2 border-b border-border py-4 sm:flex-row sm:justify-between">
+    <div
+      className={`flex flex-col gap-2 border-b border-border py-4 ${stacked ? "" : "sm:flex-row sm:justify-between"}`}
+    >
       <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
       <span
         className={
-          mono ? "min-w-0 break-all text-sm font-mono sm:max-w-[70%]" : "text-sm font-medium"
+          mono
+            ? `min-w-0 break-all text-sm font-mono ${stacked ? "" : "sm:max-w-[70%]"}`
+            : "break-words text-sm font-medium"
         }
       >
         {value}

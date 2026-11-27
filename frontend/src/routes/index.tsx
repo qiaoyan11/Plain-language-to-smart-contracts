@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { ArrowUp, FileText } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { ArrowUp } from "lucide-react";
 import { Shell } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
-import { AgreementEditor } from "@/components/AgreementEditor";
-import { api, type ProjectDraft } from "@/api/client";
-import { addMessage, emptyWorkspace, SAMPLE_MESSAGE, type Workspace } from "@/api/workspace";
+import { DraftSummary, draftReady } from "@/components/DraftSummary";
+import { useActiveDraft } from "@/hooks/use-active-draft";
+import { api } from "@/api/client";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Describe your agreement · Accord" }] }),
@@ -13,135 +14,240 @@ export const Route = createFileRoute("/")({
 });
 export function CreatePage() {
   const nav = useNavigate();
-  const [workspace, setWorkspace] = useState<Workspace>(emptyWorkspace);
-  const [message, setMessage] = useState(""),
-    [editor, setEditor] = useState(false),
-    [revision, setRevision] = useState(0),
-    [error, setError] = useState("");
-  useEffect(() => setWorkspace(api.getWorkspace()), []);
-  function store(next: Workspace) {
-    api.saveWorkspace(next);
-    setWorkspace(next);
+  const cache = useQueryClient();
+  const { id, selectDraft, query, session } = useActiveDraft();
+  const context = useQuery({
+    queryKey: ["draft-context"],
+    queryFn: api.getDraftContext,
+    retry: false,
+  });
+  const [message, setMessage] = useState("");
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+  const active = useRef(false);
+  const pending = useRef<{
+    id: string;
+    content: string;
+    expectedRevision: number;
+    requestKey: string;
+  } | null>(null);
+  const occupied = working || session?.busy || query.isFetching;
+  const disabled =
+    occupied ||
+    id === undefined ||
+    Boolean(id && !session) ||
+    !context.data?.clarificationEnabled ||
+    query.isError ||
+    Boolean(session?.confirmedProjectId);
+  const failure = error || query.error?.message || context.error?.message || session?.lastError;
+
+  async function refresh() {
+    setError("");
+    await context.refetch();
+    if (id) await query.refetch();
   }
-  function send(text: string) {
-    if (!text.trim()) return;
+  function startNew() {
+    selectDraft(null);
+    pending.current = null;
+    setMessage("");
+    setError("");
+  }
+  async function send(text: string) {
+    if (active.current || disabled || !text.trim()) return;
+    active.current = true;
+    setWorking(true);
+    setError("");
+    let current = session;
     try {
-      store(addMessage(workspace, text));
+      if (!current) {
+        current = await api.createDraft();
+        cache.setQueryData(["draft", current.id], current);
+        selectDraft(current.id);
+      }
+      await cache.cancelQueries({ queryKey: ["draft", current.id] });
+      const retry = current.pendingMessage;
+      if (retry) pending.current = { id: current.id, ...retry };
+      if (
+        !pending.current ||
+        pending.current.id !== current.id ||
+        pending.current.content !== text
+      ) {
+        pending.current = {
+          id: current.id,
+          content: text,
+          expectedRevision: current.revision,
+          requestKey: crypto.randomUUID(),
+        };
+      }
+      const attempt = pending.current;
+      const next = await api.sendDraftMessage(
+        current.id,
+        attempt.content,
+        attempt.expectedRevision,
+        attempt.requestKey,
+      );
+      await cache.cancelQueries({ queryKey: ["draft", current.id] });
+      cache.setQueryData(["draft", current.id], next);
+      pending.current = null;
       setMessage("");
-      setError("");
-      if (text.trim() === SAMPLE_MESSAGE) setRevision((n) => n + 1);
-    } catch {
-      setError("Your browser could not save this conversation. Keep a copy before continuing.");
+    } catch (caught) {
+      setError((caught as Error).message);
+      if (current) {
+        try {
+          await cache.cancelQueries({ queryKey: ["draft", current.id] });
+          const latest = await cache.fetchQuery({
+            queryKey: ["draft", current.id],
+            queryFn: () => api.getDraft(current!.id),
+            staleTime: 0,
+          });
+          if (
+            pending.current &&
+            latest.revision > pending.current.expectedRevision &&
+            !latest.pendingMessage
+          ) {
+            if (latest.messages.at(-1)?.content === pending.current.content) setMessage("");
+            pending.current = null;
+          }
+        } catch {
+          /* The read error is displayed alongside the saved draft. */
+        }
+      }
+    } finally {
+      active.current = false;
+      setWorking(false);
     }
   }
-  function review(draft: ProjectDraft) {
-    try {
-      store({ ...workspace, draft });
-      nav({ to: "/confirm" });
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }
+  const input = session?.pendingMessage?.content ?? message;
   return (
     <Shell step="Describe & refine">
-      <h1>
-        What would you like
-        <br className="hidden sm:block" /> to agree on?
-      </h1>
+      <h1>What would you like to agree on?</h1>
       <p className="intro">
-        Describe the work, paste a contract, or start with an example. You can keep adding details.
+        Paste your contract or describe the work and payment terms. Answer the questions, then
+        review the agreement before confirming.
       </p>
-      <div aria-label="Agreement conversation" role="log" className="space-y-5">
-        {workspace.messages.map((m, i) => (
-          <div key={i} className={m.role === "user" ? "chat-message chat-user" : "chat-message"}>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              {m.role === "user" ? "You" : "Draft assistant · scripted guidance"}
-            </p>
-            <p className="whitespace-pre-wrap break-words text-sm leading-7">{m.content}</p>
+      <div className="grid items-start gap-8 md:grid-cols-2">
+        <div>
+          <div aria-label="Agreement conversation" role="log" className="space-y-4">
+            {session?.messages.map((turn, index) => (
+              <div key={index} className="chat-message chat-user">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">You</p>
+                <p className="whitespace-pre-wrap break-words text-sm leading-7">{turn.content}</p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <form
-        className="mt-7"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send(message);
-        }}
-      >
-        <label htmlFor="agreement-message" className="sr-only">
-          Describe your agreement or add a detail
-        </label>
-        <textarea
-          id="agreement-message"
-          className="agreement-text"
-          maxLength={20000}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder={
-            workspace.messages.length
-              ? "Add a requirement, correction, or another part of your contract…"
-              : "I'm hiring a developer to build our website…"
-          }
-        />
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <Button type="button" variant="ghost" onClick={() => send(SAMPLE_MESSAGE)}>
-            Try a scripted example
-          </Button>
-          <Button type="submit" disabled={!message.trim()}>
-            Add to agreement
-            <ArrowUp />
-          </Button>
-        </div>
-      </form>
-      <details
-        className="agreement-summary mt-8"
-        open={editor}
-        onToggle={(e) => setEditor(e.currentTarget.open)}
-      >
-        <summary className="flex items-center gap-2 text-sm font-medium">
-          <FileText className="size-4" />
-          Agreement draft · review payment fields
-        </summary>
-        <div className="mt-6">
-          <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
-            Automatic extraction is not connected yet. Edit the payment fields below; your
-            conversation is preserved separately. Wallets are added on the next page.
-          </p>
-          <label className="mb-7 block">
-            <span className="field-label">Additional contract details · human review only</span>
-            <textarea
-              className="field min-h-28"
-              maxLength={20000}
-              value={workspace.notes}
-              onChange={(e) => {
-                try {
-                  store({ ...workspace, notes: e.target.value });
-                } catch {
-                  setError("Could not save additional details.");
+          {session?.confirmedProjectId ? (
+            <div className="mt-5 space-y-4">
+              <p className="text-sm">
+                This agreement is confirmed. Open the project to generate its contract, or start a
+                new agreement to change the terms.
+              </p>
+              <Button
+                onClick={() =>
+                  nav({ to: "/projects/$id", params: { id: session.confirmedProjectId! } })
                 }
+              >
+                Open confirmed project
+              </Button>
+            </div>
+          ) : (
+            <form
+              className="mt-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void send(input);
               }}
-              placeholder="Source code handover, design requirements, maintenance…"
-            />
-          </label>
-          <AgreementEditor
-            key={revision}
-            initial={workspace.draft}
-            wallets={false}
-            onSave={review}
-            submitLabel="Review agreement"
-          />
+            >
+              <label htmlFor="agreement-message" className="field-label">
+                Describe your agreement or add a detail
+              </label>
+              <textarea
+                id="agreement-message"
+                className="agreement-text"
+                maxLength={20000}
+                value={input}
+                onChange={(event) => setMessage(event.target.value)}
+                disabled={Boolean(occupied || session?.pendingMessage)}
+                placeholder="Who is doing the work, what will they deliver, and when should they be paid?"
+              />
+              <Button className="mt-3" type="submit" disabled={disabled || !input.trim()}>
+                {occupied
+                  ? "Updating agreement…"
+                  : session?.pendingMessage
+                    ? "Retry this message"
+                    : "Send message"}
+                <ArrowUp />
+              </Button>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Each message starts an AI request and may incur model costs. Your conversation and
+                draft are saved on this local backend.
+              </p>
+              {context.data?.clarificationEnabled && !session?.pendingMessage && (
+                <Button
+                  className="mt-3"
+                  type="button"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() =>
+                    send(
+                      `For this local test, use ${context.data.clientWallet} as the client wallet and ${context.data.developerWallet} as the developer wallet.`,
+                    )
+                  }
+                >
+                  Use local test accounts
+                </Button>
+              )}
+            </form>
+          )}
+          {id !== undefined && id && (
+            <Button className="mt-4" variant="link" disabled={working} onClick={startNew}>
+              Start a new agreement
+            </Button>
+          )}
         </div>
-      </details>
-      {!editor && (
-        <Button variant="link" className="mt-4 px-0" onClick={() => setEditor(true)}>
-          Edit payment details manually
-        </Button>
-      )}
-      {error && (
-        <p role="alert" className="mt-4 text-sm text-destructive">
-          {error}
+        <aside className="rounded-lg border border-border p-5" aria-label="Current agreement draft">
+          <DraftSummary result={session?.result ?? null} />
+          {!session?.confirmedProjectId && (
+            <div className="mt-6 border-t border-border pt-5">
+              <p className="mb-3 text-sm">
+                {draftReady(session)
+                  ? "The payment details are ready for your review."
+                  : "Resolve the questions and payment conditions before review."}
+              </p>
+              <Button
+                disabled={!draftReady(session) || Boolean(occupied || failure)}
+                onClick={() => nav({ to: "/confirm" })}
+              >
+                Review agreement
+              </Button>
+            </div>
+          )}
+        </aside>
+      </div>
+      {context.data && !context.data.clarificationEnabled && (
+        <p className="mt-5 text-sm">
+          The drafting assistant is disabled on this backend. The project owner can enable it to
+          start this conversation.
         </p>
       )}
+      {failure && (
+        <p role="alert" className="mt-5 text-sm text-destructive">
+          {failure}
+        </p>
+      )}
+      {query.isError && (
+        <p className="mt-2 text-sm">
+          Local drafts reset when the backend restarts. Start a new agreement if this draft is
+          unavailable.
+        </p>
+      )}
+      <Button
+        variant="link"
+        className="mt-4 px-0"
+        disabled={working}
+        onClick={() => void refresh()}
+      >
+        Refresh status
+      </Button>
     </Shell>
   );
 }

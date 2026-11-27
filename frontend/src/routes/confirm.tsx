@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { Shell } from "@/components/Shell";
-import { AgreementEditor } from "@/components/AgreementEditor";
-import { AgreementNotes, ScopeAcknowledgement, PaymentRules } from "@/components/AgreementNotes";
-import { api, type ProjectDraft } from "@/api/client";
-import type { Workspace } from "@/api/workspace";
+import { DraftSummary, DraftSource, draftReady } from "@/components/DraftSummary";
+import { PaymentRules, ScopeAcknowledgement } from "@/components/AgreementNotes";
+import { useActiveDraft } from "@/hooks/use-active-draft";
+import { api } from "@/api/client";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/confirm")({
@@ -12,38 +13,37 @@ export const Route = createFileRoute("/confirm")({
   component: ConfirmPage,
 });
 export function ConfirmPage() {
-  const nav = useNavigate(),
-    [workspace, setWorkspace] = useState<Workspace | null>(null),
-    [busy, setBusy] = useState(false),
-    [ack, setAck] = useState(false),
-    [error, setError] = useState("");
-  const active = useRef(false),
-    created = useRef<{ id: string; draft: string } | null>(null);
-  useEffect(() => setWorkspace(api.getWorkspace()), []);
-  async function confirm(draft: ProjectDraft) {
-    if (active.current || !workspace) return;
-    if (!ack) {
-      setError("Please acknowledge which terms this contract can enforce.");
+  const nav = useNavigate();
+  const cache = useQueryClient();
+  const { id, query, session } = useActiveDraft();
+  const [busy, setBusy] = useState(false);
+  const [ackRevision, setAckRevision] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const active = useRef(false);
+  const ready = draftReady(session) && !query.isFetching && !query.isError;
+  async function confirm() {
+    if (
+      active.current ||
+      !session ||
+      !ready ||
+      ackRevision !== session.revision ||
+      session.confirmedProjectId
+    )
       return;
-    }
     active.current = true;
     setBusy(true);
     setError("");
     try {
-      const reason = api.validateDraft(draft);
-      if (reason) throw new Error(reason);
-      const fingerprint = JSON.stringify(draft);
-      if (!created.current || created.current.draft !== fingerprint) {
-        const p = await api.createAgreement(draft);
-        created.current = { id: p.id, draft: fingerprint };
-      }
-      const context = await api.getAgreement(created.current.id);
-      api.saveContext(created.current.id, { ...workspace, draft }, context.spec.specVersion);
-      await api.confirmAgreement(created.current.id, context.spec.specVersion);
-      api.clearWorkspace();
-      await nav({ to: "/projects/$id", params: { id: created.current.id } });
-    } catch (e) {
-      setError((e as Error).message);
+      await cache.cancelQueries({ queryKey: ["draft", id] });
+      const confirmed = await api.confirmDraft(session.id, session.revision);
+      cache.setQueryData(["draft", id], { ...session, confirmedProjectId: confirmed.project.id });
+      await nav({ to: "/projects/$id", params: { id: confirmed.project.id } });
+    } catch (caught) {
+      setError((caught as Error).message);
+      setAckRevision(null);
+      const latest = await query.refetch();
+      if (latest.data?.confirmedProjectId)
+        await nav({ to: "/projects/$id", params: { id: latest.data.confirmedProjectId } });
     } finally {
       active.current = false;
       setBusy(false);
@@ -53,34 +53,52 @@ export function ConfirmPage() {
     <Shell step="Review & confirm">
       <h1>Review your agreement</h1>
       <p className="intro">
-        Check the payment rules, then add the two local test accounts. Nothing is generated until
-        you ask.
+        Check the payment amounts and both wallets. Confirming saves this version for contract
+        generation.
       </p>
-      {workspace ? (
+      {session ? (
         <>
-          <AgreementNotes workspace={workspace} />
-          <PaymentRules />
-          <ScopeAcknowledgement checked={ack} onChange={setAck} />
-          <fieldset disabled={busy} className="mt-7">
-            <AgreementEditor
-              initial={workspace.draft}
-              onDirty={() => setAck(false)}
-              onSave={confirm}
-              onCancel={() => nav({ to: "/" })}
-              submitLabel={busy ? "Confirming…" : "Confirm agreement"}
-            />
-          </fieldset>
-          <p className="mt-5 text-xs text-muted-foreground">
-            Confirmation is stored by the local backend. It does not deploy a contract or start a
-            paid model call.
-          </p>
+          <DraftSummary result={session.result} />
+          <DraftSource session={session} includeTerms={false} />
+          {session.confirmedProjectId ? (
+            <Button
+              className="mt-5"
+              onClick={() =>
+                nav({ to: "/projects/$id", params: { id: session.confirmedProjectId! } })
+              }
+            >
+              Open confirmed project
+            </Button>
+          ) : (
+            <>
+              <PaymentRules />
+              <ScopeAcknowledgement
+                checked={ackRevision === session.revision}
+                onChange={(checked) => setAckRevision(checked ? session.revision : null)}
+              />
+              <Button
+                className="mt-5"
+                disabled={busy || !ready || ackRevision !== session.revision}
+                onClick={() => void confirm()}
+              >
+                {busy ? "Confirming…" : "Confirm agreement"}
+              </Button>
+              {!draftReady(session) && (
+                <p className="mt-3 text-sm">
+                  Return to the conversation to resolve the remaining terms before confirming.
+                </p>
+              )}
+            </>
+          )}
         </>
+      ) : id === undefined || (id && query.isPending) ? (
+        <p>Loading agreement…</p>
       ) : (
-        <p>Loading draft…</p>
+        <p>Open your conversation to review an agreement.</p>
       )}
-      {error && (
+      {(error || query.error || session?.lastError) && (
         <p role="alert" className="mt-4 text-sm text-destructive">
-          {error}
+          {error || query.error?.message || session?.lastError}
         </p>
       )}
       <Button variant="link" className="mt-4 px-0" disabled={busy} onClick={() => nav({ to: "/" })}>

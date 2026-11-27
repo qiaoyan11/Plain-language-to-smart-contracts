@@ -1,8 +1,15 @@
 /** Project API v2. All page data access stays here; local chain is the default. */
-import type { AgreementContext, ConfirmationRecord, GenerationRun } from "./types";
+import type {
+  AgreementContext,
+  ConfirmationRecord,
+  DraftContext,
+  DraftSession,
+  GenerationRun,
+} from "./types";
 import { workspaceStorage } from "./workspace";
 export type { AgreementContext, GenerationRun } from "./types";
 export const MOCK_MODE = import.meta.env["VITE_API_MODE"] === "mock";
+const ACTIVE_DRAFT_KEY = "active-agreement-draft-v1";
 const API_BASE = import.meta.env["VITE_API_BASE"] || "/api";
 async function request<T>(
   path: string,
@@ -160,6 +167,48 @@ function getProjectSnapshot(id: string): Promise<Project> {
 export const api = {
   ...workspaceStorage,
   getProjectSnapshot,
+  getActiveDraftId(): string | null {
+    return typeof window === "undefined" ? null : sessionStorage.getItem(ACTIVE_DRAFT_KEY);
+  },
+  setActiveDraftId(id: string | null) {
+    if (id) sessionStorage.setItem(ACTIVE_DRAFT_KEY, id);
+    else sessionStorage.removeItem(ACTIVE_DRAFT_KEY);
+  },
+  async getDraftContext(): Promise<DraftContext> {
+    if (MOCK_MODE)
+      throw new Error(
+        "Open local API mode to draft an agreement. The reference demo is available in mock mode.",
+      );
+    return request("/drafts/context");
+  },
+  async createDraft(): Promise<DraftSession> {
+    if (MOCK_MODE) throw new Error("Open local API mode to draft an agreement.");
+    return request("/drafts", {});
+  },
+  async getDraft(id: string): Promise<DraftSession> {
+    return request(`/drafts/${encodeURIComponent(id)}`);
+  },
+  async sendDraftMessage(
+    id: string,
+    message: string,
+    expectedRevision: number,
+    requestKey: string,
+  ): Promise<DraftSession> {
+    return request(`/drafts/${encodeURIComponent(id)}/messages`, {
+      message,
+      expectedRevision,
+      requestKey,
+    });
+  },
+  async confirmDraft(
+    id: string,
+    expectedRevision: number,
+  ): Promise<{ project: Project; agreement: AgreementContext }> {
+    return request(`/drafts/${encodeURIComponent(id)}/confirmation`, {
+      approved: true,
+      expectedRevision,
+    });
+  },
   parseEth: ethToWei,
   formatEth: formatWei,
   validateDraft(d: ProjectDraft, requireWallets = true): string | null {
@@ -258,7 +307,7 @@ export const api = {
   saveDraft(draft: ProjectDraft) {
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   },
-  getDraft(): ProjectDraft | null {
+  getReferenceDraft(): ProjectDraft | null {
     if (typeof window === "undefined") return null;
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);

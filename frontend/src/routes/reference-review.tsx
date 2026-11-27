@@ -23,7 +23,7 @@ function ConfirmPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setDraft(api.getDraft());
+    setDraft(api.getReferenceDraft());
     setLoaded(true);
   }, []);
 

@@ -129,6 +129,33 @@ afterEach(() => {
 });
 
 describe("generated project operations", () => {
+  it("loads the server conversation and keeps confirmed conversation terms sealed", async () => {
+    serve(project, { ...context, draftOrigin: { draftId: "draft-origin", revision: 1 } }, run);
+    const getDraft = vi.spyOn(api, "getDraft").mockResolvedValue({
+      id: "draft-origin",
+      revision: 1,
+      createdAt: "",
+      updatedAt: "",
+      busy: false,
+      pendingMessage: null,
+      lastError: null,
+      confirmedProjectId: project.id,
+      messages: [{ role: "user", content: "Our original website agreement." }],
+      result: {
+        status: "readyForConfirmation",
+        draftSpec: context.spec,
+        questions: [],
+        unsupportedTerms: [],
+        separateTerms: ["Maintenance will be agreed separately."],
+      },
+    });
+    openPage();
+    await screen.findByText("Our original website agreement.");
+    expect(getDraft).toHaveBeenCalledWith("draft-origin");
+    expect(screen.getByText("Maintenance will be agreed separately.")).toBeTruthy();
+    expect(screen.queryByText("Add or change agreement details")).toBeNull();
+    expect(screen.getByText("Start a new agreement to change these terms")).toBeTruthy();
+  });
   it("deploys only on click, restores the generated contract after reload and updates the escrow after confirmation", async () => {
     serve(project, context, run);
     const deploy = vi.spyOn(api, "deployGeneration").mockImplementation(async () => {

@@ -25,7 +25,7 @@ function CreatePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const d = api.getDraft();
+    const d = api.getReferenceDraft();
     if (d) {
       setForm({ name: d.name, clientWallet: d.clientWallet, developerWallet: d.developerWallet });
       setMilestones(d.milestones.map(m => ({ title: m.title, amountEth: formatWei(m.amountWei) })));
