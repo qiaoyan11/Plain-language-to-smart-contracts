@@ -23,9 +23,19 @@ export function rateText(rate: ExchangeRate) {
   return `Converted from ${rate.currency} at ${label}: ${at}${rate.provider ? ` (${rate.provider}${time})` : ""}.`;
 }
 
+/**
+ * An amount in wei, in the agreement's own currency. Test ETH amounts are rounded to 6 decimals,
+ * so a value within that rounding of a whole unit is shown whole: "20,000", not "19,999.99".
+ */
+export function inCurrency(wei: string, rate: ExchangeRate) {
+  const units = Number(rate.unitsPerEth);
+  const value = (Number(BigInt(wei) / 1_000_000n) / 1e12) * units;
+  const whole = Math.round(value);
+  const shown = Math.abs(value - whole) <= units * 3e-6 ? whole : value;
+  return shown.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 /** " (≈ 500 USD)" after an amount in wei, at the agreement's recorded rate; "" without one. */
 export function approximately(wei: string, rate: ExchangeRate | undefined) {
-  if (!rate) return "";
-  const value = (Number(BigInt(wei) / 1_000_000n) / 1e12) * Number(rate.unitsPerEth);
-  return ` (≈ ${value.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${rate.currency})`;
+  return rate ? ` (≈ ${inCurrency(wei, rate)} ${rate.currency})` : "";
 }

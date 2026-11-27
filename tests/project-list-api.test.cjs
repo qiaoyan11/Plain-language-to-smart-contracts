@@ -103,7 +103,7 @@ test('draft list shows unfinished conversations until confirmation turns them in
     const replied = await call(`/drafts/${draft.id}/messages`, { message: 'My cousin builds the bakery website.',
       expectedRevision: 0, requestKey: 'list-message-001' });
     assert.equal(replied.status, 200);
-    assert.match(replied.body.turns.at(-1).reply, /Recorded 1 delivery milestone: 1\. Finished website\./);
+    assert.match(replied.body.turns.at(-1).reply, /^Ready for review — Bakery website: 0\.01 ETH, paid in one milestone\.\n1\. Finished website\n/);
     const drafts = (await call('/drafts')).body.drafts;
     assert.equal(drafts.length, 1);
     assert.deepEqual(drafts[0], { id: draft.id, name: 'Bakery website', createdAt: draft.createdAt,

@@ -186,6 +186,7 @@ export function CreatePage() {
               </label>
               <ContractUpload
                 disabled={Boolean(occupied || session?.pendingMessage)}
+                current={message}
                 onText={setMessage}
               >
                 <textarea

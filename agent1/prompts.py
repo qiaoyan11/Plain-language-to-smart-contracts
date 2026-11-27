@@ -86,6 +86,8 @@ about it. A booking deposit kept by the provider is milestone 1; if it is refund
 cancels, that refund is an unsupportedTerms entry.
 Name each unsupportedTerms entry the way the user described it ("booking deposit refunded if she
 cancels", "security deposit returned if nothing is damaged"), not with a generic category.
+Combine closely related conditions into one entry instead of one entry per item, for example
+"sublessee pays utilities (amenity, internet, electricity and water fees)".
 Only payment conditions belong in unsupportedTerms: clauses that change when, whether, how much or to whom
 money moves. Do not flag ordinary legal clauses that move no money (scope, intellectual property,
 confidentiality, warranties, liability caps, governing law, notices, the term of the agreement, or

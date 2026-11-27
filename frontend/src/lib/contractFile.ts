@@ -222,13 +222,26 @@ async function readPdf(bytes: Uint8Array, load: () => Promise<PdfLibrary>) {
     if (line) lines.push(line);
     pages.push(unwrapLines(lines).join("\n"));
   }
-  return { text: pages.join("\n\n"), pages: document.numPages };
+  return { text: joinPages(pages), pages: document.numPages };
+}
+
+/** Pages joined by a blank line, except where a sentence runs on to the next page. */
+export function joinPages(pages: string[]) {
+  return pages.reduce((text, page) => {
+    if (!text) return page;
+    if (!page) return text;
+    const runsOn = !ENDS_SENTENCE.test(text.trimEnd()) && /^[a-z\u3000-\u9fff]/.test(page);
+    const cjk = CJK.test(text.trimEnd().slice(-1)) && CJK.test(page[0]!);
+    return text + (runsOn ? (cjk ? "" : " ") : "\n\n") + page;
+  }, "");
 }
 
 const CJK = /[\u3000-\u9fff\uff00-\uffef]/;
 const ENDS_SENTENCE = /[.!?;:。！？；：)）\]】"”]$/;
 const STARTS_BLOCK =
-  /^(?:[0-9]+[.、)]|\(?[0-9a-z]\)|[ivx]+\.|第[一二三四五六七八九十百0-9]+[章条节款]|[•·\-*]|[A-Z][A-Z .&'-]{4,}$)/i;
+  /^(?:[0-9]+[.、)]|\(?[0-9a-zA-Z]\)|[ivxIVX]+\.|第[一二三四五六七八九十百0-9]+[章条节款]|[•·\-*])/;
+/** A capitals-only line, such as a clause heading ("PAYMENT TERMS"). */
+const HEADING = /^[A-Z][A-Z .&'-]{4,}$/;
 
 /**
  * Rejoin lines that a PDF wrapped in the middle of a sentence, so that an amount or a clause
@@ -246,6 +259,8 @@ export function unwrapLines(lines: string[]) {
       next &&
       !ENDS_SENTENCE.test(previous) &&
       !STARTS_BLOCK.test(next) &&
+      !HEADING.test(next) &&
+      !HEADING.test(previous) &&
       previous.length > 25
     ) {
       const joiner = CJK.test(previous.slice(-1)) && CJK.test(next[0]!) ? "" : " ";
@@ -373,4 +388,12 @@ export function contractMessage(contract: ContractText) {
     ? " Long clauses that do not mention money, delivery or acceptance were left out ([…])."
     : "";
   return `Contract file: ${contract.name}${pages}.${note}\n\n${contract.text}`;
+}
+
+/** The heading and text of a message created from an uploaded contract, or null. */
+export function uploadedContract(message: string) {
+  if (!message.startsWith("Contract file:")) return null;
+  const end = message.indexOf("\n\n");
+  if (end < 0) return null;
+  return { heading: message.slice(0, end), text: message.slice(end + 2) };
 }

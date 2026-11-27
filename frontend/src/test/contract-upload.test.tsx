@@ -9,11 +9,13 @@ import type { DraftSession } from "@/api/types";
 import {
   condense,
   contractMessage,
+  joinPages,
   readContractFile,
   unwrapLines,
   type PdfLibrary,
 } from "@/lib/contractFile";
 import { CreatePage } from "@/routes/index";
+import { DraftConversation } from "@/components/DraftConversation";
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: object) => options,
@@ -81,6 +83,22 @@ describe("uploading a contract", () => {
     expect(box.value).toContain("Logo for my coffee shop, $500");
     expect(screen.getByText(/Check the text below/)).toBeVisible();
     expect(send).not.toHaveBeenCalled();
+    fireEvent.change(box, { target: { value: "" } });
+    expect(screen.queryByText(/Check the text below/)).toBeNull();
+  });
+  it("keeps a note the user typed and replaces an earlier upload", async () => {
+    openPage();
+    await screen.findByRole("button", { name: "Upload a contract (PDF, Word or text)" });
+    const box = screen.getByLabelText<HTMLTextAreaElement>(
+      "Describe your agreement or add a detail",
+    );
+    fireEvent.change(box, { target: { value: "I am the subtenant and I pay the rent." } });
+    choose(new File(["Rent for December is $1,200, paid on move-in."], "lease.txt"));
+    await waitFor(() => expect(box.value).toMatch(/^Contract file: lease\.txt\./));
+    expect(box.value).toMatch(/move-in\.\n\nI am the subtenant and I pay the rent\.$/);
+    choose(new File(["Logo design for $500, paid on approval."], "logo.txt"));
+    await waitFor(() => expect(box.value).toContain("Contract file: logo.txt."));
+    expect(box.value).not.toContain("lease.txt");
   });
   it("explains files it cannot read instead of sending an empty message", async () => {
     openPage();
@@ -91,6 +109,20 @@ describe("uploading a contract", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("Photos of a contract have no text"),
     );
+  });
+});
+
+describe("an uploaded contract in the conversation", () => {
+  it("shows the file name and folds the long text away", () => {
+    const content = "Contract file: lease.pdf, 4 pages.\n\nSUBLEASE AGREEMENT\nRent is $640.";
+    render(
+      <DraftConversation
+        session={{ ...empty, messages: [{ role: "user", content }], turns: [] }}
+      />,
+    );
+    expect(screen.getByText("Contract file: lease.pdf, 4 pages.")).toBeVisible();
+    expect(screen.getByText(/Show the text that was sent \(32 characters\)/)).toBeVisible();
+    expect(screen.getByText(/Rent is \$640/)).not.toBeVisible();
   });
 });
 
@@ -141,6 +173,23 @@ describe("reading contract files", () => {
       "甲方及其监护人已经详细阅读并理解该项目相关内容、注意事项和本协议有关约定，并自愿报名参加。",
       "第二章 服务内容",
     ]);
+  });
+  it("rejoins wrapped English lines and sentences that run on to the next page", () => {
+    expect(
+      unwrapLines([
+        "The rent for the entire period shall be $640 (US Dollars) payable at",
+        "the first day the sublessee moves in.",
+        "PAYMENT TERMS",
+        "IV. Security Deposit. The Sublessor shall require a deposit of $160.",
+      ]),
+    ).toEqual([
+      "The rent for the entire period shall be $640 (US Dollars) payable at the first day the sublessee moves in.",
+      "PAYMENT TERMS",
+      "IV. Security Deposit. The Sublessor shall require a deposit of $160.",
+    ]);
+    expect(joinPages(["The Sublessee will", "be liable for damages.", "VI. Disputes."])).toBe(
+      "The Sublessee will be liable for damages.\n\nVI. Disputes.",
+    );
   });
   it("keeps every payment clause of a long contract within one message", () => {
     const clauses = Array.from(

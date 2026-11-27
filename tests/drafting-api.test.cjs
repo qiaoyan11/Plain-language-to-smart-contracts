@@ -118,12 +118,12 @@ test('English conversation turns show one stable question while retaining every 
     const third = await call(path + '/messages', message('Total 0.01 test ETH, split 30%/70%.', 2, 'chat-turn-three'));
     assert.equal(third.body.turns[2].question.field, 'clientWallet');
     assert.match(third.body.turns[2].reply, /0\.01 ETH/);
-    assert.match(third.body.turns[2].reply, /0\.003 ETH, 0\.007 ETH/);
+    assert.match(third.body.turns[2].reply, /1\. Approved homepage: 0\.003 ETH\n2\. Checkout acceptance tests: 0\.007 ETH/);
     phase = 'ready';
     const finalBody = message(accounts.clientWallet + ' ' + accounts.developerWallet, 3, 'chat-turn-four');
     const final = await call(path + '/messages', finalBody);
     assert.equal(final.body.turns[3].question, null);
-    assert.match(final.body.turns[3].reply, /Review the summary before explicitly confirming/);
+    assert.match(final.body.turns[3].reply, /check the payment summary, then confirm\.$/);
     assert.match(final.body.turns[3].reply, /client funding address/);
     assert.equal(final.body.turns.length, final.body.messages.length);
     assert.deepEqual((await call(path)).body.turns, final.body.turns);
@@ -211,7 +211,7 @@ test('finance agreement replies retain the displayed context and progress from a
       assert.equal(snapshot.result.questions.some(q => /amountWei|totalAmountWei/.test(q.field)), false);
     }
     assert.match(snapshots[2].turns[2].reply, /Market display.*Chat bot.*Trade signal alert.*User UI design/);
-    assert.match(snapshots[2].turns[2].reply, /4 milestones at 0\.02 ETH each, for a total of 0\.08 ETH/);
+    assert.match(snapshots[2].turns[2].reply, /^Finance application: 0\.08 ETH in 4 equal payments of 0\.02 ETH\./);
     assert.equal((snapshots[2].turns[2].reply.match(/0\.02 ETH/g) ?? []).length, 1);
     const final = snapshots.at(-1);
     assert.deepEqual(final.messages.map(m => m.content), messages);
@@ -242,7 +242,7 @@ test('unresolved stage payments identify the delivery and accepted answer format
     accounts = local;
     const { path } = await create();
     const first = (await call(path + '/messages', message('Four deliveries: market display, chat bot, trade signal alert, user UI design. Total 0.08 ETH.'))).body;
-    assert.match(first.turns[0].reply, /milestones 1, 2, 3, 4/);
+    assert.equal((first.turns[0].reply.match(/: amount needed/g) ?? []).length, 4);
     assert.doesNotMatch(first.turns[0].reply, /amount unresolved/);
     assert.match(first.turns[0].question.question, /milestone 1.*Market display/);
     assert.match(first.turns[0].question.question, /0\.08 ETH/);
@@ -257,7 +257,7 @@ test('unresolved stage payments identify the delivery and accepted answer format
     assert.equal(third.turns[2].question.field, 'milestones.2.amountWei');
     assert.match(third.turns[2].question.question, /Chat bot/);
     assert.match(third.turns[2].reply, /Market display.*0\.02 ETH/);
-    assert.match(third.turns[2].reply, /milestones 2, 3, 4/);
+    assert.equal((third.turns[2].reply.match(/: amount needed/g) ?? []).length, 3);
     assert.deepEqual(third.result.draftSpec.milestones.map(m => m.amountWei), ['20000000000000000', null, null, null]);
     assert.equal((await call(path + '/confirmation', { approved: true, expectedRevision: 3 })).status, 409);
   });
@@ -585,8 +585,8 @@ test('replies explain converted amounts, conditions the contract will not enforc
     assert.equal(body.result.draftSpec.clientWallet, local.clientWallet);
     assert.equal(body.result.draftSpec.developerWallet, local.developerWallet);
     assert.equal(body.turns[0].question, null);
-    assert.match(reply, /converted to test ETH at the live rate, 1 test ETH = 1,667\.36 USD \(CoinGecko at 17:40 UTC\)/);
-    assert.match(reply, /The contract will not enforce this condition: \u201crefund if delivery is late\u201d\. It stays in your written agreement/);
+    assert.match(reply, /\nRate: 1 test ETH = 1,667\.36 USD \(live rate, CoinGecko 17:40 UTC\)\. Tell me if you agreed a different rate\./);
+    assert.match(reply, /\nNot enforced by the contract \(it stays in your written agreement and is listed on the review page\): “refund if delivery is late”\./);
     assert.match(reply, /Payments use the built-in test accounts/);
     assert.deepEqual(body.settledTerms, ['refund if delivery is late']);
   });
@@ -604,7 +604,7 @@ test('a reply that settles flagged terms says which terms no longer block the dr
     const { path } = await create();
     await call(path + '/messages', message('Pay USD 8,000 by June 30, 2026.'));
     const second = await call(path + '/messages', message('Release it when the client approves, not on a date.', 1, 'draft-message-002'));
-    assert.match(second.body.turns[1].reply, /^This term no longer blocks the draft: \u201cpayment due June 30, 2026\u201d\./);
+    assert.match(second.body.turns[1].reply, /^No longer blocking: “payment due June 30, 2026”\./);
     // The review page lists it as a condition the contract does not enforce.
     assert.deepEqual(second.body.settledTerms, ['payment due June 30, 2026']);
     assert.deepEqual((await call(path)).body.settledTerms, ['payment due June 30, 2026']);
@@ -641,6 +641,6 @@ test('replies repeat converted amounts in the currency the user wrote', async ()
     accounts = local;
     const { path } = await create();
     const reply = (await call(path + '/messages', message('£500 to book the date.'))).body.turns[0].reply;
-    assert.match(reply, /The total is recorded as 0\.39228 ETH \(≈ 500 GBP\)\./);
+    assert.match(reply, /^Ready for review — Website agreement: 500 GBP \(0\.39228 ETH\), paid in one milestone\.\n/);
   });
 });

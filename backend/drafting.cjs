@@ -68,54 +68,54 @@ const short = address => `${address.slice(0, 6)}\u2026${address.slice(-4)}`;
 const grouped = value => { const [whole, part] = value.split('.'); return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (part ? '.' + part : ''); };
 function rateLine(rate) {
   const at = `1 test ETH = ${grouped(rate.unitsPerEth)} ${rate.currency}`;
-  const when = rate.asOf ? ` at ${rate.asOf.slice(11, 16)} UTC` : '';
-  if (rate.source === 'stated') return `Amounts in ${rate.currency} are converted at the rate you gave, ${at}.`;
-  if (rate.source === 'reference') return `Amounts in ${rate.currency} are converted at a reference rate, ${at}, because no live rate was available. Tell me if you agreed a different rate.`;
-  const label = rate.source === 'cached' ? 'the last available rate' : 'the live rate';
-  return `Amounts in ${rate.currency} are converted to test ETH at ${label}, ${at}${rate.provider ? ` (${rate.provider}${when})` : ''}, rounded to 6 decimals. Tell me if you agreed a different rate.`;
+  const when = rate.asOf ? ` ${rate.asOf.slice(11, 16)} UTC` : '';
+  if (rate.source === 'stated') return `Rate: ${at}, the rate you gave.`;
+  if (rate.source === 'reference') return `Rate: ${at}, a reference rate because no live rate was available. Tell me if you agreed a different rate.`;
+  const label = rate.source === 'cached' ? 'last available rate' : 'live rate';
+  return `Rate: ${at} (${label}${rate.provider ? `, ${rate.provider}${when}` : ''}). Tell me if you agreed a different rate.`;
 }
+// One assistant turn: a one-line conclusion, then one short line per point, so the reply can be
+// scanned. The payment summary beside the conversation holds the full detail.
 function conversationTurn(previous, result, revision, previousTurn, demoWallets = null) {
   const before = previous?.draftSpec, after = result.draftSpec, lines = [];
   const question = primaryQuestion(result);
-  // Amounts written in another currency are repeated in it: "0.39228 ETH (≈ 500 GBP)".
+  const ready = result.status === 'readyForConfirmation';
   const rate = (result.exchangeRates ?? []).length === 1 ? result.exchangeRates[0] : null;
-  const amount = wei => rate
-    ? `${eth(wei)} (\u2248 ${(Number(BigInt(wei) / 10n ** 12n) / 1e6 * Number(rate.unitsPerEth)).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${rate.currency})`
-    : eth(wei);
-  if (after.name !== 'Untitled project' && after.name !== before?.name)
-    lines.push(`Project recorded: ${after.name}.`);
-  if (after.totalAmountWei !== before?.totalAmountWei && after.totalAmountWei)
-    lines.push(`The total is recorded as ${amount(after.totalAmountWei)}.`);
-  if (JSON.stringify(after.milestones) !== JSON.stringify(before?.milestones ?? []) && after.milestones.length) {
-    const scheduleChanged = JSON.stringify(after.milestones.map(m => [m.id, m.title]))
-      !== JSON.stringify((before?.milestones ?? []).map(m => [m.id, m.title]));
-    if (scheduleChanged)
-      lines.push(`Recorded ${after.milestones.length} delivery milestone${after.milestones.length === 1 ? '' : 's'}: ${after.milestones.map(m => `${m.id}. ${m.title}`).join('; ')}.`);
-    const missing = after.milestones.filter(m => !m.amountWei);
-    if (!missing.length) {
-      const equal = after.milestones.every(m => m.amountWei === after.milestones[0].amountWei);
-      const matchesTotal = after.totalAmountWei && after.milestones.reduce((sum, m) => sum + BigInt(m.amountWei), 0n) === BigInt(after.totalAmountWei);
-      lines.push(equal && matchesTotal
-        ? (after.milestones.length === 1
-          ? `1 milestone of ${amount(after.milestones[0].amountWei)}, the full total.`
-          : `${after.milestones.length} milestones at ${amount(after.milestones[0].amountWei)} each, for a total of ${amount(after.totalAmountWei)}.`)
-        : `The milestone payments are ${after.milestones.map(m => amount(m.amountWei)).join(', ')} in order.`);
-    }
-    else {
-      const known = after.milestones.filter(m => m.amountWei);
-      if (known.length) lines.push(`Recorded payments: ${known.map(m => `${milestoneLabel(after, m.id)}: ${amount(m.amountWei)}`).join('; ')}.`);
-      lines.push(missing.length === 1
-        ? `An agreed payment amount is still needed for ${milestoneLabel(after, missing[0].id)}.`
-        : `Agreed payment amounts are still needed for milestones ${missing.map(m => m.id).join(', ')}.`);
-    }
+  // ETH amounts are rounded to 6 decimals; within that rounding of a whole unit, show it whole.
+  const local = wei => {
+    const units = Number(rate.unitsPerEth), value = Number(BigInt(wei) / 10n ** 12n) / 1e6 * units;
+    const whole = Math.round(value);
+    return (Math.abs(value - whole) <= units * 3e-6 ? whole : value).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  };
+  // Amounts agreed in another currency lead with it: "500 GBP (0.39228 ETH)".
+  const amount = wei => rate ? `${local(wei)} ${rate.currency} (${eth(wei)})` : eth(wei);
+  const milestones = after.milestones, count = milestones.length;
+  const missing = milestones.filter(m => !m.amountWei);
+  const complete = count > 0 && !missing.length && after.totalAmountWei
+    && milestones.reduce((sum, m) => sum + BigInt(m.amountWei), 0n) === BigInt(after.totalAmountWei);
+  const equal = complete && milestones.every(m => m.amountWei === milestones[0].amountWei);
+  const named = after.name !== 'Untitled project' && after.name !== before?.name;
+  const totalChanged = Boolean(after.totalAmountWei) && after.totalAmountWei !== before?.totalAmountWei;
+  const scheduleChanged = count > 0 && JSON.stringify(milestones) !== JSON.stringify(before?.milestones ?? []);
+  if (named || totalChanged || scheduleChanged) {
+    let line = after.name !== 'Untitled project' ? after.name : 'The agreement';
+    if (after.totalAmountWei) line += `: ${amount(after.totalAmountWei)}`;
+    if (complete) line += count === 1 ? ', paid in one milestone'
+      : equal ? ` in ${count} equal payments of ${amount(milestones[0].amountWei)}` : ` in ${count} payments`;
+    lines.push(ready ? `Ready for review — ${line}.` : `${line}.`);
   }
+  if (scheduleChanged && !equal)
+    for (const m of milestones)
+      lines.push(`${m.id}. ${m.title}: ${m.amountWei ? amount(m.amountWei) : 'amount needed'}`);
+  else if (scheduleChanged)
+    lines.push(milestones.map(m => `${m.id}. ${m.title}`).join('; '));
   for (const rate of result.exchangeRates ?? []) {
     const old = (previous?.exchangeRates ?? []).find(r => r.currency === rate.currency);
     if (!old || old.unitsPerEth !== rate.unitsPerEth || old.source !== rate.source) lines.push(rateLine(rate));
   }
   const demo = demoWallets && after.clientWallet === demoWallets.clientWallet && after.developerWallet === demoWallets.developerWallet;
   if (demo && (before?.clientWallet !== after.clientWallet || before?.developerWallet !== after.developerWallet))
-    lines.push(`Payments use the built-in test accounts: the client pays from ${short(after.clientWallet)} and the provider is paid at ${short(after.developerWallet)}.`);
+    lines.push(`Payments use the built-in test accounts: client ${short(after.clientWallet)}, provider ${short(after.developerWallet)}.`);
   else for (const [field, label] of [['clientWallet', 'client funding address'],
     ['developerWallet', 'provider payment address']]) {
     if (after[field] !== before?.[field] && after[field])
@@ -125,12 +125,12 @@ function conversationTurn(previous, result, revision, previousTurn, demoWallets 
   const known = [...(previous?.notEnforced ?? []), ...(previous?.unsupportedTerms ?? [])];
   const moved = (result.notEnforced ?? []).filter(t => !known.includes(t));
   if (moved.length)
-    lines.push(`The contract will not enforce ${moved.length === 1 ? 'this condition' : 'these conditions'}: ${moved.slice(0, 5).map(t => `\u201c${t}\u201d`).join('; ')}${moved.length > 5 ? ` and ${moved.length - 5} more` : ''}. ${moved.length === 1 ? 'It stays' : 'They stay'} in your written agreement and ${moved.length === 1 ? 'is' : 'are'} listed on the review page; each payment is released only when the client approves it.`);
+    lines.push(`Not enforced by the contract (${moved.length === 1 ? 'it stays' : 'they stay'} in your written agreement and ${moved.length === 1 ? 'is' : 'are'} listed on the review page): ${moved.slice(0, 3).map(t => `“${t}”`).join('; ')}${moved.length > 3 ? ` and ${moved.length - 3} more` : ''}.`);
   // Say what happened to terms the user dealt with, so they are not silently dropped.
   const cleared = (previous?.unsupportedTerms ?? []).filter(t => !result.unsupportedTerms.includes(t)
     && !(result.notEnforced ?? []).includes(t));
   if (cleared.length && cleared.length <= 5)
-    lines.push(`${cleared.length === 1 ? 'This term no longer blocks' : 'These terms no longer block'} the draft: ${cleared.map(t => `\u201c${t}\u201d`).join('; ')}.`);
+    lines.push(`No longer blocking: ${cleared.map(t => `“${t}”`).join('; ')}.`);
   else if (cleared.length)
     lines.push(`${cleared.length} terms no longer block the draft.`);
   const separate = (result.separateTerms ?? []).length;
@@ -149,9 +149,11 @@ function conversationTurn(previous, result, revision, previousTurn, demoWallets 
     : question
       ? 'The draft is unchanged. The question below still needs an answer before confirmation.'
       : 'The draft is unchanged.');
-  if (result.status === 'readyForConfirmation') lines.push('The payment rules are complete. Review the summary before explicitly confirming.');
+  if (ready) lines.push(lines[0].startsWith('Ready for review')
+    ? 'Check the payment summary, then confirm.'
+    : 'Ready for review: check the payment summary, then confirm.');
   else if (result.status === 'unsupported') lines.push('Some terms remain outside the current contract’s capabilities, so the draft cannot be confirmed yet.');
-  return { revision, reply: lines.join(' '), question };
+  return { revision, reply: lines.join('\n'), question };
 }
 
 // In the local demo only the built-in test accounts can sign, so a first-time user is never asked

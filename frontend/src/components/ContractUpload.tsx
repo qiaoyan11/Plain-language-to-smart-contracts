@@ -1,9 +1,10 @@
-import { useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ACCEPTED,
   ContractFileError,
+  MAX_TEXT_CHARS,
   contractMessage,
   readContractFile,
   type ContractText,
@@ -16,10 +17,13 @@ import {
  */
 export function ContractUpload({
   disabled,
+  current,
   onText,
   children,
 }: {
   disabled: boolean;
+  /** What is in the message box now: a note the user typed is kept below the contract. */
+  current: string;
   onText: (text: string) => void;
   /** The message box: a contract can also be dropped onto it. */
   children: ReactNode;
@@ -32,13 +36,21 @@ export function ContractUpload({
     | { kind: "error"; message: string }
   >({ kind: "idle" });
   const [dragging, setDragging] = useState(false);
+  // Once the message is sent (or cleared) the note about the last file no longer applies.
+  useEffect(() => {
+    if (!current) setState((previous) => (previous.kind === "read" ? { kind: "idle" } : previous));
+  }, [current]);
 
   async function read(file: File | undefined) {
     if (!file || disabled) return;
     setState({ kind: "reading", name: file.name });
     try {
-      const contract = await readContractFile(file);
-      onText(contractMessage(contract));
+      // A new file replaces an earlier upload; anything else the user typed stays below it.
+      const note = current.startsWith("Contract file:") ? "" : current.trim();
+      const contract = await readContractFile(file, {
+        limit: Math.max(4000, MAX_TEXT_CHARS - note.length),
+      });
+      onText(note ? `${contractMessage(contract)}\n\n${note}` : contractMessage(contract));
       setState({ kind: "read", contract });
     } catch (error) {
       setState({
