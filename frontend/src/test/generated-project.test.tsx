@@ -329,7 +329,7 @@ describe("generated project operations", () => {
   it("does not show the previous-chain warning after the recovered project is deployed", async () => {
     serve(deployed, { ...context, recoveredOnFreshChain: true, deployment }, run);
     openPage();
-    await screen.findByText("Your generated contract is deployed on the local test chain.");
+    await screen.findByText(/^Your contract is ready\. Deposit .* to start\.$/);
     expect(
       screen.queryByText(/transactions from an earlier local test chain are not shown/i),
     ).toBeNull();
@@ -352,9 +352,8 @@ describe("generated project operations", () => {
     expect(screen.getByRole("button", { name: "Set up the escrow" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start another generation" })).toBeDisabled();
     serve(deployed, { ...context, deployment }, { ...run, generatedDeploymentEnabled: false });
-    expect(
-      await screen.findByText(deployment.contractAddress, {}, { timeout: 4500 }),
-    ).toBeVisible();
+    expect(await screen.findByText("In escrow now", {}, { timeout: 4500 })).toBeVisible();
+    expect(screen.getByText(deployment.contractAddress)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(deploy).toHaveBeenCalledTimes(1);
     expect(regenerate).not.toHaveBeenCalled();

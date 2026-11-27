@@ -249,7 +249,9 @@ export function DetailPage({ id }: { id: string }) {
         {generated && allPaid
           ? "All milestones are paid and the escrow is empty. This agreement is complete."
           : generated
-            ? "Your generated contract is deployed on the local test chain."
+            ? project.funded
+              ? "Approve each milestone once it has been delivered."
+              : `Your contract is ready. Deposit ${amountText(project.totalAmountWei, rate)} to start.`
             : reference
               ? "This project uses the handwritten reference contract."
               : hasDeployment
@@ -263,7 +265,9 @@ export function DetailPage({ id }: { id: string }) {
                       ? "Your contract passed its checks. Setting up the escrow on the local test chain…"
                       : "Your contract passed its checks. Set up the escrow on the local test chain to start the deposit and payments."
                     : context.confirmation
-                      ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
+                      ? running
+                        ? "Preparing your contract. This usually takes a minute or two."
+                        : "Prepare the contract from your confirmed payments."
                       : "The agreement changed. Review and confirm this version before generating."}
       </p>
       {context.recoveredOnFreshChain && !hasDeployment && (
@@ -330,11 +334,7 @@ export function DetailPage({ id }: { id: string }) {
               }}
             >
               <h2>Local escrow</h2>
-              <Row label="Contract address" value={deployment.contractAddress} mono />
-              <Row
-                label="Escrow balance"
-                value={`${formatWei(project.escrowBalanceWei)} ${currency}`}
-              />
+              <Row label="In escrow now" value={amountText(project.escrowBalanceWei, rate)} />
               <MilestoneLedger project={project} rate={rate} />
               {rate && <p className="-mt-4 mb-6 text-xs text-muted-foreground">{rateText(rate)}</p>}
               <OperationAssistant
@@ -354,6 +354,7 @@ export function DetailPage({ id }: { id: string }) {
               <TransactionHistory project={project} />
               <details className="mt-4">
                 <summary>Deployment details</summary>
+                <Row label="Contract address" value={deployment.contractAddress} mono />
                 <Row label="Local chain ID" value={deployment.chainId} />
                 <Row label="Generation run" value={deployment.runId} mono />
                 <Row label="Source hash" value={deployment.sourceHash} mono />

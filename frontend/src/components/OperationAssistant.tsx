@@ -8,6 +8,7 @@ import {
 } from "@/api/client";
 import type { ExchangeRate } from "@/api/types";
 import { amountText, inCurrency } from "@/lib/money";
+import { shortAddress } from "@/lib/address";
 
 /** Payment buttons and plain-language operations (Agent 3). The backend keeps the intent; this panel only shows it and asks for approval. */
 export function OperationAssistant({
@@ -136,7 +137,7 @@ export function OperationAssistant({
           </p>
           <p className="break-all" title={plan.payment.to}>
             {plan.intent?.action === "deposit" ? "Into the escrow" : "To the provider"}:{" "}
-            {`${plan.payment.to.slice(0, 6)}…${plan.payment.to.slice(-4)}`}
+            {shortAddress(plan.payment.to)}
           </p>
           <p>
             {plan.intent?.action === "deposit"

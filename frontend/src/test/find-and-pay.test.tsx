@@ -172,15 +172,19 @@ describe("milestone payments", () => {
     render(<MilestoneLedger project={project} />);
     const [deposit, first, second] = screen.getAllByRole("listitem");
     expect(deposit).toHaveTextContent("Funded");
-    expect(deposit).toHaveTextContent(`From ${client}`);
+    expect(deposit).toHaveTextContent(`From the client, ${client.slice(0, 6)}…${client.slice(-4)}`);
     expect(deposit).toHaveTextContent("Receipt · block 2 · 0xdeposit");
     expect(first).toHaveTextContent("1. Homepage");
     expect(first).toHaveTextContent("0.003 test ETH");
     expect(first).toHaveTextContent("Paid");
-    expect(first).toHaveTextContent(`Paid to the provider at ${developer}`);
+    expect(first).toHaveTextContent(
+      `Paid to the provider, ${developer.slice(0, 6)}…${developer.slice(-4)}`,
+    );
     expect(first).toHaveTextContent("Receipt · block 3 · 0xpaid1");
     expect(second).toHaveTextContent("Next: waiting for the client's approval");
-    expect(second).toHaveTextContent(`Pays the provider at ${developer}`);
+    expect(second).toHaveTextContent(
+      `Pays the provider, ${developer.slice(0, 6)}…${developer.slice(-4)}`,
+    );
     expect(second).not.toHaveTextContent("Receipt");
     expect(screen.getByText("1 of 2 milestones paid")).toBeVisible();
   });

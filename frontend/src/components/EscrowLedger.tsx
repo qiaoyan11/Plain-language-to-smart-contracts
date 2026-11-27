@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { formatWei, type Project } from "@/api/client";
 import type { ExchangeRate } from "@/api/types";
 import { amountText } from "@/lib/money";
+import { shortAddress } from "@/lib/address";
 
 const UNIT = "test ETH";
 type Transaction = Project["transactions"][number];
@@ -76,8 +77,8 @@ export function MilestoneLedger({
                 ? "Awaiting deposit"
                 : "Not deployed yet"}
           </p>
-          <p className="mt-1 break-all text-xs text-muted-foreground">
-            From {project.clientWallet}
+          <p className="mt-1 text-xs text-muted-foreground" title={project.clientWallet}>
+            From the client, {shortAddress(project.clientWallet)}
           </p>
           {deposit && <Receipt tx={deposit} />}
         </li>
@@ -95,7 +96,10 @@ export function MilestoneLedger({
                 {milestoneStatus(project, m)}
               </p>
               <p className="mt-1 break-all text-xs text-muted-foreground">
-                {m.paid ? "Paid to" : "Pays"} the provider at {project.developerWallet}
+                <span title={project.developerWallet}>
+                  {m.paid ? "Paid to" : "Pays"} the provider,{" "}
+                  {shortAddress(project.developerWallet)}
+                </span>
               </p>
               {receipt && <Receipt tx={receipt} />}
             </li>
@@ -125,14 +129,14 @@ export function TransactionHistory({ project }: { project: Project }) {
   );
 }
 
-/** What the local demo does and does not do, shown next to payment controls. */
+/** What the local demo does and does not do, folded beside the payment controls. */
 export function DemoLimits() {
   return (
-    <aside
+    <details
       className="mt-6 rounded-md border border-border p-4 text-sm leading-relaxed"
       aria-label="About this local demo"
     >
-      <h2 className="text-sm">About this local demo</h2>
+      <summary className="cursor-pointer font-medium">About this local demo</summary>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
         <li>
           Everything runs on a test chain on this computer. Built-in test accounts sign each
@@ -144,7 +148,7 @@ export function DemoLimits() {
         </li>
         <li>The client alone decides whether each delivery is acceptable.</li>
       </ul>
-    </aside>
+    </details>
   );
 }
 
@@ -170,7 +174,7 @@ export function ProjectLink() {
           ? "Link copied. It opens this project on this computer while the local demo is running."
           : state === "failed"
             ? "This browser blocked copying. Copy the link below instead."
-            : "Save the link to come back later. Every saved project is also listed under Your projects."}
+            : ""}
       </p>
       {state === "failed" && (
         <input
@@ -187,10 +191,5 @@ export function ProjectLink() {
 
 /** Explains that refreshing only reads state. */
 export function RefreshHelp() {
-  return (
-    <p className="text-xs text-muted-foreground">
-      Refresh status reloads the saved project and the chain state. It never sends a transaction or
-      starts a model request.
-    </p>
-  );
+  return <p className="text-xs text-muted-foreground">Reloads the project. It sends nothing.</p>;
 }

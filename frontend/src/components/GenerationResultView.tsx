@@ -114,7 +114,7 @@ export function GenerationResultView({
       )}
       {passed && report && (
         <p className="mt-3 text-sm leading-relaxed">
-          {`The contract compiles, static analysis found no high- or medium-risk issues${clauseSummary(report) ? `, and ${clauseSummary(report)} payment-rule tests passed` : ", and the payment-rule tests passed"}. Open the technical details to see each check, the repair attempts and the Solidity source.`}
+          {`It compiles, static analysis found no high- or medium-risk issues, and ${clauseSummary(report) ? `${clauseSummary(report)} payment-rule tests passed` : "the payment-rule tests passed"}.`}
         </p>
       )}
       {!obsolete && report && (

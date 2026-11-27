@@ -1,5 +1,6 @@
 import type { ClarifyResult, DraftSession } from "@/api/types";
 import { amountText, rateText } from "@/lib/money";
+import { shortAddress } from "@/lib/address";
 import { Row } from "./Shell";
 
 export function draftReady(session: DraftSession | undefined) {
@@ -88,13 +89,13 @@ export function DraftSummary({
         <Row
           stacked
           label="Client · deposits and approves"
-          value={spec.clientWallet || "Address needed"}
+          value={spec.clientWallet ? shortAddress(spec.clientWallet) : "Address needed"}
           mono
         />
         <Row
           stacked
           label="Provider · receives payments"
-          value={spec.developerWallet || "Address needed"}
+          value={spec.developerWallet ? shortAddress(spec.developerWallet) : "Address needed"}
           mono
         />
         {rates.map((item) => (
