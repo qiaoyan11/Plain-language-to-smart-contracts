@@ -10,6 +10,10 @@ from agent1 import currency
 from agent1.model import extract
 from agent1.prompts import INSTRUCTIONS
 from shared.handoff import MAX_UINT, ROOT, validate
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
 
 # What the model extracted on each live turn, next to what the program made of it. Local and
 # git-ignored: it shows why a real request needed a question, and is training data for a
@@ -25,9 +29,19 @@ def record_trace(payload, terms, result, error=None):
                                    ('status', 'questions', 'unsupportedTerms', 'notEnforced', 'exchangeRates', 'draftSpec')}}
     try:
         TRACE.parent.mkdir(parents=True, exist_ok=True)
-        lines = TRACE.read_text().splitlines() if TRACE.exists() else []
-        lines = (lines + [json.dumps(entry, ensure_ascii=False)])[-TRACE_LINES:]
-        TRACE.write_text('\n'.join(lines) + '\n')
+        # Several conversations can finish at once: read, trim and rewrite under one file lock so
+        # no turn overwrites another's line. Without fcntl (Windows) lines are only appended.
+        with TRACE.open('a+', encoding='utf-8') as stream:
+            if fcntl is None:
+                stream.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                return
+            fcntl.flock(stream, fcntl.LOCK_EX)
+            stream.seek(0)
+            lines = [line for line in stream.read().splitlines() if line.strip()]
+            lines = (lines + [json.dumps(entry, ensure_ascii=False)])[-TRACE_LINES:]
+            stream.seek(0)
+            stream.truncate()
+            stream.write('\n'.join(lines) + '\n')
     except OSError:
         pass  # Tracing never affects the conversation.
 
@@ -425,6 +439,44 @@ def round_step(value):
     return int((Fraction(value) / currency.STEP + Fraction(1, 2)).__floor__()) * currency.STEP
 
 
+def computed_shares(rows, milestones, total, sources, words):
+    """Shares the model worked out although the user only said "the rest" or "equal payments".
+
+    The model is asked to quote the user's words, but sometimes quotes its own arithmetic
+    ("£1,300" for "the rest of £1,800"). Such a figure is never taken as the amount. When the user
+    did write the matching share word and the figure agrees with it, the share word decides:
+    the program computes the amount from the agreed total, exactly as if the word had been quoted.
+    """
+    said = [' '.join(source.casefold().split()) for source in sources]
+
+    def wrote(kind):
+        return any(_written(word, text) for group, _, group_words in SHARE_GROUPS if group == kind
+                   for word in group_words for text in said)
+
+    figures = {}
+    for row, milestone in zip(rows, milestones):
+        quote = row['amount']
+        if milestone['amountWei'] is not None or milestone['id'] in words or not isinstance(quote, str):
+            continue
+        fiat = currency.parse(quote)
+        wei = currency.wei_for(fiat[0], fiat[1], sources) if fiat else None
+        if wei:
+            figures[milestone['id']] = wei
+    if not figures:
+        return {}
+    total, tolerance = int(total), currency.STEP * len(milestones)
+    open_ids = [m['id'] for m in milestones if m['amountWei'] is None and m['id'] not in words]
+    if wrote('equal') and len(figures) == len(milestones) == len(open_ids) > 1:
+        values = list(figures.values())
+        if max(values) - min(values) <= tolerance and abs(sum(values) - total) <= tolerance:
+            return {mid: ('equal', None) for mid in open_ids}
+    if wrote('rest') and len(open_ids) == 1 and open_ids[0] in figures:
+        known = sum(int(m['amountWei']) for m in milestones if m['amountWei'])
+        if abs(figures[open_ids[0]] - (total - known)) <= tolerance:
+            return {open_ids[0]: ('rest', None)}
+    return {}
+
+
 def fill_natural_amounts(rows, milestones, total, sources):
     """Resolve "half", "the rest" and "equal" rows from the agreed total; returns resolved ids."""
     if not total:
@@ -432,6 +484,7 @@ def fill_natural_amounts(rows, milestones, total, sources):
     words = {m['id']: natural_word(row['amount'], sources) for row, m in zip(rows, milestones)
              if m['amountWei'] is None}
     words = {mid: word for mid, word in words.items() if word}
+    words.update(computed_shares(rows, milestones, total, sources, words))
     resolved = set()
     for mid, (kind, share) in words.items():
         if kind == 'fraction':

@@ -233,6 +233,29 @@ class EverydayRequestTests(unittest.TestCase):
         self.assertIsNone(self.run_case(message, '\u20ac800', ['half', 'the rest'])['draftSpec']['totalAmountWei'])
         self.assertIsNone(self.run_case(message, '$900', ['half', 'the rest'])['draftSpec']['totalAmountWei'])
 
+    def test_a_share_the_model_worked_out_follows_the_users_share_word(self):
+        # Live model quotes: it computed "£1,300" for "the rest" and "€3,000" for "equal payments".
+        wedding = ('Wedding photographer, \u00a31,800. \u00a3500 deposit to book the date, the rest after we get '
+                   'the edited photos. If she cancels we get the deposit back.')
+        result = self.run_case(wedding, '\u00a31,800', ['\u00a3500', '\u00a31,300'], rates={'GBP': '1271.31'})
+        amounts = self.amounts(result)
+        self.assertEqual(sum(amounts), int(result['draftSpec']['totalAmountWei']))
+        self.assertAlmostEqual(amounts[1] / amounts[0], 1300 / 500, places=4)
+        mvp = "We're paying a dev team \u20ac9,000 for an MVP in 3 equal payments: designs, beta, launch."
+        result = self.run_case(mvp, '\u20ac9,000', ['\u20ac3,000'] * 3, rates={'EUR': '1520'})
+        amounts = self.amounts(result)
+        self.assertEqual(sum(amounts), int(result['draftSpec']['totalAmountWei']))
+        self.assertLessEqual(max(amounts) - min(amounts), currency.STEP)
+
+    def test_a_worked_out_figure_without_the_users_word_is_still_asked_about(self):
+        # Without "the rest" in the user's text, or with a figure that does not fit, it is asked.
+        message = 'Wedding photographer, \u00a31,800. \u00a3500 to book the date, then after the edited photos.'
+        result = self.run_case(message, '\u00a31,800', ['\u00a3500', '\u00a31,300'], rates={'GBP': '1271.31'})
+        self.assertIsNone(result['draftSpec']['milestones'][1]['amountWei'])
+        message = 'Wedding photographer, \u00a31,800. \u00a3500 to book the date, the rest after the photos.'
+        result = self.run_case(message, '\u00a31,800', ['\u00a3500', '\u00a31,000'], rates={'GBP': '1271.31'})
+        self.assertIsNone(result['draftSpec']['milestones'][1]['amountWei'])
+
     def test_a_share_word_counts_only_as_a_whole_word_the_user_wrote(self):
         from agent1.service import natural_word
         self.assertIsNone(natural_word('the rest', ['Redo my restaurant website for $2,400.']))
