@@ -215,7 +215,7 @@ export function DetailPage({ id }: { id: string }) {
                   ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
                   : "The agreement changed. Review and confirm this version before generating."}
       </p>
-      {context.recoveredOnFreshChain && (
+      {context.recoveredOnFreshChain && !hasDeployment && (
         <p className="mt-3 text-sm text-muted-foreground">
           Transactions from the previous local chain are unavailable.
         </p>

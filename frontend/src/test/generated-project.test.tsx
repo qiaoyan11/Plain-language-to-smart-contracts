@@ -305,6 +305,12 @@ describe("generated project operations", () => {
     expect(deploy).not.toHaveBeenCalled();
     expect(regenerate).not.toHaveBeenCalled();
   });
+  it("does not show the previous-chain warning after the recovered project is deployed", async () => {
+    serve(deployed, { ...context, recoveredOnFreshChain: true, deployment }, run);
+    openPage();
+    await screen.findByText("Your generated contract is deployed on the local test chain.");
+    expect(screen.queryByText(/transactions from the previous local chain are unavailable/i)).toBeNull();
+  });
   it("automatically reconnects to a passed run after a lost deployment response without resending it", async () => {
     serve(project, context, run);
     const deploy = vi.spyOn(api, "deployGeneration").mockImplementation(async () => {

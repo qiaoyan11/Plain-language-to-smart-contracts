@@ -1,5 +1,6 @@
 """Bounded generation/validation/repair graph. Only trusted tools issue reports."""
 import copy
+import hashlib
 import time
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
@@ -10,6 +11,15 @@ from agent2.compiler import compile_bundle
 from shared.handoff import ROOT, validate, validate_request, validate_response, source_hash
 
 MAX_REPAIRS = 5  # operational ceiling, not the formal experiment budget
+LEGACY_INTERFACE_SHA256 = 'ceb8eee4699298bcdba7f4d93237ca486331aad3133535ea8bc125d0ced2f436'
+
+
+def is_frozen_interface(source):
+    """Allow existing runs with the original comment-only interface revision."""
+    if not isinstance(source, str):
+        return False
+    current = (ROOT / 'contracts/IMilestoneEscrow.sol').read_text()
+    return source == current or hashlib.sha256(source.encode('utf-8')).hexdigest() == LEGACY_INTERFACE_SHA256
 
 
 class State(TypedDict, total=False):
@@ -71,7 +81,7 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
             if config['validationMode'] != 'development':
                 raise ValueError('Resuming source requires fresh development validation.')
             validate('SourceBundle', initial_bundle)
-            if initial_bundle['sources'].get('IMilestoneEscrow.sol') != (ROOT / 'contracts/IMilestoneEscrow.sol').read_text():
+            if not is_frozen_interface(initial_bundle['sources'].get('IMilestoneEscrow.sol')):
                 raise ValueError('Resumed source must retain the frozen interface.')
             result = {'status': 'generated', 'sourceBundle': copy.deepcopy(initial_bundle), 'validationReport': None,
                       'attempts': [{'attempt': 0, 'sourceHash': initial_bundle['sourceHash'], 'reportId': None, 'feedbackUsed': []}]}
