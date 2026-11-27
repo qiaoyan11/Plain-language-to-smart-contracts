@@ -32,6 +32,7 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
+| 2026-11-27 | GenerationRun gains an optional, advisory `progress` field while running (shared/GENERATION_API_V1.md); the Python worker reports stages on stderr as `ACCORD_PROGRESS {json}`. Confirming an agreement in the browser starts generation, and the same tab then deploys the checked contract to the local chain without another click. | The user's direction: treat users as beginners and remove steps they cannot judge. Generation and deployment are one "Set up contract" stage; only the confirmation made in that tab is deployed automatically, so older projects keep their explicit button. |
 | 2026-11-27 | ClarifyResult gains optional `notEnforced` and `exchangeRates` (shared/schemas, INTERFACES.md). Conditions the contract cannot enforce no longer block confirmation; amounts in other currencies are converted at the live ETH price; local drafts use the built-in test accounts without asking. | The user's direction: a first-time user describes needs in everyday words, so the system should work out currency, wallets and unenforceable conditions instead of asking. Required fields are unchanged. |
 | 2026-11-27 | Add read-only `GET /api/projects` and `GET /api/drafts` to Project API v2 (documented in shared/PROJECT_API_V2.md). Existing endpoints and fields are unchanged. | A first-time user who loses a project URL must be able to find the project or unfinished conversation again. The lists never sign or start model jobs. |
 | 2026-11-27 | 冻结的 Solidity 接口及共享源码样例中的注释改为英文，接口签名和规则不变；生成提示词明确要求英文源码。旧项目的已生成源码和交易历史按原样保留。 | 避免中文接口注释被原样复制到新生成的合约中，同时保持已部署项目可追溯。 |
@@ -80,6 +81,15 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-27 · Jiahao Zhang · 合同上传、真实合同实测和流程简化
+
+- 合同上传：PDF、Word、文本都能直接拖进来或选文件，在浏览器里读取，用户确认文字后再发送；扫描件、.doc、照片会给出说明。长合同只保留金额、付款、交付和验收相关的段落。
+- 真实合同实测，全部走完全流程直到付清：用户本人的转租合同和求职服务合同；上海政府采购合同（727 万元，付款节点 10%、50%、审价后付至 97%、质保尾款）；SEC 公开的 Pelican Delivers 软件开发合同（$279,000，5 期各 20%）；另外是日常一句话描述的需求。
+- 修复：能识别"付至 97%"这类累计百分比；模型把"800 dollars"写成"$800"、自己算出"剩下的"或"等额"的金额时，以用户原话为准；PDF 表头字段和页码不再混在正文里；并发对话时 trace 不再互相覆盖；Agent 2 首轮编译失败的两个常见原因已写进提示词。
+- 流程：从 5 步改为 4 步（描述 → 确认 → 准备合同 → 存款和付款）。确认后系统自动生成并部署，生成过程中显示进度。确认页用三句话说明合同会怎么执行。全站文案缩短，金额先显示约定币种，地址显示缩写。
+- 日常需求评测 14/14 通过（13 个一条消息就进入确认）。
+- 测试：合约 26，HTTP 60，交接 OK，Agent 1/2/3 为 65/29/72，前端 111，tsc 通过。需要老板决定：无。
 
 ### 2026-11-27 · Jiahao Zhang · Everyday requests reach confirmation without format knowledge
 

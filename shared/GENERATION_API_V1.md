@@ -62,6 +62,10 @@ type GenerationRun = {
     message: string;
   } | null;
   generatedDeploymentEnabled: boolean; // eligible to deploy now
+  // Optional, only while status is 'running': the stage the worker last reported. Advisory;
+  // removed when the run ends. Stages: writing, checking, repairing, finishing.
+  progress?: { stage: 'writing' | 'checking' | 'repairing' | 'finishing'; attempt: number;
+    maxAttempts: number; failedChecks: Array<'compilation' | 'staticAnalysis' | 'clauseTests'>; at: string };
 };
 ```
 
