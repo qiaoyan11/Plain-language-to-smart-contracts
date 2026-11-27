@@ -3,8 +3,10 @@ const { randomUUID } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const { runPython } = require('./python-bridge.cjs');
 const { validateResponse } = require('../shared/handoff.cjs');
+// AGENT2_MODEL names a model served at AGENT2_BASE_URL (for example a local fine-tuned model);
+// set both in the launch environment. Without them the pinned hosted model is used.
 const RUN_CONFIG = Object.freeze({ validationMode: 'development', maxRepairs: 3,
-  feedbackSetting: 'C', model: 'gpt-5.4-mini-2026-03-17' });
+  feedbackSetting: 'C', model: process.env.AGENT2_MODEL || 'gpt-5.4-mini-2026-03-17' });
 const copy = value => structuredClone(value);
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
 function fields(body, names) {

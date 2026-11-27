@@ -5,7 +5,7 @@ import time
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langsmith import tracing_context
-from agent2.model import call_model, ModelError, ALLOWED_MODELS
+from agent2.model import call_model, ModelError, model_allowed
 from agent2.prompts import build_messages, build_repair_messages, PROMPT_VERSION, REPAIR_PROMPT_VERSION
 from agent2.compiler import compile_bundle
 from shared.handoff import ROOT, validate, validate_request, validate_response, source_hash
@@ -73,8 +73,9 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
             raise ValueError('A/baseline cannot repair.')
         if config['validationMode'] == 'none' and (config['maxRepairs'] != 0 or config['feedbackSetting'] not in ('A', 'baseline')):
             raise ValueError('Compilation smoke mode requires A/baseline and maxRepairs=0.')
-        if config['model'] not in ALLOWED_MODELS:
-            raise ValueError('Select the supported GPT-5.4 mini model explicitly for a live run.')
+        if not model_allowed(config['model']):
+            raise ValueError('Select the supported GPT-5.4 mini model, or the AGENT2_MODEL served at '
+                             'AGENT2_BASE_URL, explicitly for a live run.')
         system, user = build_messages(request['payload']['spec'])
         result = empty_result('toolError')
         if initial_bundle is not None:

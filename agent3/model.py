@@ -1,4 +1,5 @@
-"""One bounded Responses API call that classifies a client sentence. No retries."""
+"""One bounded model call that classifies a client sentence: the hosted Responses API, or an
+OpenAI-compatible server set by AGENT3_BASE_URL (for a locally served fine-tuned model). No retries."""
 import json
 import os
 import threading
@@ -6,6 +7,7 @@ import time
 import httpx
 from dotenv import load_dotenv
 from shared.handoff import ROOT
+from shared.local_model import as_responses, chat_request, configured
 
 DEFAULT_MODEL = 'gpt-5.6-luna'
 ALLOWED_MODELS = {DEFAULT_MODEL}
@@ -63,24 +65,33 @@ def read_output(data):
 
 
 def call_model(system, user, model=None):
-    model = model or os.getenv('AGENT3_MODEL', DEFAULT_MODEL)
-    if model not in ALLOWED_MODELS:
-        raise ModelError('MODEL_CONFIG: unsupported model.')
     load_dotenv(ROOT / '.env', override=False, interpolate=False)
-    key = os.getenv('OPENAI_API_KEY', '').strip()
-    if not key:
-        raise ModelError('MODEL_CONFIG: OPENAI_API_KEY is missing.')
-    body = {'model': model, 'instructions': system, 'input': user, 'store': False,
-            'reasoning': {'effort': 'low'}, 'max_output_tokens': 500,
-            'text': {'format': {'type': 'json_schema', 'name': 'agent3_intent',
-                                'strict': True, 'schema': OUTPUT_SCHEMA}}}
+    try:
+        server = configured('AGENT3')
+    except ValueError as error:
+        raise ModelError(f'MODEL_CONFIG: {error}') from None
+    model = model or (server['model'] if server else os.getenv('AGENT3_MODEL', DEFAULT_MODEL))
+    if (model != server['model']) if server else (model not in ALLOWED_MODELS):
+        raise ModelError('MODEL_CONFIG: unsupported model.')
+    if server:
+        url, key = server['endpoint'] + '/chat/completions', server['key']
+        body = chat_request(model, system, user, 'agent3_intent', OUTPUT_SCHEMA, 500)
+    else:
+        url, key = 'https://api.openai.com/v1/responses', os.getenv('OPENAI_API_KEY', '').strip()
+        if not key:
+            raise ModelError('MODEL_CONFIG: OPENAI_API_KEY is missing.')
+        body = {'model': model, 'instructions': system, 'input': user, 'store': False,
+                'reasoning': {'effort': 'low'}, 'max_output_tokens': 500,
+                'text': {'format': {'type': 'json_schema', 'name': 'agent3_intent',
+                                    'strict': True, 'schema': OUTPUT_SCHEMA}}}
+    headers = {'Authorization': 'Bearer ' + key} if key else {}
     start = time.monotonic()
 
     def fetch():
         try:
-            with httpx.Client(timeout=httpx.Timeout(8, connect=3), follow_redirects=False) as client:
-                with client.stream('POST', 'https://api.openai.com/v1/responses',
-                                   headers={'Authorization': 'Bearer ' + key}, json=body) as response:
+            with httpx.Client(timeout=httpx.Timeout(8, connect=3), follow_redirects=False,
+                              trust_env=not (server and server['loopback'])) as client:
+                with client.stream('POST', url, headers=headers, json=body) as response:
                     if response.status_code != 200:
                         raise ModelError(f'MODEL_HTTP_{response.status_code}')
                     chunks = bytearray()
@@ -90,7 +101,8 @@ def call_model(system, user, model=None):
                             raise ModelError('MODEL_NETWORK: total deadline exceeded.')
                         if len(chunks) > 1024 * 1024:
                             raise ModelError('MODEL_SIZE: response exceeds 1 MiB.')
-                    return json.loads(chunks)
+                    data = json.loads(chunks)
+                    return as_responses(data) if server else data
         except ModelError:
             raise
         except httpx.HTTPError:

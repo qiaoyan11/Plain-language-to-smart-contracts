@@ -284,4 +284,58 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(run['stopReason'],'passed')
 
 
+class LocalModelServerTests(unittest.TestCase):
+    """AGENT2_BASE_URL swaps the hosted API for an OpenAI-compatible server, such as a local fine-tuned model."""
+    LOCAL = {'AGENT2_BASE_URL': 'http://127.0.0.1:8000/v1', 'AGENT2_MODEL': 'escrow-coder-ft'}
+
+    def completion(self, content, finish='stop'):
+        return {'id': 'local-1', 'model': 'escrow-coder-ft', 'usage': {'prompt_tokens': 5},
+                'choices': [{'finish_reason': finish, 'message': {'role': 'assistant', 'content': content}}]}
+
+    def call(self, handler, model='escrow-coder-ft', env=None):
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        with patch('agent2.model.load_dotenv'), patch.dict('os.environ', env or self.LOCAL, clear=True), \
+                patch('agent2.model.httpx.Client', return_value=client):
+            return call_model('system', 'user', model)
+
+    def test_local_server_receives_a_strict_schema_chat_request_without_a_hosted_key(self):
+        seen = []
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(200, json=self.completion(json.dumps({'source': GOOD_SOURCE})))
+        result = self.call(handler)
+        self.assertEqual(str(seen[0].url), 'http://127.0.0.1:8000/v1/chat/completions')
+        self.assertNotIn('authorization', seen[0].headers)
+        body = json.loads(seen[0].content)
+        self.assertEqual(body['model'], 'escrow-coder-ft')
+        self.assertTrue(body['response_format']['json_schema']['strict'])
+        self.assertEqual(result['source'], GOOD_SOURCE)
+        self.assertEqual(result['metadata']['provider'], 'openai-compatible:127.0.0.1')
+        self.assertEqual(result['metadata']['returnedModel'], 'escrow-coder-ft')
+
+    def test_local_output_uses_the_same_validation_as_the_hosted_api(self):
+        for content, finish in (('not json', 'stop'), (json.dumps({'source': GOOD_SOURCE}), 'length')):
+            with self.subTest(finish=finish):
+                result = self.call(lambda request: httpx.Response(200, json=self.completion(content, finish)))
+                self.assertIsNone(result['source'])
+                self.assertTrue(result['error'].startswith('MODEL_'))
+
+    def test_local_server_runs_only_its_configured_model_and_a_safe_endpoint(self):
+        never = lambda request: self.fail('must not send')
+        with self.assertRaisesRegex(ModelError, 'MODEL_CONFIG'):
+            self.call(never, model=DEFAULT_MODEL)
+        for env in ({'AGENT2_BASE_URL': 'http://192.168.1.5:8000/v1', 'AGENT2_MODEL': 'escrow-coder-ft'},
+                    {'AGENT2_BASE_URL': 'http://127.0.0.1:8000/v1'}):
+            with self.subTest(env=env), self.assertRaisesRegex(ModelError, 'MODEL_CONFIG'):
+                self.call(never, env=env)
+
+    def test_generation_graph_accepts_the_configured_local_model(self):
+        request = copy.deepcopy(REQUEST)
+        request['payload']['runConfig']['model'] = 'escrow-coder-ft'
+        with patch('agent2.model.load_dotenv'), patch.dict('os.environ', self.LOCAL, clear=True):
+            run = run_generation(request, model_call=lambda *args: reply(GOOD_SOURCE),
+                                 compiler=lambda *args: {'status': 'passed'})
+        self.assertNotEqual(run['response']['status'], 'error')
+
+
 if __name__=='__main__':unittest.main()
