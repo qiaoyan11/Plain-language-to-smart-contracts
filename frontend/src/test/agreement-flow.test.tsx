@@ -514,7 +514,7 @@ describe("honest generation results", () => {
   it("completed transport with failed checks is not displayed as a pass", () => {
     render(<GenerationResultView run={run} currentVersion={1} />);
     expect(screen.getByText("Contract checks did not pass")).toBeTruthy();
-    expect(screen.queryByText("Development checks passed")).toBeNull();
+    expect(screen.queryByText("Automatic checks passed")).toBeNull();
     expect(screen.queryByRole("button", { name: /deploy/i })).toBeNull();
   });
   it("discards results belonging to an older agreement version", () => {

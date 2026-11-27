@@ -13,6 +13,9 @@ export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Describe your agreement · Accord" }] }),
   component: CreatePage,
 });
+const EXAMPLE =
+  "Maya Chen is hiring Leo Park to build a website for her bakery, Golden Crumb. The total price is 0.01 ETH, paid in two milestones: 0.003 ETH when Maya approves the homepage design, and 0.007 ETH when she approves the finished site with online ordering.";
+
 export function CreatePage() {
   const nav = useNavigate();
   const cache = useQueryClient();
@@ -128,8 +131,11 @@ export function CreatePage() {
     }
   }
   const input = session?.pendingMessage?.content ?? message;
+  const walletQuestion = ["clientWallet", "developerWallet"].includes(
+    latestDraftQuestion(session)?.field ?? "",
+  );
   return (
-    <Shell step="Describe & refine">
+    <Shell step="Describe & refine" progress={1}>
       <h1>What would you like to agree on?</h1>
       <p className="intro">
         Paste your contract or describe the work and payment terms. Answer the questions, then
@@ -179,6 +185,19 @@ export function CreatePage() {
                 disabled={Boolean(occupied || session?.pendingMessage)}
                 placeholder="Who is doing the work, what will they deliver, and when should they be paid?"
               />
+              {!session?.messages.length && !session?.pendingMessage && !input.trim() && (
+                <div>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="px-0"
+                    disabled={occupied}
+                    onClick={() => setMessage(EXAMPLE)}
+                  >
+                    Not sure what to write? Fill in an example
+                  </Button>
+                </div>
+              )}
               <Button className="mt-3" type="submit" disabled={disabled || !input.trim()}>
                 {occupied
                   ? "Updating agreement…"
@@ -191,11 +210,17 @@ export function CreatePage() {
                 Messages may use a paid AI model. Your conversation and
                 draft are saved on this local backend.
               </p>
+              {context.data?.clarificationEnabled && !session?.pendingMessage && walletQuestion && (
+                <p className="mt-4 text-sm">
+                  This demo uses two built-in test wallets. Choose <strong>Use local test accounts</strong>{" "}
+                  to answer the wallet question.
+                </p>
+              )}
               {context.data?.clarificationEnabled && !session?.pendingMessage && (
                 <Button
                   className="mt-3"
                   type="button"
-                  variant="outline"
+                  variant={walletQuestion ? "default" : "outline"}
                   disabled={disabled}
                   onClick={() =>
                     send(
@@ -249,14 +274,16 @@ export function CreatePage() {
           {failure}
         </p>
       )}
-      <Button
-        variant="link"
-        className="mt-4 px-0"
-        disabled={working}
-        onClick={() => void refresh()}
-      >
-        Refresh status
-      </Button>
+      {(id || failure) && (
+        <Button
+          variant="link"
+          className="mt-4 px-0"
+          disabled={working}
+          onClick={() => void refresh()}
+        >
+          Refresh status
+        </Button>
+      )}
     </Shell>
   );
 }

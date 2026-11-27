@@ -26,7 +26,7 @@ function milestoneLabel(spec, id) {
 }
 function primaryQuestion(result) {
   if (result.unsupportedTerms.length) return { field: 'unsupportedTerms.0',
-    question: `The current contract cannot enforce "${result.unsupportedTerms[0]}". Should this remain a draft, or have both parties agreed a replacement?` };
+    question: `The contract can't enforce "${result.unsupportedTerms[0]}" as written. How should it be handled? You can turn it into something the contract supports (for example, a milestone the client approves), agree to keep it in a separate written agreement, or leave this draft open.` };
   const q = [...result.questions].sort((a, b) => questionPriority(a.field) - questionPriority(b.field)
     || a.field.localeCompare(b.field, 'en', { numeric: true }))[0];
   if (!q) return null;

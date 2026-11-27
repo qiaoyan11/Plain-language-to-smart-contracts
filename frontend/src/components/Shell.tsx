@@ -2,7 +2,49 @@ import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { FileText } from "lucide-react";
 
-export function Shell({ step, children }: { step: string; children: ReactNode }) {
+const FLOW = ["Describe", "Confirm", "Generate & check", "Deploy", "Fund & pay"] as const;
+
+/** The five stages of an agreement, so a first-time user can see where they are and what comes next. */
+function FlowSteps({ current, complete }: { current: number; complete: boolean }) {
+  return (
+    <ol aria-label="Agreement progress" className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
+      {FLOW.map((label, index) => {
+        const number = index + 1;
+        const done = complete || number < current;
+        const active = !complete && number === current;
+        return (
+          <li
+            key={label}
+            aria-current={active ? "step" : undefined}
+            className={`flex items-center gap-2 ${active ? "font-semibold text-foreground" : done ? "text-primary" : "text-muted-foreground"}`}
+          >
+            <span
+              aria-hidden="true"
+              className={`flex size-5 items-center justify-center rounded-full border text-[10px] ${active ? "border-foreground" : done ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}
+            >
+              {done ? "✓" : number}
+            </span>
+            {label}
+            {done && <span className="sr-only">(done)</span>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+export function Shell({
+  step,
+  progress,
+  complete = false,
+  children,
+}: {
+  step: string;
+  /** 1–5 for pages inside the agreement flow; omit elsewhere. */
+  progress?: number;
+  complete?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div className="min-h-screen">
       <div className="prototype-label">
@@ -13,24 +55,34 @@ export function Shell({ step, children }: { step: string; children: ReactNode })
           <FileText className="size-5 text-primary" />
           Accord
         </Link>
-        <nav aria-label="Main" className="flex items-center gap-5 text-xs">
+        <nav aria-label="Main" className="flex items-center gap-5 text-sm">
           <Link to="/projects" className="font-medium text-primary underline underline-offset-4">
             Your projects
-          </Link>
-          <Link to="/reference-demo" className="text-muted-foreground underline underline-offset-4">
-            Reference payment demo
           </Link>
         </nav>
       </header>
       <main className="mx-auto max-w-3xl px-6 pb-20">
-        <div className="mb-9 border-t border-border pt-5 text-xs text-muted-foreground">
-          Agreement <span className="mx-2">/</span> {step}
+        <div className="mb-9 border-t border-border pt-5">
+          {progress ? (
+            <FlowSteps current={progress} complete={complete} />
+          ) : (
+            <span className="sr-only">{step}</span>
+          )}
         </div>
         {children}
       </main>
-      <footer className="mx-auto max-w-3xl border-t border-border px-6 py-5 text-xs leading-relaxed text-muted-foreground">
-        This local demo saves drafts, confirmed rules, checks and test-chain receipts on this
-        computer. After a restart, open Your projects or the same project link to continue.
+      <footer className="mx-auto max-w-3xl space-y-2 border-t border-border px-6 py-5 text-xs leading-relaxed text-muted-foreground">
+        <p>
+          This local demo saves drafts, confirmed rules, checks and test-chain receipts on this
+          computer. After a restart, open Your projects or the same project link to continue.
+        </p>
+        <p>
+          For developers:{" "}
+          <Link to="/reference-demo" className="underline underline-offset-4">
+            reference payment demo
+          </Link>{" "}
+          with a handwritten contract and no AI.
+        </p>
       </footer>
     </div>
   );

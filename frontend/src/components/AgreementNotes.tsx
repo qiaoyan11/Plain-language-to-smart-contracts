@@ -21,8 +21,8 @@ export function AgreementNotes({ workspace }: { workspace: Workspace | null }) {
           </p>
         )}
         <p className="text-muted-foreground">
-          This text is kept in this browser tab for human review. It is not sent to Agent 2 or
-          enforced on-chain. Copy it separately if you need a permanent record.
+          This text is kept in this browser tab for human review. It is not used to generate the
+          contract or enforced on-chain. Copy it separately if you need a permanent record.
         </p>
       </div>
     </details>

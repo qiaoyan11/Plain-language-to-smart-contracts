@@ -499,14 +499,14 @@ class ReportTest(unittest.TestCase):
     def test_deposit_confirmed(self):
         r = report_result(self.payload('funded', 'deposit'))
         self.assertEqual(r['outcome'], 'confirmed')
-        self.assertIn('0.01 ETH', r['summary'])
+        self.assertIn('0.01 test ETH', r['summary'])
         self.assertIn('block 7', r['summary'])
 
     def test_accept_confirmed_with_legacy_language_is_english(self):
         r = report_result(self.payload('paid1', 'acceptMilestone', 1, language='zh'))
         self.assertEqual(r['outcome'], 'confirmed')
         self.assertIn('Milestone #1', r['summary'])
-        self.assertIn('0.003 ETH', r['summary'])
+        self.assertIn('0.003 test ETH', r['summary'])
         self.assertIn('0x7099…79C8', r['summary'])
 
     def test_legacy_language_does_not_change_receipt_wording_or_outcome(self):
@@ -524,7 +524,7 @@ class ReportTest(unittest.TestCase):
     def test_deposit_after_partial_payout_reports_the_observed_balance(self):
         r = report_result(self.payload('paid1', 'deposit'))
         self.assertEqual(r['outcome'], 'confirmed')
-        self.assertIn('Current escrow balance: 0.007 ETH', r['summary'])
+        self.assertIn('Current escrow balance: 0.007 test ETH', r['summary'])
 
     def test_reverted_is_failed_even_if_state_looks_done(self):
         # A second acceptance reverts while the milestone is already paid: never report success.

@@ -50,7 +50,7 @@ export function ConfirmPage() {
     }
   }
   return (
-    <Shell step="Review & confirm">
+    <Shell step="Review & confirm" progress={2}>
       <h1>Review your agreement</h1>
       <p className="intro">
         Check the payment amounts and both wallets. Confirming saves this version for contract
@@ -83,6 +83,10 @@ export function ConfirmPage() {
               >
                 {busy ? "Confirming…" : "Confirm agreement"}
               </Button>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Next, Accord writes the contract and checks it automatically. Nothing is deployed and
+                no funds move until you choose to.
+              </p>
               {!draftReady(session) && (
                 <p className="mt-3 text-sm">
                   Return to the conversation to resolve the remaining terms before confirming.

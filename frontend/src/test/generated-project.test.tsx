@@ -321,7 +321,7 @@ describe("generated project operations", () => {
     openPage();
     fireEvent.click(await screen.findByRole("button", { name: "Deploy generated contract locally" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Reconnecting to the local server to check deployment status automatically"));
-    expect(screen.getByText("Development checks passed")).toBeVisible();
+    expect(screen.getByText("Automatic checks passed")).toBeVisible();
     expect(screen.getByRole("button", { name: "Deploy generated contract locally" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start another generation" })).toBeDisabled();
     serve(deployed, { ...context, deployment }, { ...run, generatedDeploymentEnabled: false });

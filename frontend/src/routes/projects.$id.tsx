@@ -157,6 +157,7 @@ export function DetailPage({ id }: { id: string }) {
     confirmation &&
     context.generatedDeploymentEnabled &&
     run?.generatedDeploymentEnabled;
+  const allPaid = project.milestones.every((m) => m.paid);
   const reconnecting = Boolean(reconnectDelay(query.error));
   const alertText = error || (reconnecting
     ? source
@@ -199,9 +200,15 @@ export function DetailPage({ id }: { id: string }) {
   }
   const generateHelp = source
     ? "Only needed if you want a different contract. A new AI generation replaces this checked version and may incur model costs."
-    : "Starts AI generation and contract checks. This request may incur model costs.";
+    : "Writes the contract with AI, then compiles it, runs static analysis and tests every payment rule. It usually takes a few minutes and may incur model costs.";
   return (
-    <Shell step={editing ? "Revise agreement" : generated ? "Local escrow" : "Generate & check"}>
+    <Shell
+      step={editing ? "Revise agreement" : generated ? "Local escrow" : "Generate & check"}
+      progress={
+        editing || !context.confirmation ? 2 : generated || reference ? 5 : canDeploy ? 4 : 3
+      }
+      complete={Boolean(generated && allPaid)}
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <h1>{spec.name}</h1>
         <span className="text-xs text-muted-foreground">
@@ -209,7 +216,9 @@ export function DetailPage({ id }: { id: string }) {
         </span>
       </div>
       <p className="intro">
-        {generated
+        {generated && allPaid
+          ? "All milestones are paid and the escrow is empty. This agreement is complete."
+          : generated
           ? "Your generated contract is deployed on the local test chain."
           : reference
             ? "This project uses the handwritten reference contract."

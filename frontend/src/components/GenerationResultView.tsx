@@ -1,9 +1,39 @@
+import type { ReactNode } from "react";
 import type { GenerationRun } from "@/api/types";
 const labels = {
   compilation: "Compilation",
   staticAnalysis: "Static analysis",
   clauseTests: "Payment-rule tests",
 };
+/** "24/24" from the clause-test report, when the validator states it. */
+function clauseSummary(
+  report: NonNullable<NonNullable<GenerationRun["result"]>["validationReport"]>,
+) {
+  const clauses = report.checks.find((check) => check.name === "clauseTests");
+  for (const finding of clauses?.findings ?? []) {
+    const match = /(\d+)\/(\d+)/.exec(finding.message);
+    if (match) return `${match[1]}/${match[2]}`;
+  }
+  return null;
+}
+/** Passed checks stay one click away; failures stay open so the reason is visible. */
+function Technical({
+  open,
+  title,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  children: ReactNode;
+}) {
+  if (open) return <>{children}</>;
+  return (
+    <details className="mt-4">
+      <summary>Technical details: {title.toLowerCase()}</summary>
+      {children}
+    </details>
+  );
+}
 export function GenerationResultView({
   run,
   currentVersion,
@@ -26,7 +56,7 @@ export function GenerationResultView({
       : run.status === "error"
         ? "Generation could not complete"
         : passed
-          ? "Development checks passed"
+          ? "Automatic checks passed"
           : result?.status === "toolError"
             ? "A tool could not finish"
             : "Contract checks did not pass";
@@ -35,8 +65,8 @@ export function GenerationResultView({
       <h2>{title}</h2>
       {run.status === "running" && (
         <p className="mt-3 text-sm text-muted-foreground">
-          You can refresh this page without restarting the run. Detailed results appear when the
-          worker finishes.
+          This usually takes a few minutes. You can refresh or leave this page without restarting
+          it; results appear here when the checks finish.
         </p>
       )}
       {obsolete && (
@@ -46,29 +76,36 @@ export function GenerationResultView({
         </p>
       )}
       {run.error && <p className="mt-3 text-sm text-destructive">{run.error.message}</p>}
+      {passed && report && (
+        <p className="mt-3 text-sm leading-relaxed">
+          {`The contract compiles, static analysis found no high- or medium-risk issues${clauseSummary(report) ? `, and ${clauseSummary(report)} payment-rule tests passed` : ", and the payment-rule tests passed"}. Open the technical details to see each check, the repair attempts and the Solidity source.`}
+        </p>
+      )}
       {!obsolete && report && (
-        <div className="my-5 space-y-3">
-          {report.checks.map((check) => (
-            <div key={check.name} className="rounded border border-border p-4">
-              <div className="flex flex-wrap justify-between gap-3 text-sm">
-                <span>{labels[check.name]}</span>
-                <strong
-                  className={check.status === "passed" ? "text-primary" : "text-muted-foreground"}
-                >
-                  {check.status}
-                </strong>
+        <Technical open={!passed} title="Checks">
+          <div className="my-5 space-y-3">
+            {report.checks.map((check) => (
+              <div key={check.name} className="rounded border border-border p-4">
+                <div className="flex flex-wrap justify-between gap-3 text-sm">
+                  <span>{labels[check.name]}</span>
+                  <strong
+                    className={check.status === "passed" ? "text-primary" : "text-muted-foreground"}
+                  >
+                    {check.status}
+                  </strong>
+                </div>
+                {check.findings.map((finding, i) => (
+                  <p
+                    key={i}
+                    className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground"
+                  >
+                    {finding.severity}: {finding.message}
+                  </p>
+                ))}
               </div>
-              {check.findings.map((finding, i) => (
-                <p
-                  key={i}
-                  className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground"
-                >
-                  {finding.severity}: {finding.message}
-                </p>
-              ))}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </Technical>
       )}
       {!obsolete && result && (
         <details className="mt-5">

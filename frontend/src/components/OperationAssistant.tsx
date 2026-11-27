@@ -7,7 +7,7 @@ import {
   type Project,
 } from "@/api/client";
 
-/** Plain-language operations (Agent 3). The backend keeps the intent; this panel only shows it and asks for approval. */
+/** Payment buttons and plain-language operations (Agent 3). The backend keeps the intent; this panel only shows it and asks for approval. */
 export function OperationAssistant({
   project,
   disabled,
@@ -173,7 +173,8 @@ export function OperationAssistant({
         <section aria-label="Payment actions">
           <h2 className="font-bold">Payment actions</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Review the payment before confirming. These buttons make no model request.
+            Each deposit or payment is shown for review before anything is sent. These buttons do
+            not use the AI model.
           </p>
           {!project.funded ? (
             <button
@@ -214,8 +215,8 @@ export function OperationAssistant({
         <section className={quickActions ? "mt-6 border-t border-border pt-4" : ""}>
           <h2 className="font-bold">Ask in plain language</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Asking Agent 3 starts a model request. You can check the escrow, deposit test funds or
-            accept a milestone. Deposits and payments each require your confirmation.
+            The assistant uses an AI model, which may cost money. It can check the escrow or prepare
+            a deposit or milestone payment. You still confirm each one before it is sent.
           </p>
           <label className="field-label mt-4" htmlFor="operation-message">
             Your request
@@ -235,7 +236,7 @@ export function OperationAssistant({
             disabled={disabled || busy !== null || !message.trim() || !project.contractAddress}
             onClick={ask}
           >
-            {busy === "plan" && source === "language" ? "Asking Agent 3…" : "Ask"}
+            {busy === "plan" && source === "language" ? "Asking the assistant…" : "Ask"}
           </button>
           {!project.contractAddress && (
             <p className="mt-1 text-xs text-muted-foreground">Deploy the contract first</p>

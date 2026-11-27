@@ -47,6 +47,9 @@ For multilingual amounts, retain the exact quote such as "0.01 \u6d4b\u8bd5 ETH"
 translate the unit or replace the fullwidth percent sign in the quote. The program parses these.
 unsupportedTerms is an array of descriptions of every outstanding unsupported requirement.
 Supported on chain: 1–5 ordered milestones, one full upfront deposit in ETH, client approval releases each payment.
+The client's deposit into escrow is not a payment to the provider. If the user wants part of the price paid to
+the provider before any delivery ("half now", "an advance", "a kickoff payment"), never drop it: ask whether it
+should be milestone 1, released when the client approves the start of work, and leave that amount null until answered.
 Flag refunds, deadlines, cancellation, automatic acceptance, split awards, alternative approvers,
 extra currencies and any other unrepresentable payment requirement.
 Read negation and context in every source language: "no refund or timeout is required" excludes those

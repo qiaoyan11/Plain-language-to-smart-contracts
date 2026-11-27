@@ -24,9 +24,22 @@ const stageText: Record<ProjectSummary["stage"], string> = {
   checksNotPassed: "Contract checks did not pass",
   notDeployed: "Not deployed yet",
   awaitingDeposit: "Deployed · waiting for the deposit",
-  paying: "Funded · milestones in progress",
+  paying: "Funded · waiting for milestone approval",
   complete: "All milestones paid",
   unknown: "Status unavailable · open the project to check again",
+};
+
+const stageTone: Record<ProjectSummary["stage"], string> = {
+  complete: "bg-success/10 text-success",
+  paying: "bg-accent text-primary",
+  awaitingDeposit: "bg-accent text-primary",
+  readyToDeploy: "bg-accent text-primary",
+  needsConfirmation: "bg-muted text-foreground",
+  readyToGenerate: "bg-muted text-foreground",
+  generating: "bg-muted text-foreground",
+  notDeployed: "bg-muted text-foreground",
+  checksNotPassed: "bg-destructive/10 text-destructive",
+  unknown: "bg-destructive/10 text-destructive",
 };
 
 function when(iso: string) {
@@ -58,7 +71,13 @@ function ProjectItem({ project }: { project: ProjectSummary }) {
           {title}
         </Link>
       )}
-      <p className="mt-1 text-sm">{stageText[project.stage]}</p>
+      <p className="mt-2">
+        <span
+          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${stageTone[project.stage]}`}
+        >
+          {stageText[project.stage]}
+        </span>
+      </p>
       <p className="mt-1 text-xs text-muted-foreground">
         {project.kind === "agreement" ? "AI-generated contract" : "Handwritten reference contract"}
         {" · "}

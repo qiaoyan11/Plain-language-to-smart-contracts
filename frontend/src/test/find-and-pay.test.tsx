@@ -90,7 +90,7 @@ describe("finding a project again", () => {
       "href",
       "/reference-projects/r",
     );
-    expect(screen.getByText("Funded · milestones in progress")).toBeVisible();
+    expect(screen.getByText("Funded · waiting for milestone approval")).toBeVisible();
     expect(
       screen.getByText(/AI-generated contract · 0.01 test ETH · 1 of 2 milestones paid/),
     ).toBeVisible();

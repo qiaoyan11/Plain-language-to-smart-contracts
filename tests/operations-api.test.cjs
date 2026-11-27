@@ -80,7 +80,7 @@ test('deposit then acceptance: Node executes the stored intent and reports from 
     const second = await plan('approve milestone 1');
     const paid = await confirm(second.body.planId);
     assert.equal(paid.body.report.outcome, 'confirmed');
-    assert.match(paid.body.report.summary, /Milestone #1 "Homepage" is paid: 0\.003 ETH/);
+    assert.match(paid.body.report.summary, /Milestone #1 "Homepage" is paid: 0\.003 test ETH/);
     assert.equal(paid.body.project.milestones[0].paid, true);
     assert.equal(paid.body.project.escrowBalanceWei, '7000000000000000');
     assert.deepEqual(paid.body.project.transactions.map(t => t.action), ['deploy', 'deposit', 'acceptMilestone']);
