@@ -6,6 +6,7 @@ const { BrowserProvider, ContractFactory, Contract, getAddress, MaxUint256 } = r
 const { milestoneArtifact } = require('../scripts/compile.cjs');
 const { createGeneration, fields } = require('./generation.cjs');
 const { createOperations } = require('./operations.cjs');
+const { createDrafting } = require('./drafting.cjs');
 const CHAIN_ID = 31337;
 
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
@@ -21,7 +22,7 @@ function readMilestones(value) {
   });
   return { milestones, totalAmountWei: total.toString() };
 }
-async function createServer({ generation: generationOptions, operations: operationsOptions } = {}) {
+async function createServer({ generation: generationOptions, operations: operationsOptions, drafting: draftingOptions } = {}) {
   const provider = new BrowserProvider(hre.network.provider, undefined, { cacheTimeout: -1 });
   if (hre.network.name !== 'hardhat' || BigInt(await provider.send('eth_chainId', [])) !== BigInt(CHAIN_ID))
     throw new Error('The local signing backend requires the in-process Hardhat chain (31337)');
@@ -32,12 +33,14 @@ async function createServer({ generation: generationOptions, operations: operati
   const deployments = new Map();
   const generation = createGeneration(generationOptions);
   const operations = createOperations(operationsOptions);
+  const drafting = createDrafting(draftingOptions), draftOrigins = new Map();
   // The reference build has its own identity and entry point.
   const referenceHash = 'sha256:' + createHash('sha256').update(compiled.bytecode).digest('hex');
   function agreement(p, context = generation.context(p)) {
     const deployment = deployments.get(p.id);
     const { abi, ...metadata } = deployment ?? {};
-    return { ...context, deployment: deployment ? metadata : null, operationsEnabled: operations.enabled };
+    return { ...context, ...(draftOrigins.has(p.id) ? { draftOrigin: draftOrigins.get(p.id) } : {}),
+      deployment: deployment ? metadata : null, operationsEnabled: operations.enabled };
   }
   function readTerms(b) {
     if (typeof b.name !== 'string' || !b.name.trim() || b.name.length > 120) fail(400, 'Project name must contain 1–120 characters');
@@ -81,9 +84,9 @@ async function createServer({ generation: generationOptions, operations: operati
       sourceHash, specVersion: terms.specVersion, abi: artifact.abi });
     record(p, 'deploy', undefined, receipt);
   }
-  async function body(req) {
+  async function body(req, limit = 16384) {
     let data = '';
-    for await (const chunk of req) { data += chunk; if (data.length > 16384) fail(413, 'Request too large'); }
+    for await (const chunk of req) { data += chunk; if (Buffer.byteLength(data) > limit) fail(413, 'Request too large'); }
     try {
       const parsed = JSON.parse(data || '{}');
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) fail(400, 'Expected a JSON object');
@@ -97,6 +100,31 @@ async function createServer({ generation: generationOptions, operations: operati
       if (req.headers.origin && !hostnames.has(new URL(req.headers.origin).hostname)) fail(403, 'Local origin required');
       const path = new URL(req.url, 'http://localhost').pathname;
       if (req.method === 'GET' && path === '/api/local-accounts') return send(200, { ...accounts, chainId: CHAIN_ID, mode: 'local-chain' });
+      if (req.method === 'GET' && path === '/api/drafts/context')
+        return send(200, { clarificationEnabled: drafting.enabled, mode: 'local-chain', ...accounts });
+      if (req.method === 'POST' && path === '/api/drafts') return send(201, drafting.create(await body(req)));
+      const dr = path.match(/^\/api\/drafts\/([^/]+)(?:\/(messages|confirmation))?$/);
+      if (dr) {
+        const [, id, resource] = dr;
+        if (req.method === 'GET' && !resource) return send(200, drafting.get(id));
+        if (req.method === 'POST' && resource === 'messages') return send(200, await drafting.message(id, await body(req, 100000)));
+        if (req.method === 'POST' && resource === 'confirmation') {
+          const candidate = drafting.confirmationCandidate(id, await body(req));
+          if (candidate.projectId) {
+            const p = projects.get(candidate.projectId);
+            return send(200, { project: await snapshot(p), agreement: agreement(p) });
+          }
+          const terms = readTerms(candidate.spec);
+          const p = { schemaVersion: 2, id: randomUUID(), ...terms, contractAddress: null, escrowBalanceWei: '0', funded: false,
+            createdAt: new Date().toISOString(), transactions: [] };
+          const context = generation.confirm(p, { specVersion: 1, approved: true });
+          projects.set(p.id, p);
+          draftOrigins.set(p.id, { draftId: id, revision: drafting.get(id).revision });
+          drafting.markConfirmed(id, p.id);
+          return send(201, { project: p, agreement: agreement(p, context) });
+        }
+        fail(405, 'Method not allowed');
+      }
       if (req.method === 'POST' && path === '/api/projects') {
         const b = await body(req);
         const terms = readTerms(b);
@@ -130,6 +158,7 @@ async function createServer({ generation: generationOptions, operations: operati
         if (resource === 'agreement' && req.method === 'GET') return send(200, agreement(p));
         if (resource === 'confirmation' && req.method === 'POST') return send(200, agreement(p, generation.confirm(p, await body(req))));
         if (resource === 'terms' && req.method === 'PUT') {
+          if (draftOrigins.has(p.id)) fail(409, 'This project keeps its confirmed source agreement. Start a new draft to change it.');
           const b = await body(req); fields(b, ['expectedSpecVersion', 'draft']);
           fields(b.draft, ['name', 'clientWallet', 'developerWallet', 'milestones']);
           if (busy) fail(409, 'A transaction is in progress; wait before editing rules');
@@ -179,6 +208,7 @@ async function createServer({ generation: generationOptions, operations: operati
       if (req.method === 'GET' && !path.endsWith('/actions')) return send(200, await snapshot(p));
       if (req.method !== 'POST' || !path.endsWith('/actions')) fail(405, 'Method not allowed');
       const { action, milestoneId } = await body(req);
+      if (draftOrigins.has(p.id)) fail(409, 'Use validated generation and confirmed operation plans for this agreement');
       if (deployments.get(p.id)?.kind === 'generated') fail(409, 'Use a confirmed operation plan for this generated contract');
       if (!['deploy', 'deposit', 'acceptMilestone'].includes(action)) fail(400, 'Unknown action');
       if (action === 'acceptMilestone' && (!Number.isInteger(milestoneId) || milestoneId < 1 || milestoneId > p.milestones.length)) fail(400, 'Invalid milestone ID');
