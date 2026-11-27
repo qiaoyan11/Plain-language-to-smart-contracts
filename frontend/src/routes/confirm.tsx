@@ -73,6 +73,7 @@ export function ConfirmPage() {
             <>
               <PaymentRules spec={ready ? session.result?.draftSpec : undefined} />
               <ScopeAcknowledgement
+                notEnforced={Boolean(session.settledTerms?.length)}
                 checked={ackRevision === session.revision}
                 onChange={(checked) => setAckRevision(checked ? session.revision : null)}
               />

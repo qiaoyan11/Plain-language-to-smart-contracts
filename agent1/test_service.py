@@ -326,18 +326,34 @@ class AgentTests(unittest.TestCase):
         payload['message'] = payload['message'].replace(wallet, '(' + wallet + ')')
         self.assertEqual(clarify(payload, lambda *_: terms)['status'], 'readyForConfirmation')
 
-    def test_refund_persists_across_unrelated_followup(self):
+    def test_refund_stays_listed_as_not_enforced_across_unrelated_followups(self):
         case = example('refund')
         terms = example('complete')['exampleExtraction']
         payload = case['request']['payload']
+        condition = case['expectedResult']['notEnforced'][0]
         payload.update(history=[dict(role='user', content=payload['message']),
                                 dict(role='assistant', content=json.dumps(case['expectedResult']))],
                        message="Here is the same provider wallet.", draftSpec=case['expectedResult']['draftSpec'])
-        self.assertEqual(clarify(payload, lambda *_: terms)['status'], 'unsupported')
-        condition = case['expectedResult']['unsupportedTerms'][0]
+        result = clarify(payload, lambda *_: terms)
+        # The contract cannot refund; the user is told, but confirmation is not blocked.
+        self.assertEqual(result['status'], 'readyForConfirmation')
+        self.assertEqual(result['notEnforced'], [condition])
         payload['message'] = "Both parties agree to remove the late-delivery refund."
         terms.update(unsupportedTerms=[], withdrawals=[dict(condition=condition, userQuote=payload['message'])])
-        self.assertEqual(clarify(payload, lambda *_: terms)['status'], 'readyForConfirmation')
+        result = clarify(payload, lambda *_: terms)
+        self.assertEqual(result['status'], 'readyForConfirmation')
+        self.assertNotIn('notEnforced', result)
+
+    def test_only_a_schedule_the_contract_cannot_hold_still_blocks(self):
+        case = example('complete')
+        payload, terms = case['request']['payload'], case['exampleExtraction']
+        split = 'pay 40% of each milestone to the subcontractor'
+        terms['unsupportedTerms'] = [split, 'payment due by June 30, 2026']
+        terms['blockingTerms'] = [split]
+        result = clarify(payload, lambda *_: terms)
+        self.assertEqual(result['status'], 'unsupported')
+        self.assertEqual(result['unsupportedTerms'], [split])
+        self.assertEqual(result['notEnforced'], ['payment due by June 30, 2026'])
 
     def test_separate_terms_reach_handoff_without_entering_spec(self):
         from agent1.service import draft_agreement
@@ -621,11 +637,13 @@ class FinanceAmountTests(unittest.TestCase):
                 result = clarify(dict(base, message='Client wallet ' + terms['clientWallet'] + '.'), lambda *_: terms)
                 self.assertEqual(result['unsupportedTerms'], [])
                 self.assertEqual(result['status'], 'readyForConfirmation')
-        # Raising the condition again in the current message brings it back.
+        # Raising the condition again in the current message brings it back, as a condition
+        # the contract does not enforce.
         terms['unsupportedTerms'] = [deadline]
         result = clarify(dict(base, message='Actually the contractor shall complete development by June 23, 2026, '
                                             'or the payment is cancelled.'), lambda *_: terms)
-        self.assertEqual(result['unsupportedTerms'], [deadline])
+        self.assertEqual(result['unsupportedTerms'], [])
+        self.assertEqual(result['notEnforced'], [deadline])
 
     def test_percentage_restatement_does_not_settle_an_open_total(self):
         case = example('complete')

@@ -25,12 +25,13 @@
 
 ## 接口怎么用
 
-实现 `clarify(payload)`，沿用输入 `message / history / draftSpec`，输出 `status / draftSpec / questions / unsupportedTerms`。所有路径都要返回合法的 `DraftSpec`。金额使用整数 wei 字符串，可缺失的字段按 schema 填 `null`。项目及版本信息由调用方提供。[接口定义](../shared/INTERFACES.md#4-agent-1--clarify) · [字段定义](../shared/schemas/handoff.schema.json)
+实现 `clarify(payload)`，沿用输入 `message / history / draftSpec`，输出 `status / draftSpec / questions / unsupportedTerms`，可选 `notEnforced / exchangeRates / separateTerms`。外币金额（"$500"、"8.98万元"）由 `agent1/currency.py` 按实时汇率换算成 wei，不再追问 ETH 金额。所有路径都要返回合法的 `DraftSpec`。金额使用整数 wei 字符串，可缺失的字段按 schema 填 `null`。项目及版本信息由调用方提供。[接口定义](../shared/INTERFACES.md#4-agent-1--clarify) · [字段定义](../shared/schemas/handoff.schema.json)
 
 | 本轮状态 | 返回条件 | 用户下一步 |
 | --- | --- | --- |
 | `needsClarification` | 缺值、原文矛盾，或必须先追问才能判断一项条款怎样影响付款 | `questions` 列出 `field` 与具体问题；结合下一轮答案更新草稿 |
-| `unsupported` | 至少一项明确的付款要求超出能力；即使另有缺失字段，也优先提示这个阻碍 | `unsupportedTerms` 逐条写明原句和影响。保留草稿，供用户决定是否另行约定 |
+| `unsupported` | 付款安排本身无法表示：超过 5 期、付给多个收款人、由服务方付款 | `unsupportedTerms` 写明原因，保留草稿 |
+| （不阻断） | 合约无法执行的付款条件：退款、截止日期、按日期付款、自动验收、奖金或公式 | 写进 `notEnforced`，回复里说明，确认页列为“Not enforced by the contract” |
 | `readyForConfirmation` | 全部付款条件清晰且受支持，草稿通过完整规则校验，两个问题列表均为空 | 显示可编辑摘要，等待用户明确确认 |
 
 ## 徐露源可以用来验收的场景
@@ -40,8 +41,8 @@
 | 双方钱包已给出，客户按顺序验收，总额 0.010 测试 ETH，首页 30%、整站 70% | 得到 0.003 和 0.007，两笔之和等于总额，进入待用户确认 |
 | 总额和比例都清楚，只缺收款钱包 | 保留金额、比例和阶段，只追问 Bob 的钱包；给出有效地址后重新检查 |
 | 正文说首页 30%，附件说 40% | 引用冲突并追问；不默认以较新或较高数字为准 |
-| 第一条是可支持的阶段款，第二条要求提出修改意见后冻结并协商退款 | 保留两条原文并解释阻碍。即使其他字段完整，也不能只生成第一条 |
-| 前一轮已发现自动退款，本轮用户只补齐收款地址 | 仍然提示退款条件，直到用户明确提出双方同意的替代约定或决定停下 |
+| 第一条是可支持的阶段款，第二条要求提出修改意见后冻结并协商退款 | 阶段款照常生成；冻结和退款列入 `notEnforced`，确认页明确列出，不阻断 |
+| 前一轮已发现自动退款，本轮用户只补齐收款地址 | 退款条件继续留在 `notEnforced`，直到用户明确取消 |
 | 分别输入“双方负有保密义务”和“涉嫌泄密则冻结尾款” | 前者可提示保留为链下义务；后者要检查付款条件，并标出超范围操作 |
 
 固定每个用例中“模拟用户”的回答；分别核对金额和角色、该问时是否追问、超范围时是否阻止交接。记录错误收款方、金额、批准人和漏掉付款前提等关键错误。正式评分样例与提示词开发、训练材料独立维护。

@@ -52,7 +52,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
   let committedChain = chain?.chainState(), storageFailure = null, closed = false;
   const generation = createGeneration({ ...generationOptions, saved: saved?.generation, onChange: persist });
   const operations = createOperations(operationsOptions);
-  const drafting = createDrafting({ ...draftingOptions, saved: saved?.drafts, onChange: persist });
+  const drafting = createDrafting({ demoWallets: accounts, ...draftingOptions, saved: saved?.drafts, onChange: persist });
   function persist() {
     if (!store || closed) return;
     if (storageFailure) fail(503, 'Local storage is unavailable. Changes cannot be confirmed.');

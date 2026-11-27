@@ -32,6 +32,7 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
+| 2026-11-27 | ClarifyResult gains optional `notEnforced` and `exchangeRates` (shared/schemas, INTERFACES.md). Conditions the contract cannot enforce no longer block confirmation; amounts in other currencies are converted at the live ETH price; local drafts use the built-in test accounts without asking. | The user's direction: a first-time user describes needs in everyday words, so the system should work out currency, wallets and unenforceable conditions instead of asking. Required fields are unchanged. |
 | 2026-11-27 | Add read-only `GET /api/projects` and `GET /api/drafts` to Project API v2 (documented in shared/PROJECT_API_V2.md). Existing endpoints and fields are unchanged. | A first-time user who loses a project URL must be able to find the project or unfinished conversation again. The lists never sign or start model jobs. |
 | 2026-11-27 | 冻结的 Solidity 接口及共享源码样例中的注释改为英文，接口签名和规则不变；生成提示词明确要求英文源码。旧项目的已生成源码和交易历史按原样保留。 | 避免中文接口注释被原样复制到新生成的合约中，同时保持已部署项目可追溯。 |
 | 2026-11-27 | 网页、助手提示、回执说明和演示测试统一用英文。用户提交的协议原文和地址按原样保存。 | 团队要求使用英文演示、测试和评估。 |

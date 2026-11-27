@@ -24,9 +24,7 @@ function milestoneLabel(spec, id) {
   const milestone = spec.milestones.find(m => m.id === Number(id));
   return `milestone ${id}${milestone?.title ? ` (\u201c${milestone.title}\u201d)` : ''}`;
 }
-// Prices written in another currency cannot be paid by the contract until the parties agree ETH figures.
-const OTHER_CURRENCY = /\b(?:USD|US dollars?|RMB|CNY|EUR|GBP|HKD|euros?|pounds? sterling)\b|[$\u20ac\u00a3\u00a5]|\u4eba\u6c11\u5e01|\d\s*\u5143/i;
-function primaryQuestion(result, texts = []) {
+function primaryQuestion(result) {
   if (result.unsupportedTerms.length) {
     const more = result.unsupportedTerms.length - 1;
     return { field: 'unsupportedTerms.0',
@@ -48,8 +46,6 @@ function primaryQuestion(result, texts = []) {
   if (stage) text = stage[2] === 'amountWei'
     ? `What amount in ETH, or percentage of ${result.draftSpec.totalAmountWei ? `the agreed ${eth(result.draftSpec.totalAmountWei)} total` : 'the total'}, is payable for ${milestoneLabel(result.draftSpec, stage[1])}?`
     : `What must be delivered for ${milestoneLabel(result.draftSpec, stage[1])}?`;
-  if (text && (q.field === 'totalAmountWei' || stage?.[2] === 'amountWei') && texts.some(t => OTHER_CURRENCY.test(t)))
-    text += ' The agreement states prices in another currency, and the contract pays only in test ETH, so give the ETH amount both parties agreed.';
   if (!text) {
     // The extraction prompt requests one focused question per field. Keep only its first question
     // for display; all underlying blockers remain in result.questions and block confirmation.
@@ -57,9 +53,20 @@ function primaryQuestion(result, texts = []) {
   }
   return { field: q.field, question: text };
 }
-function conversationTurn(previous, result, revision, previousTurn, texts = []) {
+const short = address => `${address.slice(0, 6)}\u2026${address.slice(-4)}`;
+// "1667.36" -> "1,667.36": the rate exactly as recorded, grouped for reading.
+const grouped = value => { const [whole, part] = value.split('.'); return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (part ? '.' + part : ''); };
+function rateLine(rate) {
+  const at = `1 test ETH = ${grouped(rate.unitsPerEth)} ${rate.currency}`;
+  const when = rate.asOf ? ` at ${rate.asOf.slice(11, 16)} UTC` : '';
+  if (rate.source === 'stated') return `Amounts in ${rate.currency} are converted at the rate you gave, ${at}.`;
+  if (rate.source === 'reference') return `Amounts in ${rate.currency} are converted at a reference rate, ${at}, because no live rate was available. Tell me if you agreed a different rate.`;
+  const label = rate.source === 'cached' ? 'the last available rate' : 'the live rate';
+  return `Amounts in ${rate.currency} are converted to test ETH at ${label}, ${at}${rate.provider ? ` (${rate.provider}${when})` : ''}, rounded to 6 decimals. Tell me if you agreed a different rate.`;
+}
+function conversationTurn(previous, result, revision, previousTurn, demoWallets = null) {
   const before = previous?.draftSpec, after = result.draftSpec, lines = [];
-  const question = primaryQuestion(result, texts);
+  const question = primaryQuestion(result);
   if (after.name !== 'Untitled project' && after.name !== before?.name)
     lines.push(`Project recorded: ${after.name}.`);
   if (after.totalAmountWei !== before?.totalAmountWei && after.totalAmountWei)
@@ -87,13 +94,26 @@ function conversationTurn(previous, result, revision, previousTurn, texts = []) 
         : `Agreed payment amounts are still needed for milestones ${missing.map(m => m.id).join(', ')}.`);
     }
   }
-  for (const [field, label] of [['clientWallet', 'client funding address'],
+  for (const rate of result.exchangeRates ?? []) {
+    const old = (previous?.exchangeRates ?? []).find(r => r.currency === rate.currency);
+    if (!old || old.unitsPerEth !== rate.unitsPerEth || old.source !== rate.source) lines.push(rateLine(rate));
+  }
+  const demo = demoWallets && after.clientWallet === demoWallets.clientWallet && after.developerWallet === demoWallets.developerWallet;
+  if (demo && (before?.clientWallet !== after.clientWallet || before?.developerWallet !== after.developerWallet))
+    lines.push(`Payments use the built-in test accounts: the client pays from ${short(after.clientWallet)} and the provider is paid at ${short(after.developerWallet)}.`);
+  else for (const [field, label] of [['clientWallet', 'client funding address'],
     ['developerWallet', 'provider payment address']]) {
     if (after[field] !== before?.[field] && after[field])
       lines.push(`The ${label} is recorded.`);
   }
+  // Conditions the contract cannot enforce do not stop the user; say so once, plainly.
+  const known = [...(previous?.notEnforced ?? []), ...(previous?.unsupportedTerms ?? [])];
+  const moved = (result.notEnforced ?? []).filter(t => !known.includes(t));
+  if (moved.length)
+    lines.push(`The contract will not enforce ${moved.length === 1 ? 'this condition' : 'these conditions'}: ${moved.slice(0, 5).map(t => `\u201c${t}\u201d`).join('; ')}${moved.length > 5 ? ` and ${moved.length - 5} more` : ''}. ${moved.length === 1 ? 'It stays' : 'They stay'} in your written agreement and ${moved.length === 1 ? 'is' : 'are'} listed on the review page; each payment is released only when the client approves it.`);
   // Say what happened to terms the user dealt with, so they are not silently dropped.
-  const cleared = (previous?.unsupportedTerms ?? []).filter(t => !result.unsupportedTerms.includes(t));
+  const cleared = (previous?.unsupportedTerms ?? []).filter(t => !result.unsupportedTerms.includes(t)
+    && !(result.notEnforced ?? []).includes(t));
   if (cleared.length && cleared.length <= 5)
     lines.push(`${cleared.length === 1 ? 'This term no longer blocks' : 'These terms no longer block'} the draft: ${cleared.map(t => `\u201c${t}\u201d`).join('; ')}.`);
   else if (cleared.length)
@@ -119,8 +139,19 @@ function conversationTurn(previous, result, revision, previousTurn, texts = []) 
   return { revision, reply: lines.join(' '), question };
 }
 
+// In the local demo only the built-in test accounts can sign, so a first-time user is never asked
+// for wallet addresses: empty wallet fields take those accounts.
+function applyDemoWallets(result, demoWallets) {
+  if (!demoWallets) return;
+  const spec = result.draftSpec, wallets = ['clientWallet', 'developerWallet'];
+  for (const field of wallets) if (!spec[field]) spec[field] = demoWallets[field];
+  if (spec.clientWallet.toLowerCase() === spec.developerWallet.toLowerCase()) return;
+  result.questions = result.questions.filter(q => !wallets.includes(q.field));
+  if (result.status === 'needsClarification' && !result.questions.length && !result.unsupportedTerms.length)
+    result.status = 'readyForConfirmation';
+}
 function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE === 'live',
-  saved = [], onChange = () => {} } = {}) {
+  saved = [], onChange = () => {}, demoWallets = null } = {}) {
   const sessions = new Map(saved.map(([id, data]) => [id, { ...data,
     busy: false, keys: new Map(data.keys),
     lastError: data.busy ? 'The backend restarted before this reply was recorded. Review the saved message before retrying.' : data.lastError }]));
@@ -155,7 +186,9 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
   }
   function snapshot(s) {
     const { history, keys, ...visible } = s;
-    return copy({ ...visible, settledTerms: settledTerms(s) });
+    const settled = settledTerms(s);
+    for (const term of s.result?.notEnforced ?? []) if (!settled.includes(term)) settled.push(term);
+    return copy({ ...visible, settledTerms: settled });
   }
   function revision(s, expected) {
     if (!Number.isSafeInteger(expected) || expected < 0) fail(400, 'expectedRevision must be a nonnegative integer');
@@ -194,12 +227,12 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
       validateResponse(request, response);
       if (response.status !== 'ok') throw new Error('CLARIFICATION_REJECTED');
       const result = copy(response.result);
+      applyDemoWallets(result, demoWallets);
       s.revision += 1;
       // Node assigns authoritative session identity and revision, never the model.
       result.draftSpec.projectId = s.id;
       result.draftSpec.specVersion = s.revision;
-      const turn = conversationTurn(s.result, result, s.revision, s.turns.at(-1),
-        [...s.messages.map(m => m.content), body.message]);
+      const turn = conversationTurn(s.result, result, s.revision, s.turns.at(-1), demoWallets);
       s.turns.push(turn);
       s.result = result;
       s.messages.push({ role: 'user', content: body.message });

@@ -1,5 +1,5 @@
 import { formatWei } from "@/api/client";
-import type { ClarifyResult, DraftSession } from "@/api/types";
+import type { ClarifyResult, DraftSession, ExchangeRate } from "@/api/types";
 import { Row } from "./Shell";
 
 export function draftReady(session: DraftSession | undefined) {
@@ -12,6 +12,30 @@ export function draftReady(session: DraftSession | undefined) {
     session.result.questions.length === 0 &&
     session.result.unsupportedTerms.length === 0,
   );
+}
+
+const grouped = (value: string) => {
+  const [whole = "", part] = value.split(".");
+  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (part ? `.${part}` : "");
+};
+
+/** One line saying how amounts in another currency became test ETH. */
+export function rateText(rate: ExchangeRate) {
+  const at = `1 test ETH = ${grouped(rate.unitsPerEth)} ${rate.currency}`;
+  const time = rate.asOf ? `, ${rate.asOf.slice(11, 16)} UTC` : "";
+  if (rate.source === "stated")
+    return `Converted from ${rate.currency} at the rate you gave: ${at}.`;
+  if (rate.source === "reference")
+    return `Converted from ${rate.currency} at a reference rate because no live rate was available: ${at}.`;
+  const label = rate.source === "cached" ? "the last available rate" : "the live rate";
+  return `Converted from ${rate.currency} at ${label}: ${at}${rate.provider ? ` (${rate.provider}${time})` : ""}.`;
+}
+
+/** "≈ 500 USD" for an amount in wei, when every amount came from one other currency. */
+function approximately(wei: string, rate: ExchangeRate | undefined) {
+  if (!rate) return "";
+  const value = (Number(BigInt(wei) / 1_000_000n) / 1e12) * Number(rate.unitsPerEth);
+  return ` (≈ ${value.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${rate.currency})`;
 }
 
 export function DraftSummary({
@@ -32,6 +56,8 @@ export function DraftSummary({
       </p>
     );
   const spec = result.draftSpec;
+  const rates = result.exchangeRates ?? [];
+  const rate = rates.length === 1 ? rates[0] : undefined;
   const primaryIndex = result.questions.findIndex(
     (question) => question.field === primaryQuestionField,
   );
@@ -78,7 +104,7 @@ export function DraftSummary({
           value={
             spec.totalAmountWei === null
               ? "Amount needed"
-              : `${formatWei(spec.totalAmountWei)} test ETH`
+              : `${formatWei(spec.totalAmountWei)} test ETH${approximately(spec.totalAmountWei, rate)}`
           }
         />
         {spec.milestones.map((m) => (
@@ -86,7 +112,11 @@ export function DraftSummary({
             stacked
             key={m.id}
             label={`${m.id}. ${m.title}`}
-            value={m.amountWei === null ? "Amount needed" : `${formatWei(m.amountWei)} test ETH`}
+            value={
+              m.amountWei === null
+                ? "Amount needed"
+                : `${formatWei(m.amountWei)} test ETH${approximately(m.amountWei, rate)}`
+            }
           />
         ))}
         <Row
@@ -101,6 +131,11 @@ export function DraftSummary({
           value={spec.developerWallet || "Address needed"}
           mono
         />
+        {rates.map((item) => (
+          <p key={item.currency} className="mt-3 text-xs text-muted-foreground">
+            {rateText(item)}
+          </p>
+        ))}
         <p className="mt-4 text-sm text-muted-foreground">
           The client deposits the total, then approves each milestone in order.
         </p>

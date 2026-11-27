@@ -14,7 +14,7 @@ export const Route = createFileRoute("/")({
   component: CreatePage,
 });
 const EXAMPLE =
-  "Maya Chen is hiring Leo Park to build a website for her bakery, Golden Crumb. The total price is 0.01 ETH, paid in two milestones: 0.003 ETH when Maya approves the homepage design, and 0.007 ETH when she approves the finished site with online ordering.";
+  "I'm hiring Leo to build a website for my bakery, Golden Crumb, for $1,000. I'll pay 30% when I approve the homepage design and the rest when the finished site takes online orders.";
 
 export function CreatePage() {
   const nav = useNavigate();

@@ -549,7 +549,10 @@
       "properties": {
         "separateTerms": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "status": {
           "enum": [
@@ -588,6 +591,59 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "notEnforced": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Conditions from the user's agreement that the contract does not enforce; they do not block confirmation."
+        },
+        "exchangeRates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "unitsPerEth": {
+                "type": "string",
+                "pattern": "^[0-9]+(\\.[0-9]+)?$"
+              },
+              "source": {
+                "enum": [
+                  "live",
+                  "cached",
+                  "stated",
+                  "reference"
+                ]
+              },
+              "asOf": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "provider": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "currency",
+              "unitsPerEth",
+              "source",
+              "asOf",
+              "provider"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Rates used to convert amounts written in other currencies into test ETH."
         }
       },
       "required": [

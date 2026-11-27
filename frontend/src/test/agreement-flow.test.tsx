@@ -427,11 +427,16 @@ describe("server-owned agreement conversation", () => {
   });
   it("resumes a saved draft after a temporary read failure without a new assistant request", async () => {
     api.setActiveDraftId(ready.id);
-    vi.mocked(api.getDraft).mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue(ready);
+    vi.mocked(api.getDraft)
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue(ready);
     openPage(<CreatePage />);
     await screen.findByText("Reconnecting to the local server to check your saved draft.");
     expect(await screen.findByRole("button", { name: "Review agreement" })).toBeDisabled();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Review agreement" })).toBeEnabled(), { timeout: 4500 });
+    await waitFor(
+      () => expect(screen.getByRole("button", { name: "Review agreement" })).toBeEnabled(),
+      { timeout: 4500 },
+    );
     expect(screen.queryByRole("alert")).toBeNull();
     expect(api.sendDraftMessage).not.toHaveBeenCalled();
     expect(api.createDraft).not.toHaveBeenCalled();
@@ -483,6 +488,35 @@ describe("explicit agreement confirmation", () => {
     openPage(<ConfirmPage />);
     expect(await screen.findByText("Not enforced by the contract")).toBeVisible();
     expect(screen.getByText("payment due June 30, 2026")).toBeVisible();
+  });
+  it("shows how amounts in another currency became test ETH", async () => {
+    api.setActiveDraftId(ready.id);
+    vi.mocked(api.getDraft).mockResolvedValue({
+      ...ready,
+      result: {
+        ...ready.result!,
+        exchangeRates: [
+          {
+            currency: "USD",
+            unitsPerEth: "1667.36",
+            source: "live",
+            asOf: "2026-11-27T17:40:00Z",
+            provider: "CoinGecko",
+          },
+        ],
+      },
+      settledTerms: ["refund if delivery is late"],
+    });
+    openPage(<ConfirmPage />);
+    expect(
+      await screen.findByText(
+        "Converted from USD at the live rate: 1 test ETH = 1,667.36 USD (CoinGecko, 17:40 UTC).",
+      ),
+    ).toBeVisible();
+    // 1 test ETH at that rate is about 1,667.36 USD.
+    // Total and the single milestone both show it.
+    expect(screen.getAllByText("1 test ETH (≈ 1,667.36 USD)").length).toBeGreaterThan(0);
+    expect(screen.getByText(/are not part of these rules/)).toBeVisible();
   });
   it("clears acknowledgement after a revision conflict and requires reviewing again", async () => {
     await openReady();

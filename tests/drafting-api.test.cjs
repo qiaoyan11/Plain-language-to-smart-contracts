@@ -74,7 +74,7 @@ test('disabled drafting reports its mode and never dispatches a message or confi
 
 test('English conversation turns show one stable question while retaining every internal blocker', async () => {
   let accounts, phase = 'incomplete', reverse = false, calls = 0;
-  await withAPI({ enabled: true, runner: async request => {
+  await withAPI({ enabled: true, demoWallets: null, runner: async request => {
     calls++;
     const response = ready(request, accounts);
     response.result.draftSpec.totalAmountWei = '10000000000000000';
@@ -133,7 +133,7 @@ test('English conversation turns show one stable question while retaining every 
 
 test('unsupported terms take priority without hiding the remaining questions', async () => {
   let accounts;
-  await withAPI({ enabled: true, runner: async request => ready(request, accounts, {
+  await withAPI({ enabled: true, demoWallets: null, runner: async request => ready(request, accounts, {
     status: 'unsupported', unsupportedTerms: ['Automatic refund for late delivery; the current contract has no refund operation.'],
     questions: [{ field: 'clientWallet', question: 'What is the client wallet?' },
       { field: 'acceptance', question: 'Which mockup determines acceptance? How many revisions are included?' }],
@@ -162,7 +162,7 @@ test('finance agreement replies retain the displayed context and progress from a
   const titles = ['Market display', 'Chat bot', 'Trade signal alert', 'User UI design'];
   const seen = [], snapshots = [];
   let accounts;
-  await withAPI({ enabled: true, runner: async request => {
+  await withAPI({ enabled: true, demoWallets: null, runner: async request => {
     seen.push(copy(request));
     const phase = seen.length;
     const response = ready(request, accounts);
@@ -332,7 +332,7 @@ test('stale revisions and caller-supplied results cannot overwrite or confirm a 
 
 test('missing fields and unsupported payment conditions stay visible and cannot create a project', async () => {
   let accounts, kind;
-  await withAPI({ enabled: true, runner: async request => {
+  await withAPI({ enabled: true, demoWallets: null, runner: async request => {
     const response = ready(request, accounts);
     if (kind === 'missing') {
       response.result.status = 'needsClarification';
@@ -563,23 +563,31 @@ test('confirmation is replayable, seals its source draft and directly supplies t
   }, { enabled: true, runner: generation.runner });
 });
 
-test('an agreement priced in another currency asks for the agreed ETH figure', async () => {
+test('replies explain converted amounts, conditions the contract will not enforce and the demo accounts', async () => {
   let accounts;
   await withAPI({ enabled: true, runner: async request => {
     const response = ready(request, accounts);
-    response.result.status = 'needsClarification';
-    response.result.draftSpec.totalAmountWei = null;
-    response.result.draftSpec.milestones.forEach(m => { m.amountWei = null; });
-    response.result.questions = [{ field: 'totalAmountWei', question: 'What is the total?' }];
-    response.result.separateTerms = ['Warranty for 90 days.'];
+    Object.assign(response.result, { status: 'needsClarification', notEnforced: ['refund if delivery is late'],
+      exchangeRates: [{ currency: 'USD', unitsPerEth: '1667.36', source: 'live', asOf: '2026-11-27T17:40:00Z', provider: 'CoinGecko' }],
+      questions: [{ field: 'clientWallet', question: 'What is the client wallet address?' },
+        { field: 'developerWallet', question: 'What is the provider wallet address?' }] });
+    response.result.draftSpec.clientWallet = response.result.draftSpec.developerWallet = null;
     return response;
   } }, async ({ call, create, accounts: local }) => {
     accounts = local;
     const { path } = await create();
-    const turn = (await call(path + '/messages', message('Fees: USD 24,000, half on design approval. Warranty for 90 days.'))).body.turns[0];
-    assert.equal(turn.question.field, 'totalAmountWei');
-    assert.match(turn.question.question, /^What total amount in ETH have both parties agreed\? The agreement states prices in another currency/);
-    assert.match(turn.reply, /Separate written terms now contain 1 item;/);
+    const body = (await call(path + '/messages', message('Website for $500, refund me if it is late.'))).body;
+    const reply = body.turns[0].reply;
+    // No wallet question: the local demo can only sign with its built-in accounts.
+    assert.equal(body.result.status, 'readyForConfirmation');
+    assert.deepEqual(body.result.questions, []);
+    assert.equal(body.result.draftSpec.clientWallet, local.clientWallet);
+    assert.equal(body.result.draftSpec.developerWallet, local.developerWallet);
+    assert.equal(body.turns[0].question, null);
+    assert.match(reply, /converted to test ETH at the live rate, 1 test ETH = 1,667\.36 USD \(CoinGecko at 17:40 UTC\)/);
+    assert.match(reply, /The contract will not enforce this condition: \u201crefund if delivery is late\u201d\. It stays in your written agreement/);
+    assert.match(reply, /Payments use the built-in test accounts/);
+    assert.deepEqual(body.settledTerms, ['refund if delivery is late']);
   });
 });
 

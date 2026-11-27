@@ -119,7 +119,7 @@ describe("main flow guidance", () => {
     const box = screen.getByLabelText<HTMLTextAreaElement>(
       "Describe your agreement or add a detail",
     );
-    expect(box.value).toContain("0.003 ETH when Maya approves the homepage design");
+    expect(box.value).toContain("for $1,000");
     expect(send).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });

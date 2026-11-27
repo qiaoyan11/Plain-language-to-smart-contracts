@@ -57,9 +57,11 @@ export function PaymentRules({ spec }: { spec?: DraftSpec | undefined }) {
 export function ScopeAcknowledgement({
   checked,
   onChange,
+  notEnforced = false,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
+  notEnforced?: boolean;
 }) {
   return (
     <label className="flex items-start gap-3 text-sm leading-relaxed">
@@ -72,6 +74,8 @@ export function ScopeAcknowledgement({
       <span>
         I confirm these payment rules and understand that deposits cannot be refunded and unpaid
         funds may remain locked forever.
+        {notEnforced &&
+          " The conditions listed under “Not enforced by the contract” are not part of these rules."}
       </span>
     </label>
   );

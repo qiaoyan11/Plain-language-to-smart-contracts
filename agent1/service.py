@@ -4,6 +4,7 @@ import re
 from fractions import Fraction
 from uuid import uuid4
 
+from agent1 import currency
 from agent1.model import extract
 from agent1.prompts import INSTRUCTIONS
 from shared.handoff import MAX_UINT, validate
@@ -122,9 +123,24 @@ def quote_in(quote, sources, bare=False):
     return False
 
 
+def leading_amount(text):
+    """The amount that starts text: "0.02 ETH", "$1,000" or "1,000 USD"."""
+    amount = AMOUNT.match(text)
+    if amount:
+        return amount[0]
+    fiat = re.match(currency.AMOUNT_TEXT, text, re.I)
+    return fiat[0].strip() if fiat and currency.parse(fiat[0].strip()) else None
+
+
 def value_of(quote, sources, old_amounts, total=None, unit=None):
     if not isinstance(quote, str):
         return None
+    if not AMOUNT.fullmatch(quote.strip()) and currency.parse(quote):
+        # "$8,000" or "89,800 元": converted to test ETH, so the user never has to.
+        if quote not in old_amounts and not quote_in(quote, sources):
+            return None
+        wei = currency.to_wei(quote, sources)
+        return str(wei) if wei and wei <= MAX_UINT else None
     match = AMOUNT.fullmatch(quote.strip())
     bare = NUMBER.fullmatch(quote.strip())
     expression = PERCENT_OF.fullmatch(quote.strip())
@@ -155,8 +171,8 @@ def value_of(quote, sources, old_amounts, total=None, unit=None):
                     of = re.match(r'\s+of\s+', tail, re.I)
                     if of:
                         text = tail[of.end():]
-                        amount = AMOUNT.match(text)
-                        basis = total if TOTAL_BASIS.match(text) else value_of(amount[0], [source], set()) if amount else None
+                        amount = leading_amount(text)
+                        basis = total if TOTAL_BASIS.match(text) else value_of(amount, [source], set()) if amount else None
                         if basis is None or basis != total:
                             return None
                 break
@@ -285,15 +301,98 @@ def shorten(text, limit=120):
     return (cut[:space] if space > limit // 2 else cut).rstrip(' ,;:') + '\u2026'
 
 
-def amount_token(text):
-    """A comparable form of one stated amount: wei for ETH and wei, the number for a percentage."""
+def amount_token(text, sources=()):
+    """A comparable form of one stated amount: wei for money, the number for a percentage."""
     match = AMOUNT.fullmatch(text.strip())
     if not match:
-        return None
+        wei = currency.to_wei(text, list(sources)) if converted(text) else None
+        return ('wei', Fraction(wei)) if wei else None
     unit = match[2].lower().replace('\uff05', '%')
     if unit == '%':
         return ('%', Fraction(match[1]))
     return ('wei', Fraction(match[1]) * (10**18 if unit == 'eth' else 1))
+
+
+# Everyday ways to state a share of the total. Each must appear in the user's own words.
+FRACTION_WORDS = {
+    'half': (1, 2), 'a half': (1, 2), 'one half': (1, 2), 'the other half': (1, 2), '1/2': (1, 2),
+    'a third': (1, 3), 'one third': (1, 3), '1/3': (1, 3), 'two thirds': (2, 3), '2/3': (2, 3),
+    'a quarter': (1, 4), 'one quarter': (1, 4), 'a fourth': (1, 4), '1/4': (1, 4),
+    'three quarters': (3, 4), '3/4': (3, 4),
+    '\u4e00\u534a': (1, 2), '\u534a\u6570': (1, 2), '\u53e6\u4e00\u534a': (1, 2), '\u4e09\u5206\u4e4b\u4e00': (1, 3),
+    '\u4e09\u5206\u4e4b\u4e8c': (2, 3), '\u56db\u5206\u4e4b\u4e00': (1, 4), '\u56db\u5206\u4e4b\u4e09': (3, 4),
+}
+REST_WORDS = {'the rest', 'rest', 'the remaining', 'remaining', 'the remainder', 'remainder', 'the balance',
+              'balance', 'the remaining balance', 'remaining balance', 'whatever is left',
+              '\u5269\u4e0b\u7684', '\u5269\u4e0b', '\u5269\u4f59', '\u4f59\u6b3e', '\u5c3e\u6b3e', '\u4f59\u4e0b'}
+EQUAL_WORDS = {'equal', 'equally', 'evenly', 'equal share', 'equal shares', 'equal parts', 'equal installments',
+               'equal instalments', 'the same', 'same amount', 'the same amount', 'an equal amount', 'split evenly',
+               '\u5e73\u5747', '\u5747\u5206', '\u5e73\u5206', '\u7b49\u989d'}
+FIVE_LIMIT = 'The requested schedule exceeds the five-milestone limit.'
+
+
+def natural_word(quote, sources):
+    """The normalised quote when it is a share word the user actually wrote, else None."""
+    if not isinstance(quote, str):
+        return None
+    word = ' '.join(quote.casefold().strip(' .,;:!\u3002\uff0c').split())
+    if word not in FRACTION_WORDS and word not in REST_WORDS and word not in EQUAL_WORDS:
+        return None
+    return word if any(word in ' '.join(source.casefold().split()) for source in sources) else None
+
+
+def round_step(value):
+    return int((Fraction(value) / currency.STEP + Fraction(1, 2)).__floor__()) * currency.STEP
+
+
+def fill_natural_amounts(rows, milestones, total, sources):
+    """Resolve "half", "the rest" and "equal" rows from the agreed total; returns resolved ids."""
+    if not total:
+        return set()
+    words = {m['id']: natural_word(row['amount'], sources) for row, m in zip(rows, milestones)
+             if m['amountWei'] is None}
+    resolved = set()
+    for mid, word in words.items():
+        if word in FRACTION_WORDS:
+            top, bottom = FRACTION_WORDS[word]
+            milestones[mid - 1]['amountWei'] = str(round_step(Fraction(int(total) * top, bottom)))
+            resolved.add(mid)
+    equal = [mid for mid, word in words.items() if word in EQUAL_WORDS]
+    rest = [mid for mid, word in words.items() if word in REST_WORDS]
+    known = sum(int(m['amountWei']) for m in milestones if m['amountWei'] and m['id'] not in equal + rest)
+    open_rows = [m for m in milestones if m['amountWei'] is None and m['id'] not in equal + rest]
+    left = int(total) - known
+    if open_rows or left <= 0:
+        return resolved
+    if equal and not rest:
+        share = (left // len(equal)) // currency.STEP * currency.STEP
+        for mid in equal[:-1]:
+            milestones[mid - 1]['amountWei'] = str(share)
+        milestones[equal[-1] - 1]['amountWei'] = str(left - share * (len(equal) - 1))
+        resolved.update(equal)
+    elif len(rest) == 1 and not equal:
+        milestones[rest[0] - 1]['amountWei'] = str(left)
+        resolved.add(rest[0])
+    return {mid for mid in resolved if int(milestones[mid - 1]['amountWei']) > 0}
+
+
+def converted(quote):
+    return isinstance(quote, str) and not AMOUNT.fullmatch(quote.strip()) and bool(currency.parse(quote))
+
+
+def named_amounts(message):
+    """Every amount the message states, as tokens, leaving out exchange rates such as 1 ETH = $1,000."""
+    rates = [m.span() for pattern in (currency.RATE_AFTER, currency.RATE_BEFORE) for m in pattern.finditer(message)]
+    inside = lambda span: any(start <= span[0] and span[1] <= end for start, end in rates)
+    tokens = []
+    for found in AMOUNT.finditer(message):
+        if not inside(found.span()) and not re.match(r'\s*(?:=|\uff1d|equals\b|is worth\b)', message[found.end():], re.I):
+            tokens.append(amount_token(found[0]))
+    for found in re.finditer(currency.AMOUNT_TEXT, message, re.I):
+        text = found[0].strip()
+        if currency.parse(text) and not inside(found.span()):
+            tokens.append(amount_token(text, [message]))
+    return tokens
 
 
 def complete_schedule(message, rows, milestones, row_units, total, disputed):
@@ -314,18 +413,21 @@ def complete_schedule(message, rows, milestones, row_units, total, disputed):
         if quote is None or value_of(quote, sources, set(), total, unit) != milestone['amountWei']:
             return set()
         match = AMOUNT.fullmatch(quote)
-        if not ((match and match[2].lower() in ('eth', 'wei')) or (NUMBER.fullmatch(quote) and unit in ('eth', 'wei'))):
+        if not ((match and match[2].lower() in ('eth', 'wei')) or (NUMBER.fullmatch(quote) and unit in ('eth', 'wei'))
+                or converted(quote)):
             absolute = False
-        allowed.add(amount_token(quote) or ('wei', Fraction(int(milestone['amountWei']))))
+        allowed.add(amount_token(quote, sources) or ('wei', Fraction(int(milestone['amountWei']))))
         allowed.add(('wei', Fraction(int(milestone['amountWei']))))
     calculated = str(sum(int(m['amountWei']) for m in milestones))
+    # A total written in another currency may differ from the sum by the 6-decimal rounding.
+    slack = currency.STEP * len(milestones)
+    close = lambda token: token and token[0] == 'wei' and abs(token[1] - int(calculated)) <= slack
     allowed.add(('wei', Fraction(int(calculated))))
     # "1 ETH = 1,000 USD" is an exchange rate, not a candidate amount.
-    named = [found for found in AMOUNT.finditer(message)
-             if not re.match(r'\s*(?:=|\uff1d|equals\b|is worth\b)', message[found.end():], re.I)]
-    if any(amount_token(found[0]) not in allowed for found in named):
+    named = named_amounts(message)
+    if any(token not in allowed and not close(token) for token in named):
         return set()
-    stated = {value_of(found[0], sources, set()) for found in named if found[2].lower() in ('eth', 'wei')}
+    stated = {str(calculated) if close(token) else None for token in named}
     fields = {f'milestones.{m["id"]}.amountWei' for m in milestones}
     if (fields | {'totalAmountWei'}) & disputed:
         return set()
@@ -371,6 +473,22 @@ def title_key(title):
 
 def draft_agreement(payload, extractor=extract):
     validate('ClarifyInput', payload)
+    previous = previous_result(payload['history'])
+    sources = [m['content'] for m in payload['history'] if m['role'] == 'user'] + [payload['message']]
+    # One rate per currency for the whole turn, reused on later turns so amounts do not drift.
+    book = currency.RateBook(sources, previous.get('exchangeRates'))
+    token = currency.ACTIVE.set(book)
+    try:
+        result, notes = reconcile(payload, extractor)
+    finally:
+        currency.ACTIVE.reset(token)
+    rates = book.records()
+    if rates:
+        result['exchangeRates'] = rates
+    return validate('ClarifyResult', result), notes
+
+
+def reconcile(payload, extractor):
     old = payload['draftSpec'] or {}
     previous = previous_result(payload['history'])
     # Only reuse an already reconciled schedule. A changed price, an extra sentence,
@@ -381,6 +499,8 @@ def draft_agreement(payload, extractor=extract):
             and sum(int(row['amountWei']) for row in old['milestones']) == int(old['totalAmountWei'] or 0)
             and repeats_payment(payload['message'], old)):
         result = {key: previous[key] for key in ('status', 'draftSpec', 'questions', 'unsupportedTerms')}
+        if previous.get('notEnforced'):
+            result['notEnforced'] = previous['notEnforced']
         return validate('ClarifyResult', result), previous.get('separateTerms', [])
     sources = [m['content'] for m in payload['history'] if m['role'] == 'user'] + [payload['message']]
     terms = extractor(INSTRUCTIONS, payload)
@@ -429,11 +549,10 @@ def draft_agreement(payload, extractor=extract):
             return
         questions.append({'field': field, 'question': question})
 
-    name = shorten(terms['name'])
-    if not name:
-        ask('name', 'What is the project called?')
+    # A missing title is not worth a question: the user can rename the agreement on review.
+    name = shorten(terms['name']) or old.get('name') or 'Service agreement'
     draft = dict(schemaVersion=1, projectId=old.get('projectId') or str(uuid4()),
-                 specVersion=old.get('specVersion', 1), name=name or 'Untitled project',
+                 specVersion=old.get('specVersion', 1), name=name,
                  approvalRole='client', refundPolicy='none', deadline=None)
     for field, role in [('clientWallet', 'client'), ('developerWallet', 'provider')]:
         wallet = terms[field]
@@ -467,7 +586,7 @@ def draft_agreement(payload, extractor=extract):
         raise ValueError('Expected a list of milestones.')
     rows = [dict(row) for row in rows]
     if len(rows) > 5:
-        unsupported.append('The requested schedule exceeds the five-milestone limit.')
+        unsupported.append(FIVE_LIMIT)
         rows = []
     milestones = []
     row_units = []
@@ -494,17 +613,24 @@ def draft_agreement(payload, extractor=extract):
             # The old accepted value remains the evidence. A renamed/reordered stage or any
             # current price change/conflict cannot use this retention path.
             amount = stored
-        if not amount:
-            ask(f'milestones.{index}.amountWei', f'What exact amount is payable for milestone {index}?')
         if not row['title']:
             ask(f'milestones.{index}.title', f'What deliverable must be accepted for milestone {index}?')
         milestones.append(dict(id=index, title=shorten(row['title']) or f'Milestone {index}', amountWei=amount))
+    # "Half now and the rest on delivery": shares of the agreed total need no exact figure from the user.
+    natural = fill_natural_amounts(rows, milestones, total, sources)
+    for milestone in milestones:
+        if not milestone['amountWei']:
+            ask(f'milestones.{milestone["id"]}.amountWei', f'What exact amount is payable for milestone {milestone["id"]}?')
     if not rows:
         ask('milestones', 'What deliverables should the client accept, in payment order?')
     if milestones and all(m['amountWei'] for m in milestones):
         calculated = sum(int(m['amountWei']) for m in milestones)
         if calculated > MAX_UINT:
             raise ValueError('Milestone sum exceeds uint256.')
+        rounded = natural or converted(total_quote) or any(converted(row['amount']) for row in rows)
+        if total and rounded and abs(int(total) - calculated) <= currency.STEP * len(milestones):
+            # Converted or shared amounts are rounded to 6 decimals; the contract holds their exact sum.
+            total = str(calculated)
         if total and int(total) != calculated:
             ask('totalAmountWei', 'The milestone amounts and stated total differ. Which should change?')
             total = None
@@ -564,6 +690,8 @@ def draft_agreement(payload, extractor=extract):
     questions = [q for q in questions if not (q['field'] in supported_values and q['field'] not in protected_fields | previous_protected
         and (q['field'] in missing_fields or (q['field'] in previous_missing | resolved
                                              and missing_question(q['field'], q['question']))))]
+    deterministic |= {f'milestones.{mid}.amountWei' for mid in natural}
+    questions = [q for q in questions if q['field'] not in deterministic]
     if not payment_message:
         # New amount doubts raised on a message without payment terms are not evidence;
         # questions still open from earlier turns remain.
@@ -583,6 +711,19 @@ def draft_agreement(payload, extractor=extract):
         if not isinstance(removal, str) or not removal.strip() or removal not in payload['message']:
             if condition not in unsupported:
                 unsupported.append(condition)
+    # Conditions the contract cannot enforce do not stop the user: they stay in the written
+    # agreement and the review page lists them. Only a schedule the contract cannot hold at all
+    # (too many payments, or money to anyone but one provider) still needs an answer.
+    blocking = [t for t in (terms.get('blockingTerms') or []) if isinstance(t, str)]
+    still_blocking = [t for t in unsupported if t == FIVE_LIMIT or any(same_term(t, b) for b in blocking)]
+    removed = {item.get('condition') for item in withdrawals if isinstance(item, dict)
+               and isinstance(item.get('userQuote'), str) and item['userQuote'].strip()
+               and item['userQuote'] in payload['message']}
+    not_enforced = [t for t in previous.get('notEnforced', []) if isinstance(t, str) and t not in removed]
+    for term in unsupported:
+        if term not in still_blocking and not any(same_term(term, kept) for kept in not_enforced):
+            not_enforced.append(term)
+    unsupported = still_blocking
     review = revision_question(payload['message'], previous, terms)
     if review:
         pending_fields = {q['field'] for q in pending}
@@ -598,9 +739,10 @@ def draft_agreement(payload, extractor=extract):
     notes = terms['separateTerms'] if isinstance(terms['separateTerms'], list) else []
     # Only exact quotes of the parties are kept; paraphrases are not evidence and are dropped.
     notes = [note for note in notes if isinstance(note, str) and note.strip() and any(note in s for s in sources)]
-    result = validate('ClarifyResult', dict(status=status, draftSpec=draft, questions=questions,
-                                            unsupportedTerms=unsupported))
-    return result, notes
+    result = dict(status=status, draftSpec=draft, questions=questions, unsupportedTerms=unsupported)
+    if not_enforced:
+        result['notEnforced'] = not_enforced
+    return validate('ClarifyResult', result), notes
 
 
 def clarify(payload, extractor=extract):

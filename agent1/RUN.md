@@ -53,7 +53,7 @@ Live `clarify` results also include `separateTerms`, an optional list in the sha
 | complete.json | 1 ETH split 30/70 with objective deliverables; ready for human confirmation |
 | missing-amount.json | Missing budget and installment amounts; ask the parties |
 | revisions.json | Open-ended changes; ask about evidence, boundaries, review and dispute handling |
-| refund.json | Late-delivery refund requested; report unsupported |
+| refund.json | Late-delivery refund requested; listed as not enforced by the contract |
 
 Each example contains the request, a **scripted** model extraction and expected result. The example project ID is fixed for reproducible comparisons. Extract the request to exercise an actual model:
 

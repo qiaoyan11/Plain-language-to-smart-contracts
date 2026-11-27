@@ -95,6 +95,19 @@ export interface ClarifyResult {
   }>;
   unsupportedTerms: string[];
   separateTerms?: string[];
+  /** Conditions from the user's agreement that the contract does not enforce; they do not block. */
+  notEnforced?: string[];
+  /** Rates used to convert amounts written in other currencies into test ETH. */
+  exchangeRates?: ExchangeRate[];
+}
+
+export interface ExchangeRate {
+  currency: string;
+  /** Units of the currency per test ETH, as a decimal string such as "1667.36". */
+  unitsPerEth: string;
+  source: "live" | "cached" | "stated" | "reference";
+  asOf: string | null;
+  provider: string | null;
 }
 
 export interface DraftContext {

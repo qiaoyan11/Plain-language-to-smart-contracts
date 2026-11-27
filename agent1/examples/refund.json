@@ -33,7 +33,7 @@
     ]
   },
   "expectedResult": {
-    "status": "unsupported",
+    "status": "readyForConfirmation",
     "draftSpec": {
       "schemaVersion": 1,
       "projectId": "example-project",
@@ -59,7 +59,8 @@
       "totalAmountWei": "1000000000000000000"
     },
     "questions": [],
-    "unsupportedTerms": [
+    "unsupportedTerms": [],
+    "notEnforced": [
       "V1 cannot automatically refund the client."
     ]
   }

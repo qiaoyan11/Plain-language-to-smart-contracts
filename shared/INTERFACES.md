@@ -67,10 +67,13 @@ Draft sessions have a separate Node-owned `revision`, starting at 0 and advancin
 
 Python callable: `clarify(payload) -> result`.
 
-Input: `{message, history, draftSpec}`. History entries contain `{role, content}`; draftSpec may be null. Output: `{status, draftSpec, questions, unsupportedTerms, separateTerms?}`. The original four fields remain required; `separateTerms` is an optional string array, so existing fixtures remain valid.
+Input: `{message, history, draftSpec}`. History entries contain `{role, content}`; draftSpec may be null. Output: `{status, draftSpec, questions, unsupportedTerms, separateTerms?, notEnforced?, exchangeRates?}`. The original four fields remain required; the others are optional, so existing fixtures remain valid.
 
 - Status: `needsClarification`, `readyForConfirmation`, or `unsupported`.
-- Questions: `{field, question}` entries; unsupportedTerms: strings explaining unhandled requirements.
+- Questions: `{field, question}` entries; unsupportedTerms: requirements that make the payment schedule itself impossible (more than five payments, payees other than the one provider). Only these block confirmation (`unsupported`).
+- `notEnforced`: payment conditions the contract cannot enforce (refunds, deadlines, date triggers, deemed acceptance, formulas). They do not block; the review page lists them and the acknowledgement covers them.
+- `exchangeRates`: `{currency, unitsPerEth, source: live|cached|stated|reference, asOf, provider}` for amounts written in another currency ("$500", "8.98万元"). Agent 1 converts them to wei at a rate the user stated, else the rate already used in the draft, else the live ETH price (CoinGecko, then Coinbase; cached 10 minutes), else a fixed reference table. Amounts are rounded to 6 ETH decimals; the total is the exact sum. `ACCORD_RATES=reference` skips the network.
+- In local mode Node fills empty wallet fields with the built-in test accounts, so the user is not asked for addresses.
 - `readyForConfirmation` requires complete, valid supported terms; it is not user confirmation.
 - `separateTerms` preserves exact source text from user messages for independent off-chain obligations. Agent 1 checks each entry against the user message history. The UI displays these terms and their source alongside the payment summary; they are not added to `ConfirmedSpec` or enforced by the generated contract.
 - Node presents the draft and unresolved items in English. Original user messages and quoted agreement terms retain their wording. Users revise through messages and approve on a separate confirmation page; Agent 1 cannot confirm or deploy it.
