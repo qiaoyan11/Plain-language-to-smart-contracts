@@ -209,6 +209,18 @@ class RulesTest(unittest.TestCase):
                 self.assert_blocked(r)
                 self.assertIsNone(r['intent'])
 
+    def test_a_payment_says_what_stays_in_escrow_after_it(self):
+        payload = state(True)
+        result = self.run_rules('acceptMilestone', payload)
+        later = [m for m in payload['snapshot']['milestones'] if m['id'] != 1 and not m['paid']]
+        self.assertGreater(len(later), 0)
+        self.assertIn(f"After it, {len(later)} more milestone", result['summary'])
+        for milestone in payload['snapshot']['milestones'][:-1]:
+            milestone['paid'] = True
+        last = self.run_rules('acceptMilestone', payload)
+        self.assertNotIn('After it', last['summary'])
+        self.assertTrue(last['summary'].endswith('No transaction has been sent.'))
+
     def test_english_summary_preserves_a_unicode_milestone_title(self):
         payload = state(True)
         title = '\u9996\u9875'

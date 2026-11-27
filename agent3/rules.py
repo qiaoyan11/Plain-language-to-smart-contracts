@@ -32,7 +32,9 @@ TEXT = {
         'unfunded': 'The escrow is not funded yet, so no milestone can be accepted. {done}',
         'is_paid': 'Milestone #{id} is already paid. {done}',
         'out_of_order': 'Milestones must be accepted in order. The next unpaid milestone is #{next_id}. {done}',
-        'accept': 'Accept milestone #{id} "{title}" and pay {eth} test ETH to the provider wallet {wallet}. {done}',
+        'accept': 'Accept milestone #{id} "{title}" and pay {eth} test ETH to the provider wallet {wallet}.{more} {done}',
+        'accept_more': ' After it, {count} more milestone{s} ({eth} test ETH) stay{verb} in escrow; each is paid only '
+                       'when you approve it.',
         'model_error': 'The request could not be understood because of a service error. Please try again. {done}',
         'too_long': 'The message is too long. Please shorten it and try again. {done}',
         'bad_ids': 'The project data is not in the expected form, so the request cannot be handled. {done}',
@@ -139,6 +141,11 @@ def decide(parsed, payload):
     if mid != lowest['id']:
         return _blocked(lang, 'out_of_order', next_id=lowest['id'])
     wallet = snap['developerWallet']
+    # "Pay everything that's left" still pays one milestone per approval: say what remains after it.
+    later = [m for m in unpaid if m['id'] != mid]
+    more = _t(lang, 'accept_more', count=len(later), s='' if len(later) == 1 else 's',
+              verb='s' if len(later) == 1 else '',
+              eth=format_eth(sum(int(m['amountWei']) for m in later))) if later else ''
     summary = _t(lang, 'accept', id=mid, title=target['title'], eth=format_eth(target['amountWei']),
-                 wallet=wallet[:6] + '…' + wallet[-4:])
+                 wallet=wallet[:6] + '…' + wallet[-4:], more=more)
     return _ready(payload, 'acceptMilestone', mid, summary)
