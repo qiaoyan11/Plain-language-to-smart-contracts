@@ -101,8 +101,14 @@ function conversationTurn(previous, result, revision, previousTurn) {
   return { revision, reply: lines.join(' '), question };
 }
 
-function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE === 'live' } = {}) {
-  const sessions = new Map();
+function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE === 'live',
+  saved = [], onChange = () => {} } = {}) {
+  const sessions = new Map(saved.map(([id, data]) => [id, { ...data,
+    busy: false, keys: new Map(data.keys),
+    lastError: data.busy ? 'The backend restarted before this reply was recorded. Review the saved message before retrying.' : data.lastError }]));
+  function exportState() {
+    return Array.from(sessions, ([id, s]) => [id, { ...s, keys: [...s.keys] }]);
+  }
   function create(body) {
     fields(body, []);
     const id = randomUUID(), now = new Date().toISOString();
@@ -113,7 +119,7 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
   }
   function state(id) {
     const s = sessions.get(id);
-    if (!s) fail(404, 'Draft not found. Local drafts reset when the backend restarts.');
+    if (!s) fail(404, 'Draft not found in this local workspace.');
     return s;
   }
   function snapshot(s) {
@@ -152,6 +158,7 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
     s.lastError = null;
     s.busy = true;
     try {
+      onChange();
       const response = await runner(request);
       validateResponse(request, response);
       if (response.status !== 'ok') throw new Error('CLARIFICATION_REJECTED');
@@ -172,7 +179,7 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
     } catch {
       s.lastError = 'The agreement assistant could not finish. Your previous draft is unchanged and cannot be confirmed until this message is resolved. Retry this message.';
       fail(502, s.lastError);
-    } finally { s.busy = false; }
+    } finally { s.busy = false; onChange(); }
     return snapshot(s);
   }
   function confirmationCandidate(id, body) {
@@ -188,6 +195,6 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
   }
   function markConfirmed(id, projectId) { state(id).confirmedProjectId = projectId; }
   function get(id) { return snapshot(state(id)); }
-  return { enabled, create, get, message, confirmationCandidate, markConfirmed };
+  return { enabled, create, get, message, confirmationCandidate, markConfirmed, exportState };
 }
 module.exports = { createDrafting };

@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Row, Shell } from "@/components/ReferenceShell";
 import { OperationAssistant } from "@/components/OperationAssistant";
-import { actionBlockReason, api, MOCK_MODE, formatWei, type ProjectAction, type Project } from "@/api/client";
+import { actionBlockReason, api, MOCK_MODE, formatWei, reconnectDelay, type ProjectAction, type Project } from "@/api/client";
 
 export const Route = createFileRoute("/reference-projects/$id")({
   head: () => ({
@@ -21,33 +22,40 @@ function DetailPage() {
   return <ReferenceProject key={id} id={id} />;
 }
 
-function ReferenceProject({ id }: { id: string }) {
-  const [project, setProject] = useState<Project | null | undefined>(undefined);
-  const [generated, setGenerated] = useState(false);
+export function ReferenceProject({ id }: { id: string }) {
+  const cache = useQueryClient();
+  const key = ["reference-project", id];
+  const query = useQuery({
+    queryKey: key,
+    queryFn: async () => {
+      const [project, context] = await Promise.all([api.getProject(id), MOCK_MODE ? null : api.getAgreement(id)]);
+      const generated = context?.deployment?.kind === "generated" ||
+        (!context?.deployment && Boolean(context?.confirmation || context?.latestRunId));
+      return { project, generated };
+    },
+    retry: false,
+    refetchOnReconnect: "always",
+    refetchInterval: (q) => reconnectDelay(q.state.error),
+  });
+  const { project, generated } = query.data ?? {};
   const [pending, setPending] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([api.getProject(id), MOCK_MODE ? null : api.getAgreement(id)])
-      .then(([next, context]) => {
-        if (cancelled) return;
-        setGenerated(context?.deployment?.kind === "generated" ||
-          (!context?.deployment && Boolean(context?.confirmation || context?.latestRunId)));
-        setProject(next);
-      })
-      .catch(e => { if (!cancelled) { setProject(null); setMsg({ok:false,text:e.message}); } });
-    return () => { cancelled = true; };
-  }, [id]);
+  async function setProject(next: Project) {
+    await cache.cancelQueries({ queryKey: key });
+    cache.setQueryData<typeof query.data>(key, (previous) => previous && { ...previous, project: next });
+  }
 
   const run = async (intent: ProjectAction, label: string, key: string) => {
     setPending(key);
     setMsg(null);
     try {
-      setProject(await api.runAction(id, intent));
+      await setProject(await api.runAction(id, intent));
       setMsg({ ok: true, text: `${label} succeeded (${MOCK_MODE ? "mock" : "local chain receipt confirmed"})` });
     } catch (e) {
-      setMsg({ ok: false, text: `${label} failed: ${(e as Error).message}` });
+      setMsg({ ok: false, text: reconnectDelay(e)
+        ? "The transaction response did not arrive. Check the balance and transaction history before trying again."
+        : `${label} failed: ${(e as Error).message}` });
+      await query.refetch();
     } finally {
       setPending(null);
     }
@@ -67,14 +75,16 @@ function ReferenceProject({ id }: { id: string }) {
   );
   return (
     <Shell step="03 / Project">
-      {project === undefined && <p className="text-muted-foreground">Loading…</p>}
-      {project === null && (
+      {query.isPending && <p className="text-muted-foreground">Loading…</p>}
+      {query.isError && <p role="alert">{reconnectDelay(query.error)
+        ? "Reconnecting to the local server to check project status automatically."
+        : query.error.message}</p>}
+      {(project === null || (!project && query.isError && !reconnectDelay(query.error))) && (
         <div className="panel">
           <p>Unable to load this project.</p>
           <Link to="/reference-demo" className="btn btn-outline mt-4 inline-flex">Create a new project</Link>
         </div>
       )}
-      {project === null && msg && <p className="text-destructive">{msg.text}</p>}
       {project && (
         <>
           <h1 className="font-display text-4xl font-bold">{project.name}</h1>
@@ -103,7 +113,7 @@ function ReferenceProject({ id }: { id: string }) {
               const reason = actionBlockReason(project, a.intent);
               return (
                 <div key={a.key}>
-                  <button className="btn btn-primary w-full" disabled={!!reason || pending !== null}
+                  <button className="btn btn-primary w-full" disabled={!!reason || pending !== null || query.isError}
                     onClick={() => run(a.intent, a.label, a.key)}>
                     {pending === a.key ? "Waiting for confirmation…" : a.label}
                   </button>
@@ -112,8 +122,12 @@ function ReferenceProject({ id }: { id: string }) {
               );
             })}
           </div>
-          {!MOCK_MODE && <OperationAssistant project={project} disabled={pending !== null}
-            onProject={next => { setProject(next); setMsg(null); }} />}
+          {!MOCK_MODE && <OperationAssistant project={project} disabled={pending !== null || query.isError}
+            refreshProject={async () => {
+              const refreshed = await query.refetch();
+              if (refreshed.error) throw refreshed.error;
+            }}
+            onProject={async next => { await setProject(next); setMsg(null); }} />}
           {project.transactions?.length ? <div className="panel mt-4">
             <h2 className="font-bold">Confirmed local transactions</h2>
             {project.transactions.map(tx => <div key={tx.hash} className="mt-2 break-all text-xs font-mono">{tx.action}{tx.milestoneId ? ` ${tx.milestoneId}` : ""} · block {tx.blockNumber}<br />{tx.hash}</div>)}

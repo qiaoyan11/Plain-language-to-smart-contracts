@@ -224,6 +224,7 @@ export interface AgreementContext {
   latestRunId: string | null;
   generationEnabled: boolean;
   generatedDeploymentEnabled: boolean;
+  recoveredOnFreshChain?: boolean;
   operationsEnabled?: boolean;
   draftOrigin?: { draftId: string; revision: number };
   deployment?:

@@ -11,6 +11,7 @@ import { DraftSource } from "@/components/DraftSummary";
 import {
   api,
   formatWei,
+  reconnectDelay,
   type AgreementContext,
   type GenerationRun,
   type Project,
@@ -56,6 +57,7 @@ export function DetailPage({ id }: { id: string }) {
     [editing, setEditing] = useState(false),
     [addition, setAddition] = useState(""),
     [ack, setAck] = useState(false),
+    [deploymentUnconfirmed, setDeploymentUnconfirmed] = useState(false),
     [error, setError] = useState("");
   const key = ["agreement", id];
   const query = useQuery({
@@ -69,7 +71,8 @@ export function DetailPage({ id }: { id: string }) {
       const run = context.latestRunId ? await api.getGeneration(id, context.latestRunId) : null;
       return { project, context, run };
     },
-    refetchInterval: (q) => (q.state.data?.run && !q.state.data.run.finishedAt ? 2000 : false),
+    refetchOnReconnect: "always",
+    refetchInterval: (q) => reconnectDelay(q.state.error) || (q.state.data?.run && !q.state.data.run.finishedAt ? 2000 : false),
   });
   const originId = query.data?.context.draftOrigin?.draftId;
   const origin = useQuery({
@@ -77,8 +80,9 @@ export function DetailPage({ id }: { id: string }) {
     queryFn: () => api.getDraft(originId!),
     enabled: Boolean(originId),
     retry: false,
+    refetchInterval: (q) => reconnectDelay(q.state.error),
   });
-  async function action(work: () => Promise<unknown>) {
+  async function action(work: () => Promise<unknown>, kind?: "deployment") {
     if (active.current) return;
     active.current = true;
     setBusy(true);
@@ -88,7 +92,11 @@ export function DetailPage({ id }: { id: string }) {
       await work();
       await query.refetch();
     } catch (e) {
-      setError((e as Error).message);
+      if (kind === "deployment" && e instanceof TypeError) {
+        setDeploymentUnconfirmed(true);
+      } else {
+        setError((e as Error).message);
+      }
       await query.refetch();
     } finally {
       active.current = false;
@@ -102,7 +110,9 @@ export function DetailPage({ id }: { id: string }) {
           <>
             <h1>We couldn't load this agreement</h1>
             <p role="alert" className="intro">
-              {query.error.message} Local projects reset when the backend restarts.
+              {reconnectDelay(query.error)
+                ? "Reconnecting to the local server. Keep this page open to resume your project."
+                : query.error.message}
             </p>
             <Button onClick={() => query.refetch()}>Try again</Button>
             <Button asChild variant="ghost">
@@ -121,6 +131,7 @@ export function DetailPage({ id }: { id: string }) {
   const unpaidLabel = "Unpaid";
   const confirmation = context.confirmation;
   const source = currentValidatedSource(context, run);
+  const sealed = Boolean(context.draftOrigin || context.recoveredOnFreshChain);
   const deployment = context.deployment;
   const hasDeployment = Boolean(project.contractAddress || deployment);
   const sameAddress =
@@ -141,6 +152,14 @@ export function DetailPage({ id }: { id: string }) {
     confirmation &&
     context.generatedDeploymentEnabled &&
     run?.generatedDeploymentEnabled;
+  const reconnecting = Boolean(reconnectDelay(query.error));
+  const alertText = error || (reconnecting
+    ? source
+      ? "Your contract passed its checks. Reconnecting to the local server to check deployment status automatically. You can also choose Refresh status."
+      : "Reconnecting to the local server to check project status automatically."
+    : query.error?.message || (deploymentUnconfirmed && !generated && !busy && !hasDeployment
+      ? "The server is reachable. No deployment is recorded for this checked contract. You can retry deploying this version."
+      : ""));
   const draft: ProjectDraft = {
     name: spec.name,
     clientWallet: spec.clientWallet,
@@ -190,10 +209,17 @@ export function DetailPage({ id }: { id: string }) {
               ? busy
                 ? "Checking local deployment details…"
                 : "Deployment details could not be matched to this project. Refresh its status to check again."
-              : context.confirmation
-                ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
-                : "The agreement changed. Review and confirm this version before generating."}
+              : canDeploy && context.recoveredOnFreshChain
+                ? "Your checked contract was recovered. You can deploy it on this fresh local chain without generating it again."
+                : context.confirmation
+                  ? "Generate a contract from your confirmed payment rules, then deploy it locally after its checks pass."
+                  : "The agreement changed. Review and confirm this version before generating."}
       </p>
+      {context.recoveredOnFreshChain && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Transactions from the previous local chain are unavailable.
+        </p>
+      )}
       {context.draftOrigin ? (
         origin.data ? (
           <DraftSource session={origin.data} />
@@ -204,17 +230,17 @@ export function DetailPage({ id }: { id: string }) {
               : "Loading original conversation…"}
           </p>
         )
-      ) : (
+      ) : context.recoveredOnFreshChain ? null : (
         <AgreementNotes workspace={notes} />
       )}
-      {context.draftOrigin && (
+      {sealed && (
         <Button asChild variant="link" className="mt-4 px-0">
           <Link to="/" onClick={() => api.setActiveDraftId(null)}>
             Start a new agreement to change these terms
           </Link>
         </Button>
       )}
-      {editing ? (
+      {editing && !sealed ? (
         <div className="mt-7">
           <label className="mb-7 block">
             <span className="field-label">Add a detail or correction · saved for human review</span>
@@ -270,7 +296,7 @@ export function DetailPage({ id }: { id: string }) {
           )}
           {!hasDeployment && (
             <>
-              {!context.draftOrigin && (
+              {!sealed && (
                 <Button
                   variant="ghost"
                   className="mb-5 -ml-3"
@@ -352,6 +378,10 @@ export function DetailPage({ id }: { id: string }) {
                 project={project}
                 disabled={busy || query.isError}
                 onProject={updateProject}
+                refreshProject={async () => {
+                  const refreshed = await query.refetch();
+                  if (refreshed.error) throw refreshed.error;
+                }}
                 quickActions
                 naturalLanguageEnabled={Boolean(context.operationsEnabled)}
               />
@@ -365,7 +395,7 @@ export function DetailPage({ id }: { id: string }) {
                 onClick={() =>
                   action(async () => {
                     await updateProject(await api.deployGeneration(id, run.id, confirmation));
-                  })
+                  }, "deployment")
                 }
               >
                 Deploy generated contract locally
@@ -383,18 +413,19 @@ export function DetailPage({ id }: { id: string }) {
           )}
         </>
       )}
-      {(error || query.isError) && (
+      {alertText && (
         <p role="alert" className="mt-5 text-sm text-destructive">
-          {error || query.error?.message}
+          {alertText}
         </p>
       )}
       <Button
         className="mt-5"
         variant="link"
         disabled={busy}
-        onClick={() => {
+        onClick={async () => {
           setError("");
-          void query.refetch();
+          const refreshed = await query.refetch();
+          if (refreshed.isSuccess) setDeploymentUnconfirmed(false);
         }}
       >
         Refresh status

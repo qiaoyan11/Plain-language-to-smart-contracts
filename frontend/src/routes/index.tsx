@@ -1,13 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 import { Shell } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { DraftSummary, draftReady } from "@/components/DraftSummary";
 import { DraftConversation, latestDraftQuestion } from "@/components/DraftConversation";
 import { useActiveDraft } from "@/hooks/use-active-draft";
-import { api } from "@/api/client";
+import { api, reconnectDelay } from "@/api/client";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Describe your agreement · Accord" }] }),
@@ -21,6 +21,8 @@ export function CreatePage() {
     queryKey: ["draft-context"],
     queryFn: api.getDraftContext,
     retry: false,
+    refetchOnReconnect: "always",
+    refetchInterval: (q) => reconnectDelay(q.state.error),
   });
   const [message, setMessage] = useState("");
   const [working, setWorking] = useState(false);
@@ -32,6 +34,16 @@ export function CreatePage() {
     expectedRevision: number;
     requestKey: string;
   } | null>(null);
+  useEffect(() => {
+    const sent = pending.current;
+    if (sent && session?.id === sent.id && session.revision > sent.expectedRevision && !session.pendingMessage) {
+      pending.current = null;
+      if (session.messages.at(-1)?.content === sent.content) {
+        setMessage("");
+        setError("");
+      }
+    }
+  }, [session]);
   const occupied = working || session?.busy || query.isFetching;
   const disabled =
     occupied ||
@@ -40,7 +52,10 @@ export function CreatePage() {
     !context.data?.clarificationEnabled ||
     query.isError ||
     Boolean(session?.confirmedProjectId);
-  const failure = error || query.error?.message || context.error?.message || session?.lastError;
+  const reconnecting = Boolean(reconnectDelay(query.error) || reconnectDelay(context.error));
+  const failure = reconnecting
+    ? "Reconnecting to the local server to check your saved draft."
+    : error || query.error?.message || context.error?.message || session?.lastError;
 
   async function refresh() {
     setError("");
@@ -92,23 +107,17 @@ export function CreatePage() {
       pending.current = null;
       setMessage("");
     } catch (caught) {
-      setError((caught as Error).message);
+      setError(reconnectDelay(caught)
+        ? "Your message response did not arrive. Check the conversation before sending it again."
+        : (caught as Error).message);
       if (current) {
         try {
           await cache.cancelQueries({ queryKey: ["draft", current.id] });
-          const latest = await cache.fetchQuery({
+          await cache.fetchQuery({
             queryKey: ["draft", current.id],
             queryFn: () => api.getDraft(current!.id),
             staleTime: 0,
           });
-          if (
-            pending.current &&
-            latest.revision > pending.current.expectedRevision &&
-            !latest.pendingMessage
-          ) {
-            if (latest.messages.at(-1)?.content === pending.current.content) setMessage("");
-            pending.current = null;
-          }
         } catch {
           /* The read error is displayed alongside the saved draft. */
         }
@@ -231,12 +240,6 @@ export function CreatePage() {
       {failure && (
         <p role="alert" className="mt-5 text-sm text-destructive">
           {failure}
-        </p>
-      )}
-      {query.isError && (
-        <p className="mt-2 text-sm">
-          Local drafts reset when the backend restarts. Start a new agreement if this draft is
-          unavailable.
         </p>
       )}
       <Button

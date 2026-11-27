@@ -12,12 +12,14 @@ export function OperationAssistant({
   project,
   disabled,
   onProject,
+  refreshProject,
   quickActions = false,
   naturalLanguageEnabled = true,
 }: {
   project: Project;
   disabled: boolean;
   onProject: (project: Project) => void | Promise<void>;
+  refreshProject?: () => Promise<void>;
   quickActions?: boolean;
   naturalLanguageEnabled?: boolean;
 }) {
@@ -49,7 +51,8 @@ export function OperationAssistant({
 
   const refresh = async () => {
     try {
-      await onProject(await api.getProjectSnapshot(project.id));
+      if (refreshProject) await refreshProject();
+      else await onProject(await api.getProjectSnapshot(project.id));
     } catch {
       setRefreshFailed(true);
     }
@@ -66,7 +69,9 @@ export function OperationAssistant({
     try {
       setPlan(await request());
     } catch (e) {
-      setError((e as Error).message);
+      setError(e instanceof TypeError
+        ? "The payment preview could not be loaded. Prepare a new preview after reconnecting."
+        : (e as Error).message);
       await refresh();
     } finally {
       active.current = false;
@@ -89,7 +94,12 @@ export function OperationAssistant({
       await onProject(done.project);
       setMessage("");
     } catch (e) {
-      setError((e as Error).message);
+      const message = (e as Error).message;
+      setError(e instanceof TypeError
+        ? "The payment response did not arrive. Check the balance and transaction history before trying another payment."
+        : message.includes("Plan not found")
+          ? "This payment preview has expired. Review the current balance, then prepare and confirm a new preview."
+          : message);
       // The transaction may have completed before the response was lost. Read state; never resend it.
       await refresh();
     } finally {
@@ -101,7 +111,7 @@ export function OperationAssistant({
 
   const review = plan && (
     <div className="mt-4 border-t border-border pt-4 text-sm">
-      {source === "language" && (
+      {(source === "language" || !executable) && (
         <p className="whitespace-pre-wrap break-words">{plan.question ?? plan.summary}</p>
       )}
       {executable && plan.payment && (

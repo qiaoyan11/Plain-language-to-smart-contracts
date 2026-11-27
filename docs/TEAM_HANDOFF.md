@@ -64,7 +64,7 @@ Node HTTP 入口（server.cjs → drafting.cjs / generation.cjs / operations.cjs
 - `shared/examples/`：各类交接对象的合法样例。地址、确认记录、部署记录均为虚构，不证明真的部署或确认。
 - `backend/python-bridge.cjs`：固定程序入口，无 shell；输入 1 MiB 上限，输出和日志合计 1 MiB，模拟模式默认 10 秒；live Agent 1 默认 60 秒，live 编译 smoke 为 210 秒，development 为每轮 900 秒乘以 1+maxRepairs（最多 6 轮），同项目同时只允许一项任务。
 - `backend/drafting.cjs`：保存完整对话、草稿版本、待处理消息及 Agent 1 结果，包括可选 `separateTerms` 原文。`/api/drafts` 系列接口通过 `expectedRevision` 和 `requestKey` 控制并发与重试；只有就绪草稿经明确确认后才创建付款项目并调用既有 `generation.confirm`。确认后的草稿封存，失败消息未解决时不能确认旧结果。见[草稿接口及恢复规则](AGENT1_DEMO.md)。
-- generation.cjs 保存明确确认过的规则版本，调用 bridge 时用 isCurrent 核对最新版本。新 HTTP 格式见 [GENERATION_API_V1.md](../shared/GENERATION_API_V1.md)；确认和运行查询仍在内存里，重启会清空，持久化未做。
+- generation.cjs 保存明确确认过的规则版本，调用 bridge 时用 isCurrent 核对最新版本。普通本地服务保存确认和运行记录；重开原链接可继续查看。新 HTTP 格式见 [GENERATION_API_V1.md](../shared/GENERATION_API_V1.md)。
 - Node HTTP 当前固定 C、最多 3 次修复；默认禁用，AGENT2_MODE=live 才开放生成。前端仅提交版本、确认 ID 和重复请求键，不直接传 Python 信封、模型设置或验证报告。
 - worker 在返回前检查完整输出；Node 使用同一 JSON Schema 独立检查完整结果，并核对请求 ID、项目版本、修复预算和最终报告关联。所有金额跨语言传字符串。
 - 格式合法不代表语义正确、更不代表安全。只有独立验证能给真实 passed 报告；格式校验本身不能认证报告来源。

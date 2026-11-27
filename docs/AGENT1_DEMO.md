@@ -40,7 +40,7 @@ If you are clarifying the first milestone separately, try `25% of 0.08 ETH will 
 
 ## What the app records
 
-The backend keeps the agreement text, each clarification, the confirmed rules and the chain receipts. The browser restores a draft by ID. A failed message can be retried with its original request key. Once a draft is confirmed, a new agreement is needed to change its terms. Restarting the backend clears the local drafts, projects and chain.
+The backend saves the agreement text, each clarification, the confirmed rules and the local chain on this computer. The browser restores a draft or project by ID after a refresh or backend restart. A failed message can be retried with its original request key. Once a draft is confirmed, a new agreement is needed to change its terms.
 
 System messages and test scenarios are in English. The original agreement text, user-entered names and exact quotes remain available for review. An unsupported payment condition keeps the agreement in draft until the user resolves it. Separate written obligations are recorded outside the on-chain rules.
 

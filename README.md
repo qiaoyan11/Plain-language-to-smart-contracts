@@ -4,7 +4,7 @@
 
 用户描述服务协议，Agent 1 每次用英文追问一项缺失信息。核对金额、钱包和余款可能锁定的提示后，用户确认规则，Agent 2 生成合约。编译、Slither 和条款测试通过后，用户可以部署到本机链，用付款按钮或 Agent 3 的自然语言入口操作。每笔存款和付款都需要核对并确认，结果取自链上回执。网页、助手回复和测试场景使用英文。
 
-在仓库根目录用 `AGENT1_MODE=live AGENT2_MODE=live AGENT3_MODE=live npm run backend` 启动后端，在 `frontend/` 用 `npm run dev` 启动网页。模型调用会产生 API 费用。页面通过 **Use local test accounts** 明确把本机测试账户加入对话。手写合约演示仍可从首页进入 `/reference-demo`。[完整对话演示](docs/AGENT1_DEMO.md) · [前端运行说明](frontend/README.md) · [模块验证记录](docs/WORKLOG.md)
+安装好前后端依赖后，使用 Node 22.12+（建议 22.x）在仓库根目录运行 `AGENT1_MODE=live AGENT2_MODE=live AGENT3_MODE=live npm run demo:web`，默认打开 http://127.0.0.1:5173 。若后端用 Node 20、前端另装了新版 Node，设置 `DEMO_FRONTEND_NODE` 为前端 Node 的完整路径。模型调用会产生 API 费用。页面通过 **Use local test accounts** 把本机测试账户加入对话。手写合约演示仍可从首页进入 `/reference-demo`。[完整对话演示](docs/AGENT1_DEMO.md) · [前端运行说明](frontend/README.md) · [模块验证记录](docs/WORKLOG.md)
 
 服务端保存对话和草稿版本，刷新网页时按草稿 ID 恢复。只有完整且没有待解决事项的草稿才能确认；确认后的对话封存，修改约定需新建协议。独立链下条款以用户原文单独显示，不成为链上付款条件。草稿版本与确认后项目的 `specVersion` 分别计数，来源由 `draftOrigin` 关联。
 
@@ -62,7 +62,7 @@
 
 本次通过真实 HTTP 接口完成 Agent 1 对话、明确确认和 Agent 2 生成，再在浏览器完成本地部署及 Agent 3 的存款和两阶段付款。逐次确认后余额归零，刷新后两个阶段仍显示已付款。聊天与确认页面另有自动测试覆盖。这是本地流程验证；正式评估、微调和 Sepolia 部署仍未完成。见[运行记录](docs/DEMO_RUN_2026-11-26.md)与[操作说明](docs/AGENT1_DEMO.md)。
 
-合约会真实执行，但运行在电脑里的模拟区块链上，测试资金没有实际价值。无需购买 ETH 或连接个人钱包。重启后端会清空项目和链上记录；刷新网页不会清空。当前不支持退款、取消或争议处理，不用于真实资金。
+合约在电脑里的模拟区块链上执行，使用本地测试账户。草稿、已确认的条款、生成结果和本地链保存在这台电脑上。网页短暂断线会自动重连；正常重启后打开原项目链接，可以核对同一笔交易和余额、继续下一步。当前版本支持按期付款，退款、取消和争议处理仍待实现。
 
 各模块的测试数量和联调范围见[工作日志](docs/WORKLOG.md)。
 

@@ -8,7 +8,7 @@
 
 默认 `npm run backend` 不启动收费模型。配置好 Python、验证工具和本地 key 后，显式用 `AGENT2_MODE=live npm run backend` 启用；当前服务端固定 C、最多 3 次修复。只有用户请求生成才启动任务。模型和修复预算不接受网页传入。
 
-项目、确认及运行查询记录都在内存里，重启清空；Python 的逐轮产物另存在本地 `artifacts/agent2/`。修改规则会撤销旧确认，并标记旧结果过期。重复请求不会重启同一任务；失败后需用户主动重试。
+普通本地服务把项目、确认、草稿、运行结果和本地测试链写入 `data/private/local-demo/`。重启时校验并载入保存的区块和回执，网页可以沿用原项目地址。数据库目录可通过 `LOCAL_STATE_DIR` 配置；各实例应使用独立目录。Python 的逐轮产物另存于 `artifacts/agent2/`。修改规则会撤销旧确认，并标记旧结果过期。费用相关的调用仅由用户主动触发。
 
 生成项目通过 `POST /api/projects/:id/generation-runs/:runId/deployment` 显式部署验证器提供的合约。启用 `AGENT3_MODE=live` 后，`/plans` 和确认接口使用该次部署的地址、ABI 和源码标识；手写演示使用原有 `/actions`。本地 Hardhat 网络编号为 31337。
 

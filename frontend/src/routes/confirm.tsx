@@ -5,7 +5,7 @@ import { Shell } from "@/components/Shell";
 import { DraftSummary, DraftSource, draftReady } from "@/components/DraftSummary";
 import { PaymentRules, ScopeAcknowledgement } from "@/components/AgreementNotes";
 import { useActiveDraft } from "@/hooks/use-active-draft";
-import { api } from "@/api/client";
+import { api, reconnectDelay } from "@/api/client";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/confirm")({
@@ -98,7 +98,9 @@ export function ConfirmPage() {
       )}
       {(error || query.error || session?.lastError) && (
         <p role="alert" className="mt-4 text-sm text-destructive">
-          {error || query.error?.message || session?.lastError}
+          {reconnectDelay(query.error)
+            ? "Reconnecting to the local server to check your saved draft and confirmation."
+            : error || query.error?.message || session?.lastError}
         </p>
       )}
       <Button variant="link" className="mt-4 px-0" disabled={busy} onClick={() => nav({ to: "/" })}>

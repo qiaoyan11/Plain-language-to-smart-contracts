@@ -5,7 +5,7 @@ const { createHash } = require('node:crypto');
 const schema = require('./schemas/handoff.schema.json');
 const ajv = new Ajv({ strict: false });
 addFormats(ajv);
-const kinds = ['Response', 'DraftSpec', 'ConfirmedSpec', 'ClarifyResult', 'GenerateResult', 'PlanResult', 'ReportInput', 'ReportResult'];
+const kinds = ['Request', 'Response', 'DraftSpec', 'ConfirmedSpec', 'ClarifyResult', 'GenerateResult', 'PlanResult', 'ReportInput', 'ReportResult'];
 const validators = Object.fromEntries(kinds.map(kind => [kind, ajv.compile({ ...schema, $ref: `#/$defs/${kind}` })]));
 function requireThat(condition, message) { if (!condition) throw new Error(message); }
 function check(kind, data) { requireThat(validators[kind](data), `INVALID_${kind}: ${ajv.errorsText(validators[kind].errors)}`); }
@@ -38,6 +38,14 @@ function receiptOutcome({ projectId, intent, receipt, snapshot }) {
   if (!recorded || !snapshot.funded) return 'unverified';
   if (intent.action === 'acceptMilestone' && !snapshot.milestones.some(m => m.id === intent.milestoneId && m.paid)) return 'unverified';
   return 'confirmed';
+}
+function validateGenerationRequest(request) {
+  check('Request', request);
+  requireThat(request.operation === 'generate', 'EXPECTED_GENERATION_REQUEST');
+  const { spec, confirmation } = request.payload;
+  checkSpec(spec, true);
+  requireThat(confirmation.projectId === spec.projectId && confirmation.specVersion === spec.specVersion,
+    'CONFIRMATION_SPEC_MISMATCH');
 }
 function validateResponse(request, response) {
   check('Response', response);
@@ -102,4 +110,4 @@ function validateResponse(request, response) {
     requireThat(result.outcome === receiptOutcome(request.payload), 'REPORT_OUTCOME_MISMATCH');
   }
 }
-module.exports = { validateResponse, receiptOutcome };
+module.exports = { validateGenerationRequest, validateResponse, receiptOutcome };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api/client";
+import { api, reconnectDelay } from "@/api/client";
 
 export function useActiveDraft() {
   const [id, setId] = useState<string | null | undefined>(undefined);
@@ -12,7 +12,8 @@ export function useActiveDraft() {
     queryFn: () => api.getDraft(id!),
     enabled: Boolean(id),
     retry: false,
-    refetchInterval: (current) => (current.state.data?.busy ? 1500 : false),
+    refetchOnReconnect: "always",
+    refetchInterval: (current) => reconnectDelay(current.state.error) || (current.state.data?.busy ? 1500 : false),
   });
   function selectDraft(nextId: string | null) {
     api.setActiveDraftId(nextId);

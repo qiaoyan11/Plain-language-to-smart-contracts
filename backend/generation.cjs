@@ -1,5 +1,6 @@
 // Trusted HTTP orchestration. No signing and no client-selected model/config/source.
 const { randomUUID } = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { runPython } = require('./python-bridge.cjs');
 const { validateResponse } = require('../shared/handoff.cjs');
 const RUN_CONFIG = Object.freeze({ validationMode: 'development', maxRepairs: 3,
@@ -18,8 +19,19 @@ function specFromProject(p, specVersion) {
     milestones: p.milestones.map(m => ({ id: m.id, title: m.title, amountWei: m.amountWei })),
     totalAmountWei: p.totalAmountWei, approvalRole: 'client', refundPolicy: 'none', deadline: null };
 }
-function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MODE === 'live' } = {}) {
-  const agreements = new Map(), runs = new Map(), keys = new Map(), active = new Map();
+function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MODE === 'live',
+  saved, onChange = () => {} } = {}) {
+  const agreements = new Map(saved?.agreements), runs = new Map(saved?.runs), keys = new Map(saved?.keys), active = new Map();
+  for (const run of runs.values()) {
+    if (run.finishedAt === null) {
+      if (run.status === 'running') {
+        run.status = 'error';
+        run.error = { code: 'GENERATION_INTERRUPTED', message: 'Generation was interrupted when the backend stopped. Start another run only if you want to retry.' };
+      }
+      run.finishedAt = new Date().toISOString();
+    }
+  }
+  function exportState() { return { agreements: [...agreements], runs: [...runs], keys: [...keys] }; }
   function state(p) {
     if (!agreements.has(p.id)) agreements.set(p.id, { spec: specFromProject(p, 1), confirmation: null, latestRunId: null });
     return agreements.get(p.id);
@@ -64,6 +76,20 @@ function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MOD
       run.result?.status === 'validated' && run.result.validationReport?.status === 'passed' &&
       Boolean(run.result.validationReport.artifact);
   }
+  // Startup only. The server verifies the archive before constructing the corresponding project.
+  function restore(p, { request, response }) {
+    const { spec, confirmation } = request.payload;
+    if (agreements.has(p.id) || !isDeepStrictEqual(spec, specFromProject(p, spec.specVersion)))
+      throw new Error('Saved agreement does not match the local project and accounts.');
+    const runId = randomUUID(), recoveredAt = new Date().toISOString();
+    const s = { spec: copy(spec), confirmation: copy(confirmation), latestRunId: runId };
+    const run = { schemaVersion: 1, id: runId, projectId: p.id, specVersion: spec.specVersion,
+      confirmationId: confirmation.confirmationId, status: 'completed', error: null, result: copy(response.result),
+      createdAt: recoveredAt, finishedAt: recoveredAt };
+    if (!isDeployable(s, run)) throw new Error('The saved contract is ineligible for deployment.');
+    agreements.set(p.id, s);
+    runs.set(runId, run);
+  }
   function deploymentCandidate(p, id, body) {
     fields(body, ['approved', 'specVersion', 'confirmationId']);
     if (body.approved !== true) fail(400, 'Explicit deployment approval is required');
@@ -99,6 +125,7 @@ function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MOD
       finishedAt: null, result: null, error: null, generatedDeploymentEnabled: false };
     runs.set(id, run); keys.set(key, { id, specVersion: run.specVersion, confirmationId: run.confirmationId });
     active.set(p.id, id); s.latestRunId = id;
+    onChange();
     const isCurrent = () => s.spec.specVersion === run.specVersion && s.confirmation?.confirmationId === run.confirmationId;
     // Return a run ID immediately. The browser polls; reloading never restarts a model call.
     Promise.resolve().then(async () => {
@@ -120,10 +147,11 @@ function createGeneration({ runner = runPython, enabled = process.env.AGENT2_MOD
       } finally {
         run.finishedAt = new Date().toISOString();
         if (active.get(p.id) === id) active.delete(p.id);
+        onChange();
       }
-    });
+    }).catch(() => { /* The store fences subsequent requests when a disk write fails. */ });
     return { replay: false, run: copy(run) };
   }
-  return { context, confirm, replaceTerms, getRun, start, deploymentCandidate };
+  return { context, confirm, replaceTerms, getRun, start, deploymentCandidate, restore, exportState };
 }
 module.exports = { createGeneration, fields, RUN_CONFIG };

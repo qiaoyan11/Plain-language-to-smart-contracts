@@ -13,7 +13,7 @@ export function Shell({ step, children }: { step: string; children: ReactNode })
     <div className="min-h-screen">
       <div className="mock-banner">
         <span className="mock-pill">{MOCK_MODE ? "MOCK MODE" : "LOCAL TEST CHAIN"}</span>
-        <span>{MOCK_MODE ? "Mock data only — no blockchain connected" : "Real contract execution on a local EVM · demo accounts auto-sign · no real funds · restart resets data"}</span>
+        <span>{MOCK_MODE ? "Mock data only — no blockchain connected" : "Local test chain · demo accounts sign test transactions · projects are saved on this computer"}</span>
         {MOCK_MODE && <label className="mock-toggle">
           <input type="checkbox" checked={fail} onChange={toggle} />
           Simulate failure: {fail ? "ON" : "OFF"}

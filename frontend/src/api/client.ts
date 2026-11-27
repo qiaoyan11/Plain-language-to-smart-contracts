@@ -11,6 +11,10 @@ export type { AgreementContext, GenerationRun } from "./types";
 export const MOCK_MODE = import.meta.env["VITE_API_MODE"] === "mock";
 const ACTIVE_DRAFT_KEY = "active-agreement-draft-v1";
 const API_BASE = import.meta.env["VITE_API_BASE"] || "/api";
+// Callers apply this delay to read-only status queries. A failed write is never replayed here.
+export function reconnectDelay(error: unknown): number | false {
+  return error instanceof TypeError ? 2000 : false;
+}
 async function request<T>(
   path: string,
   body?: unknown,
@@ -21,6 +25,10 @@ async function request<T>(
     headers: { "Content-Type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+  // A stopped local API may leave the dev proxy serving an empty 5xx instead of JSON.
+  if (!response.ok && response.status >= 500 && !response.headers.get("content-type")?.includes("json")) {
+    throw new TypeError("The local server could not be reached.");
+  }
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Backend request failed");
   return data as T;

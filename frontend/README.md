@@ -16,6 +16,8 @@ npm run build
 
 Start the Node backend separately from the repository root with `npm run backend`. Open http://127.0.0.1:5173. Vite proxies `/api` to the local backend at port 3001. Build output uses Nitro's Node server preset; building does not publish the app or turn it into a public service.
 
+After installing both sets of dependencies, you can start both local services with `npm run demo:web` in the repository root. Use Node 22.12 or newer in the 22.x line for both. If the frontend uses a separate Node installation, set `DEMO_FRONTEND_NODE` to its executable. Set the agent modes described below for live model calls. The launcher reconnects a dropped service and stops both services on Ctrl+C.
+
 ## Two distinct flows
 
 - `/`: describe an agreement and answer the drafting assistant. The server keeps the conversation and current payment summary. Use **Use local test accounts** to explicitly send the two local addresses. Once the remaining questions and unsupported payment terms are resolved, choose **Review agreement**.
@@ -35,7 +37,7 @@ The generation view shows actual returned outcomes. `completed` does not mean `v
 
 After local deployment, the project page displays the contract address, balance, funding state, milestones and transaction history returned by the backend. With `AGENT3_MODE=live` in the backend environment, **Ask in plain language** can query the escrow or propose a deposit or milestone payment. Asking can incur model costs. A proposed write has its own **Confirm and send** button. Refreshing the page restores the deployment and payment state from the backend. All three assistants can be enabled with `AGENT1_MODE=live AGENT2_MODE=live AGENT3_MODE=live npm run backend` from the repository root after their model settings are configured.
 
-The reference demo can separately use `VITE_API_MODE=mock`; the AI flow does not fall back to those simulations after an HTTP error. Restarting the backend resets server projects, confirmations, runs and the local chain. The saved draft ID cannot restore records after a backend restart. The page offers an explicit new-agreement action when a saved draft is unavailable.
+The reference demo also supports `VITE_API_MODE=mock`. In local API mode, reopening the same URL after a service restart reads the saved project and local-chain receipts. If a connection drops during deployment, wait for reconnection or choose **Refresh status** to check the recorded outcome. Interrupted model jobs require an explicit retry. Pending payment previews may need to be prepared and confirmed again.
 
 ## Code map
 

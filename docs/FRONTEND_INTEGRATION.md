@@ -4,7 +4,7 @@ The conversation-based frontend is in `frontend/`. Data calls remain centralized
 
 ## Run locally
 
-The frontend requires modern Node (22.12+ recommended; frontend tests and build verified with Node 24.22.1). The backend reference demo was developed with Node 20.11. No API keys or browser wallet are needed for this local-only stage.
+The frontend requires Node 22.12 or newer; use a 22.x version for both services (the root package supports Node 20–22). The frontend tests and build were also verified with Node 24.22.1. The handwritten reference flow needs no API key or browser wallet. Live Agent 1, 2 or 3 requests need their configured model credentials and may incur charges.
 
 From the repository root, in terminal 1:
 
@@ -23,20 +23,20 @@ npm run dev
 
 Open http://127.0.0.1:5173/reference-demo for the preserved handwritten-contract flow. Click **Use local demo accounts**, enter a project name and 1–5 milestone titles and ETH amounts, then review, create, deploy, deposit, and approve each milestone in order. Each completed action displays a receipt transaction hash and block number. Reloading reads the latest contract state from the backend.
 
-The backend runs a real local EVM inside its process, automatically signing with disposable test accounts. It is not connected to Ethereum mainnet or Sepolia. Only the designated client/provider demo accounts are accepted; arbitrary addresses from the earlier mock example will be rejected. Project records and the chain are in memory and reset together on backend restart.
+The backend runs a real local EVM inside its process, automatically signing with disposable test accounts. It is not connected to Ethereum mainnet or Sepolia. Only the designated client/provider demo accounts are accepted; arbitrary addresses from the earlier mock example will be rejected. The normal local service saves drafts, projects, confirmations, generation runs, signed test-chain blocks and receipts under `data/private/local-demo/`. A normal restart with the same data directory restores the same project URL, address and transaction history. This is local to this computer; deleting or replacing that directory, or opening the URL on another computer, does not restore it.
 
-For the generated-contract flow, configure [Agent 2](../agent2/README.md) and [Agent 3](../agent3/README.md), and run `AGENT2_MODE=live AGENT3_MODE=live npm run backend` in terminal 1. Open the home page, confirm payment terms, generate, then click **Deploy generated contract locally** on a validated run. In the same project, ask to deposit or accept a milestone and click **Confirm and send**. Refresh to check the recorded address, receipt and current balance.
+For the conversation-to-generated-contract flow, configure [Agent 1](../agent1/README.md) and [Agent 2](../agent2/README.md), then run `AGENT1_MODE=live AGENT2_MODE=live npm run backend` in terminal 1. Add `AGENT3_MODE=live` only if you want its model-based plain-language operation input. Open the home page, complete and confirm the payment rules, generate, then click **Deploy generated contract locally** on a validated run. On the project page, use the direct deposit and milestone buttons to preview each transaction and explicitly confirm it; these buttons do not call a model. Refresh to check the recorded address, receipts and balance. The optional Agent 3 text input can also prepare a transaction for confirmation and may incur model costs.
 
 ## API
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/local-accounts` | Get usable local client and provider addresses |
-| POST | `/api/projects` | Create a confirmed project with name, addresses and 1–5 milestones |
+| POST | `/api/projects` | Create a project with name, addresses and 1–5 milestones; confirmation is separate |
 | GET | `/api/projects/:id` | Get project metadata and freshly read chain state |
 | POST | `/api/projects/:id/actions` | Execute deploy, deposit, or acceptMilestone with a milestoneId |
 
-Agent 2 now has a separate [generation HTTP API](../shared/GENERATION_API_V1.md) for rule revisions, explicit confirmation, asynchronous generation and polling. The agreement UI now calls it: describe or supplement text at `/`, edit payment fields, review and explicitly confirm at `/confirm`, then view generation at `/projects/:id`. Agent 1 is still a labelled script; arbitrary text requires manual payment-field editing. Supplemental text stays in the browser, outside the generated contract. Creating a project through the table above does not create that AI confirmation. The existing deploy action always uses the handwritten reference contract.
+Agent 2 has a separate [generation HTTP API](../shared/GENERATION_API_V1.md) for rule revisions, explicit confirmation, asynchronous generation and polling. With `AGENT1_MODE=live`, the agreement UI sends the conversation to Agent 1 at `/`; Node saves the messages, draft and unsupported terms. Review and explicitly confirm at `/confirm`, then view generation at `/projects/:id`. Terms identified as separate written obligations remain outside the generated contract. Creating a project through the table above does not create an Agent 2 confirmation. The existing `/actions` deploy operation uses the handwritten reference contract; generated deployment has its own endpoint.
 
 See [Project API v2](../shared/PROJECT_API_V2.md) for request and response fields. Amounts are integer wei strings throughout the API and converted to decimal ETH text only for display. Successful actions return the updated Project and confirmed transactions. Errors never fall back to mock success.
 

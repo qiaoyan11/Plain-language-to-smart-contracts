@@ -425,6 +425,17 @@ describe("server-owned agreement conversation", () => {
     expect(api.getActiveDraftId()).toBeNull();
     expect(api.createDraft).not.toHaveBeenCalled();
   });
+  it("resumes a saved draft after a temporary read failure without a new assistant request", async () => {
+    api.setActiveDraftId(ready.id);
+    vi.mocked(api.getDraft).mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue(ready);
+    openPage(<CreatePage />);
+    await screen.findByText("Reconnecting to the local server to check your saved draft.");
+    expect(await screen.findByRole("button", { name: "Review agreement" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Review agreement" })).toBeEnabled(), { timeout: 4500 });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(api.sendDraftMessage).not.toHaveBeenCalled();
+    expect(api.createDraft).not.toHaveBeenCalled();
+  });
 });
 
 describe("explicit agreement confirmation", () => {

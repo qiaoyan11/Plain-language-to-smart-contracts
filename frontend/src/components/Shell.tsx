@@ -25,8 +25,8 @@ export function Shell({ step, children }: { step: string; children: ReactNode })
         {children}
       </main>
       <footer className="mx-auto max-w-3xl border-t border-border px-6 py-5 text-xs leading-relaxed text-muted-foreground">
-        Your conversation and confirmed rules are saved on the local backend. Restarting it clears
-        local drafts, projects and test-chain records.
+        This local demo saves your drafts, confirmed rules and completed checks. Reopen the same
+        project after a restart to continue.
       </footer>
     </div>
   );

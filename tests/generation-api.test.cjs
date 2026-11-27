@@ -2,6 +2,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { setTimeout: pause } = require('node:timers/promises');
+const { mkdtemp, rm } = require('node:fs/promises');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
 const { createServer } = require('../backend/server.cjs');
 const { RUN_CONFIG } = require('../backend/generation.cjs');
 const bundleFixture = require('../shared/examples/source-bundle.json');
@@ -33,15 +36,22 @@ function controlledWorker() {
   const calls = [];
   return { calls, runner: (request, options) => new Promise((resolve, reject) => calls.push({ request, options, resolve, reject })) };
 }
-async function withAPI(generation, run, operations) {
-  const server = await createServer({ generation, operations });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+async function listen(server, port = 0) {
+  await new Promise((resolve, reject) => server.once('error', reject).listen(port, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}/api`;
   const call = async (path, data, method = data === undefined ? 'GET' : 'POST') => {
     const r = await fetch(base + path, { method, ...(data === undefined ? {} : {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }) });
     return { status: r.status, body: await r.json() };
   };
+  const close = async () => {
+    server.closeAllConnections();
+    await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  };
+  return { call, close, port: server.address().port };
+}
+async function withAPI(generation, run, operations, savedGeneration) {
+  const { call, close } = await listen(await createServer({ generation, operations, savedGeneration }));
   try {
     const accounts = (await call('/local-accounts')).body;
     const draft = { name: 'HTTP generation', clientWallet: accounts.clientWallet, developerWallet: accounts.developerWallet,
@@ -49,7 +59,23 @@ async function withAPI(generation, run, operations) {
     const created = await call('/projects', draft);
     assert.equal(created.status, 201);
     await run({ call, draft, project: created.body, path: `/projects/${created.body.id}` });
-  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  } finally { await close(); }
+}
+async function withPersistentAPI(options, run) {
+  const stateDirectory = await mkdtemp(join(tmpdir(), 'local-escrow-persistence-'));
+  let api, port = 0;
+  async function restart() {
+    if (api) await api.close();
+    api = null;
+    api = await listen(await createServer({ ...options, stateDirectory }), port);
+    port = api.port;
+    return api.call;
+  }
+  try { await run(await restart(), restart); }
+  finally {
+    if (api) await api.close();
+    await rm(stateDirectory, { recursive: true, force: true });
+  }
 }
 async function confirm(call, path, specVersion = 1) {
   const response = await call(path + '/confirmation', { specVersion, approved: true });
@@ -58,6 +84,16 @@ async function confirm(call, path, specVersion = 1) {
 }
 function startBody(confirmation, idempotencyKey = 'test-attempt-001') {
   return { specVersion: confirmation.specVersion, confirmationId: confirmation.confirmationId, idempotencyKey };
+}
+function archivedGeneration() {
+  const request = structuredClone(require('../shared/examples/generate.request.json'));
+  request.requestId = 'agent2-direct';
+  const { spec, confirmation } = request.payload;
+  spec.projectId = confirmation.projectId = 'fc600cd3-fa0a-4b32-9e78-239285741306';
+  spec.specVersion = confirmation.specVersion = 2;
+  confirmation.confirmationId = 'e5595dc9-e852-48d0-a96e-56a2fc7aa391';
+  request.payload.runConfig = { ...RUN_CONFIG };
+  return { request, response: envelope(request, 'validated') };
 }
 async function finished(call, path, id) {
   const deadline = Date.now() + 10000;
@@ -372,6 +408,72 @@ test('deployment rejects historical, foreign, failed and superseded runs', async
   });
 });
 
+test('recovery restores checked terms on a fresh chain and requires approval to deploy exactly once', async () => {
+  await require('hardhat').network.provider.send('hardhat_reset');
+  const archive = archivedGeneration();
+  const { spec, confirmation } = archive.request.payload;
+  const path = '/projects/' + spec.projectId;
+  const worker = controlledWorker();
+  await withAPI({ enabled: true, runner: worker.runner }, async ({ call, draft }) => {
+    const project = await call(path);
+    assert.equal(project.status, 200);
+    assert.equal(project.body.contractAddress, null);
+    assert.equal(project.body.funded, false);
+    assert.equal(project.body.escrowBalanceWei, '0');
+    assert.deepEqual(project.body.transactions, []);
+    const context = (await call(path + '/agreement')).body;
+    assert.equal(context.recoveredOnFreshChain, true);
+    assert.equal(context.draftOrigin, undefined);
+    assert.deepEqual(context.spec, spec);
+    assert.deepEqual(context.confirmation, confirmation);
+    assert.equal(context.deployment, null);
+    assert.ok(context.latestRunId);
+    assert.notEqual(context.latestRunId, archive.request.requestId);
+    const edit = await call(path + '/terms', { expectedSpecVersion: spec.specVersion, draft }, 'PUT');
+    assert.equal(edit.status, 409);
+    const runUrl = path + '/generation-runs/' + context.latestRunId;
+    const run = await call(runUrl);
+    assert.equal(run.status, 200);
+    assert.equal(run.body.generatedDeploymentEnabled, true);
+    assert.deepEqual(run.body.result, archive.response.result);
+    const approval = { approved: true, specVersion: spec.specVersion, confirmationId: confirmation.confirmationId };
+    const deployUrl = runUrl + '/deployment';
+    assert.equal((await call(deployUrl, { ...approval, approved: false })).status, 400);
+    assert.equal((await call(deployUrl, { ...approval, confirmationId: 'old-confirmation' })).status, 409);
+    assert.deepEqual((await call(path)).body.transactions, []);
+    const deployed = await call(deployUrl, approval);
+    assert.equal(deployed.status, 201);
+    assert.equal(deployed.body.transactions.length, 1);
+    assert.equal(deployed.body.transactions[0].action, 'deploy');
+    assert.equal(deployed.body.transactions[0].status, 1);
+    const replay = await call(deployUrl, approval);
+    assert.equal(replay.status, 200);
+    assert.deepEqual(replay.body.transactions, deployed.body.transactions);
+    const refreshed = (await call(path + '/agreement')).body;
+    assert.equal(refreshed.recoveredOnFreshChain, true);
+    assert.equal(refreshed.deployment.contractAddress, deployed.body.contractAddress);
+    assert.equal(refreshed.deployment.runId, run.body.id);
+    assert.equal(refreshed.deployment.sourceHash, archive.response.result.sourceBundle.sourceHash);
+    assert.equal((await call(runUrl)).body.generatedDeploymentEnabled, false);
+    assert.equal(worker.calls.length, 0);
+  }, undefined, archive);
+});
+
+test('startup rejects failed checks, mismatched archives and substituted deployment bytecode', async () => {
+  await require('hardhat').network.provider.send('hardhat_reset');
+  for (const mutate of [
+    a => { a.response = envelope(a.request, 'failed'); },
+    a => { a.response.requestId = 'another-request'; },
+    a => { a.request.payload.confirmation.specVersion++; },
+    a => { a.request.payload.spec.totalAmountWei = '1'; },
+    a => { a.response.result.validationReport.artifact.bytecode = '0x00'; }
+  ]) {
+    const archive = archivedGeneration();
+    mutate(archive);
+    await assert.rejects(createServer({ savedGeneration: archive }));
+  }
+});
+
 test('HTTP to real Python bridge surfaces stub refusal without making a model call', async () => {
   const previous = process.env.AGENT2_MODE;
   process.env.AGENT2_MODE = 'stub';
@@ -387,4 +489,148 @@ test('HTTP to real Python bridge surfaces stub refusal without making a model ca
       assert.equal(run.result, null);
     });
   } finally { previous === undefined ? delete process.env.AGENT2_MODE : process.env.AGENT2_MODE = previous; }
+});
+
+test('a normal restart restores the conversation, generation, deployed contract and paid milestone at their original URLs', async () => {
+  const { spec: template } = require('../shared/examples/generate.request.json').payload;
+  const clarificationCalls = [];
+  let generationCalls = 0;
+  const drafting = { enabled: true, runner: async request => {
+    clarificationCalls.push(request.payload);
+    const complete = request.payload.message === template.developerWallet;
+    return { interfaceVersion: 1, requestId: request.requestId, status: 'ok', errors: [], result: {
+      status: complete ? 'readyForConfirmation' : 'needsClarification', separateTerms: [], unsupportedTerms: [],
+      questions: complete ? [] : [{ field: 'developerWallet', question: 'Which address receives the milestone payments?' }],
+      draftSpec: { ...structuredClone(template), projectId: request.payload.draftSpec.projectId,
+        developerWallet: complete ? template.developerWallet : null }
+    } };
+  } };
+  const generation = { enabled: true, runner: async request => {
+    generationCalls++;
+    return envelope(request, 'validated');
+  } };
+  await withPersistentAPI({ drafting, generation }, async (call, restart) => {
+    const draftPath = '/drafts/' + (await call('/drafts', {})).body.id;
+    const message = { message: 'Build my website. Pay 30% for the homepage and 70% for the completed site.',
+      expectedRevision: 0, requestKey: 'original-draft-message' };
+    const first = await call(draftPath + '/messages', message);
+    assert.equal(first.status, 200);
+
+    call = await restart();
+    assert.deepEqual((await call(draftPath)).body, first.body);
+    assert.deepEqual((await call(draftPath + '/messages', message)).body, first.body);
+    assert.equal(clarificationCalls.length, 1);
+    const next = await call(draftPath + '/messages', { message: template.developerWallet,
+      expectedRevision: first.body.revision, requestKey: 'provider-wallet-reply' });
+    assert.equal(next.status, 200);
+    assert.equal(next.body.result.status, 'readyForConfirmation');
+    assert.deepEqual(clarificationCalls[1].history.filter(m => m.role === 'user').map(m => m.content), [message.message]);
+    assert.deepEqual(JSON.parse(clarificationCalls[1].history.at(-1).content).question, first.body.turns[0].question);
+    const confirmDraft = { approved: true, expectedRevision: next.body.revision };
+    const confirmed = await call(draftPath + '/confirmation', confirmDraft);
+    assert.equal(confirmed.status, 201);
+    const path = '/projects/' + confirmed.body.project.id;
+    const { confirmation } = confirmed.body.agreement;
+    const start = startBody(confirmation);
+    const started = await call(path + '/generation-runs', start);
+    assert.equal(started.status, 202);
+    const run = await finished(call, path, started.body.id);
+    assert.equal(run.result.status, 'validated');
+    const runPath = path + '/generation-runs/' + run.id;
+    const approval = { approved: true, confirmationId: confirmation.confirmationId, specVersion: confirmation.specVersion };
+    const deployed = await call(runPath + '/deployment', approval);
+    assert.equal(deployed.status, 201);
+    async function pay(action) {
+      const plan = await call(path + '/action-plans', action);
+      assert.equal(plan.status, 200);
+      const result = await call(path + '/plans/' + plan.body.planId + '/confirmation', { approved: true });
+      assert.equal(result.status, 200);
+      assert.equal(result.body.report.outcome, 'confirmed');
+      return result.body.project;
+    }
+    const funded = await pay({ action: 'deposit' });
+    assert.equal(funded.escrowBalanceWei, template.totalAmountWei);
+    const paid = await pay({ action: 'acceptMilestone', milestoneId: 1 });
+    assert.deepEqual(paid.milestones.map(m => m.paid), [true, false]);
+    assert.equal(paid.escrowBalanceWei, template.milestones[1].amountWei);
+    assert.deepEqual(paid.transactions.map(tx => [tx.action, tx.status]), [['deploy', 1], ['deposit', 1], ['acceptMilestone', 1]]);
+    const agreement = (await call(path + '/agreement')).body;
+    const preview = await call(path + '/action-plans', { action: 'acceptMilestone', milestoneId: 2 });
+    assert.equal(preview.status, 200);
+
+    call = await restart();
+    assert.deepEqual((await call(path)).body, paid);
+    assert.deepEqual((await call(path + '/agreement')).body, agreement);
+    assert.equal((await call(draftPath + '/confirmation', confirmDraft)).body.project.id, paid.id);
+    assert.equal((await call(runPath)).body.result.validationReport.reportId, run.result.validationReport.reportId);
+    const replay = await call(path + '/generation-runs', start);
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.id, run.id);
+    assert.equal(generationCalls, 1);
+    assert.equal(clarificationCalls.length, 2);
+    assert.equal((await call(runPath + '/deployment', approval)).status, 200);
+    const stale = await call(path + '/plans/' + preview.body.planId + '/confirmation', { approved: true });
+    assert.equal(stale.status, 404);
+    assert.deepEqual((await call(path)).body.transactions, paid.transactions);
+    const complete = await pay({ action: 'acceptMilestone', milestoneId: 2 });
+    assert.equal(complete.contractAddress, deployed.body.contractAddress);
+    assert.equal(complete.escrowBalanceWei, '0');
+    assert.deepEqual(complete.transactions.slice(0, -1), paid.transactions);
+    assert.equal(complete.transactions.at(-1).blockNumber, paid.transactions.at(-1).blockNumber + 1);
+  });
+});
+
+test('a generation interrupted by restart keeps its run ID and requires an explicit new request to run again', async () => {
+  const worker = controlledWorker();
+  await withPersistentAPI({ generation: { enabled: true, runner: worker.runner } }, async (call, restart) => {
+    const { spec } = require('../shared/examples/generate.request.json').payload;
+    const draft = { name: spec.name, clientWallet: spec.clientWallet, developerWallet: spec.developerWallet,
+      milestones: spec.milestones.map(({ title, amountWei }) => ({ title, amountWei })) };
+    const created = await call('/projects', draft);
+    assert.equal(created.status, 201);
+    const path = '/projects/' + created.body.id;
+    const confirmation = await confirm(call, path);
+    const body = startBody(confirmation);
+    const started = await call(path + '/generation-runs', body);
+    assert.equal(started.status, 202);
+    assert.equal(worker.calls.length, 1);
+
+    call = await restart();
+    const interrupted = await finished(call, path, started.body.id);
+    assert.equal(interrupted.status, 'error');
+    assert.equal(interrupted.error.code, 'GENERATION_INTERRUPTED');
+    assert.equal(interrupted.generatedDeploymentEnabled, false);
+    const replay = await call(path + '/generation-runs', body);
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.id, started.body.id);
+    assert.equal(replay.body.error.code, 'GENERATION_INTERRUPTED');
+    assert.equal(worker.calls.length, 1);
+    const explicit = await call(path + '/generation-runs', startBody(confirmation, 'explicit-second-generation'));
+    assert.equal(explicit.status, 202);
+    assert.notEqual(explicit.body.id, started.body.id);
+    worker.calls[1].resolve(envelope(worker.calls[1].request, 'validated'));
+    assert.equal((await finished(call, path, explicit.body.id)).generatedDeploymentEnabled, true);
+    assert.equal(worker.calls.length, 2);
+  });
+});
+
+test('reopening the local ledger preserves wallet balances, transaction fees and the original receipt', async () => {
+  const { openLocalChain } = require('../backend/local-chain.cjs');
+  const original = await openLocalChain();
+  const from = await original.provider.getSigner(0);
+  const to = await (await original.provider.getSigner(1)).getAddress();
+  const payer = await from.getAddress();
+  const sent = await from.sendTransaction({ to, value: 1000n });
+  const receipt = await sent.wait();
+  await original.captureMined(receipt);
+  const saved = original.chainState();
+  const restored = await openLocalChain(saved);
+  const read = provider => Promise.all([provider.getBalance(payer), provider.getBalance(to),
+    provider.getTransactionCount(payer), provider.getBlockNumber(),
+    provider.send('eth_getTransactionReceipt', [sent.hash])]);
+  assert.deepEqual(await read(restored.provider), await read(original.provider));
+  assert.deepEqual(restored.chainState(), saved);
+  const corrupt = structuredClone(saved);
+  corrupt.blocks[0].hash = '0x' + '0'.repeat(64);
+  await assert.rejects(openLocalChain(corrupt), /block/i);
 });
