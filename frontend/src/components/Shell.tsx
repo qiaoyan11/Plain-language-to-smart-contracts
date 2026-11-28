@@ -1,14 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { api } from "@/api/client";
-import { FileText } from "lucide-react";
+import { Check } from "lucide-react";
 
 const FLOW = ["Describe", "Confirm", "Set up contract", "Fund & pay"] as const;
 
 /** The four stages of an agreement, so a first-time user can see where they are and what comes next. */
 function FlowSteps({ current, complete }: { current: number; complete: boolean }) {
   return (
-    <ol aria-label="Agreement progress" className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
+    <ol aria-label="Agreement progress" className="flex flex-wrap gap-2 text-xs font-medium">
       {FLOW.map((label, index) => {
         const number = index + 1;
         const done = complete || number < current;
@@ -17,14 +17,9 @@ function FlowSteps({ current, complete }: { current: number; complete: boolean }
           <li
             key={label}
             aria-current={active ? "step" : undefined}
-            className={`flex items-center gap-2 ${active ? "font-semibold text-foreground" : done ? "text-primary" : "text-muted-foreground"}`}
+            className={`pill ${active ? "pill-active" : done ? "pill-info" : ""}`}
           >
-            <span
-              aria-hidden="true"
-              className={`flex size-5 items-center justify-center rounded-full border text-[10px] ${active ? "border-foreground" : done ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}
-            >
-              {done ? "✓" : number}
-            </span>
+            <span aria-hidden="true">{done ? "✓" : number}</span>
             {label}
             {done && <span className="sr-only">(done)</span>}
           </li>
@@ -49,8 +44,13 @@ export function Shell({
   return (
     <div className="min-h-screen">
       <header className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-4 px-6 py-7">
-        <Link to="/" className="flex items-center gap-2 font-display text-lg font-semibold">
-          <FileText className="size-5 text-primary" />
+        <Link
+          to="/"
+          className="flex items-center gap-2.5 font-display text-lg font-bold tracking-tight"
+        >
+          <span className="brand-mark" aria-hidden="true">
+            <Check className="size-4" strokeWidth={2.6} />
+          </span>
           Accord
         </Link>
         <nav aria-label="Main" className="flex items-center gap-5 text-sm">
@@ -60,13 +60,16 @@ export function Shell({
           >
             Test network
           </span>
-          <Link to="/projects" className="font-medium text-primary underline underline-offset-4">
+          <Link
+            to="/projects"
+            className="font-semibold text-primary hover:underline underline-offset-4"
+          >
             Your projects
           </Link>
         </nav>
       </header>
       <main className="mx-auto max-w-3xl px-6 pb-20">
-        <div className="mb-9 border-t border-border pt-5">
+        <div className="mb-8">
           {progress ? (
             <FlowSteps current={progress} complete={complete} />
           ) : (

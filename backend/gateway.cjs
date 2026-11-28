@@ -35,27 +35,30 @@ function coverPage({ error = '', next = '/' } = {}) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Accord · Enter your access key</title><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <style>
-:root { color-scheme: light; --bg: #f7f7f5; --card: #fff; --text: #1f2a24; --muted: #5d6762; --primary: #2f6b55; --border: #dcdfdc; --danger: #b42318; }
+:root { color-scheme: light; --bg: #f5f7fb; --card: #fff; --text: #0f172a; --muted: #5b6475; --primary: #0052ff; --border: #e3e8f0; --danger: #b42318; }
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); color: var(--text);
-  font: 15px/1.6 "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { width: 100%; max-width: 400px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 32px; }
-.brand { font-weight: 600; font-size: 18px; }
-.badge { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 2px 9px; border: 1px solid var(--border);
-  border-radius: 999px; font-size: 12px; font-weight: 400; color: var(--muted); vertical-align: 2px; }
-.badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #e0a419; }
-h1 { margin: 24px 0 6px; font-size: 24px; font-weight: 500; line-height: 1.3; }
+  font: 15px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { width: 100%; max-width: 420px; background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 32px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px rgba(15, 23, 42, .06); }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+.mark { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: var(--primary); }
+.badge { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 4px 11px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; color: #8a5a00; background: #fff7e6; }
+.badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #f5a300; }
+h1 { margin: 26px 0 6px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; }
 p { margin: 0 0 20px; color: var(--muted); }
 label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--muted); }
-input { width: 100%; padding: 11px 12px; border: 1px solid var(--border); border-radius: 6px; font: inherit; color: var(--text); background: var(--card); }
+input { width: 100%; padding: 11px 12px; border: 1px solid #d5dce8; border-radius: 10px; font: inherit; color: var(--text); background: var(--card); }
 input:focus { outline: 2px solid color-mix(in srgb, var(--primary) 30%, transparent); border-color: var(--primary); }
-button { width: 100%; margin-top: 16px; padding: 11px 16px; border: 0; border-radius: 6px; background: var(--primary); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+button { width: 100%; margin-top: 16px; padding: 12px 16px; border: 0; border-radius: 999px; background: var(--primary); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .error { margin: 12px 0 0; color: var(--danger); font-size: 14px; }
 .note { margin: 20px 0 0; font-size: 12px; }
 </style></head>
 <body><main>
-<div class="brand">Accord<span class="badge">Test network</span></div>
+<div class="brand"><span class="mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" aria-hidden="true"><path d="M6 12l4 4 8-8"/></svg></span>Accord<span class="badge">Test network</span></div>
 <h1>Enter your access key</h1>
 <p>Accord turns a plain-language agreement into milestone escrow payments. Access is by invitation.</p>
 <form method="post" action="/access">

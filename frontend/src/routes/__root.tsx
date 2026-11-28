@@ -8,7 +8,7 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 
@@ -84,7 +84,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap" },
+      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" },
       { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
     ],
   }),
@@ -108,24 +108,8 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
-/** Style samples only: ?theme=blue|midnight|vault previews a colour scheme for this tab. */
-function useStyleSample() {
-  useEffect(() => {
-    const themes = ["blue", "midnight", "vault"];
-    const asked = new URLSearchParams(window.location.search).get("theme");
-    if (asked !== null) {
-      if (themes.includes(asked)) sessionStorage.setItem("accord-style-sample", asked);
-      else sessionStorage.removeItem("accord-style-sample");
-    }
-    const theme = sessionStorage.getItem("accord-style-sample");
-    if (theme && themes.includes(theme)) document.documentElement.dataset["theme"] = theme;
-    else delete document.documentElement.dataset["theme"];
-  }, []);
-}
-
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  useStyleSample();
 
   return (
     <QueryClientProvider client={queryClient}>

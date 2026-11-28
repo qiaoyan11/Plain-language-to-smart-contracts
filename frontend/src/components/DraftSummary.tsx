@@ -69,11 +69,10 @@ export function DraftSummary({
   const issueCount = questions.length + result.unsupportedTerms.length;
   return (
     <div className="space-y-5">
-      <div>
+      <div className="panel">
         <h2>Payment summary</h2>
-        <Row stacked label="Project" value={spec.name || "To be agreed"} />
+        <Row label="Project" value={spec.name || "To be agreed"} />
         <Row
-          stacked
           label="Total"
           value={
             spec.totalAmountWei === null ? "Amount needed" : amountText(spec.totalAmountWei, rate)
@@ -81,27 +80,23 @@ export function DraftSummary({
         />
         {spec.milestones.map((m) => (
           <Row
-            stacked
             key={m.id}
             label={`${m.id}. ${m.title}`}
             value={m.amountWei === null ? "Amount needed" : amountText(m.amountWei, rate)}
           />
         ))}
         <Row
-          stacked
           label="Client · deposits and approves"
           value={spec.clientWallet ? shortAddress(spec.clientWallet) : "Address needed"}
           mono
         />
         <Row
-          stacked
           label="Provider · receives payments"
           value={spec.developerWallet ? shortAddress(spec.developerWallet) : "Address needed"}
           mono
         />
         {spec.reviewPeriodSeconds ? (
           <Row
-            stacked
             label="Review after each delivery"
             value={`${durationText(spec.reviewPeriodSeconds)}${
               spec.changeRequestLimit

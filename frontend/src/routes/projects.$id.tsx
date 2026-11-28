@@ -9,6 +9,7 @@ import { GenerationResultView } from "@/components/GenerationResultView";
 import { OperationAssistant } from "@/components/OperationAssistant";
 import { DraftSource } from "@/components/DraftSummary";
 import {
+  EscrowBalance,
   PaymentLimits,
   MilestoneLedger,
   ProjectLink,
@@ -336,7 +337,7 @@ export function DetailPage({ id }: { id: string }) {
               }}
             >
               <h2>Escrow</h2>
-              <Row label="In escrow now" value={amountText(project.escrowBalanceWei, rate)} />
+              <EscrowBalance project={project} rate={rate} />
               <MilestoneLedger project={project} rate={rate} />
               {rate && <p className="-mt-4 mb-6 text-xs text-muted-foreground">{rateText(rate)}</p>}
               <OperationAssistant

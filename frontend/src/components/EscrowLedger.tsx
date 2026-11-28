@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatWei, type Project } from "@/api/client";
 import type { ExchangeRate } from "@/api/types";
-import { amountText } from "@/lib/money";
+import { amountText, inCurrency } from "@/lib/money";
 import { shortAddress } from "@/lib/address";
 import { durationText, reviewStage, useChainNow } from "@/lib/review";
 
@@ -57,6 +57,52 @@ function milestoneStatus(project: Project, milestone: Project["milestones"][numb
   return "Review ended · the provider can claim the payment";
 }
 
+/** The escrow balance, led by the agreed currency, with how many milestones are paid. */
+export function EscrowBalance({
+  project,
+  rate,
+}: {
+  project: Project;
+  rate?: ExchangeRate | undefined;
+}) {
+  const paid = project.milestones.filter((m) => m.paid).length;
+  const total = project.milestones.length;
+  const wei = project.escrowBalanceWei;
+  return (
+    <div className="escrow-card mt-3">
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-sm text-muted-foreground">In escrow now</span>
+        <span className="text-3xl font-bold tracking-tight">
+          {rate ? `${inCurrency(wei, rate)} ${rate.currency}` : `${formatWei(wei)} ${UNIT}`}
+        </span>
+        {rate && (
+          <span className="font-mono text-xs text-muted-foreground">
+            {formatWei(wei)} {UNIT}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col items-end gap-2">
+        <span className="text-sm text-muted-foreground">
+          {paid} of {total} paid
+        </span>
+        <span className="progress-track" aria-hidden="true">
+          <span
+            className="progress-fill"
+            style={{ width: `${total ? (paid / total) * 100 : 0}%` }}
+          />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Paid is green, the milestone that needs action now is blue, everything else is neutral. */
+function pillFor(project: Project, milestone: Project["milestones"][number], now: number) {
+  if (milestone.paid) return "pill-success";
+  const next = project.funded && project.milestones.find((m) => !m.paid)?.id === milestone.id;
+  return next || reviewStage(project, milestone, now)?.kind === "inReview" ? "pill-info" : "";
+}
+
 /** Deposit and milestones as the chain reports them: amount, recipient, paid state and receipt. */
 export function MilestoneLedger({
   project,
@@ -85,12 +131,16 @@ export function MilestoneLedger({
             <span className="text-sm font-medium">Deposit from the client</span>
             <span className="text-sm font-medium">{amountText(project.totalAmountWei, rate)}</span>
           </div>
-          <p className="mt-1 text-sm">
-            {project.funded
-              ? "Funded"
-              : project.contractAddress
-                ? "Awaiting deposit"
-                : "Not deployed yet"}
+          <p className="mt-2">
+            <span
+              className={`pill ${project.funded ? "pill-success" : project.contractAddress ? "pill-info" : ""}`}
+            >
+              {project.funded
+                ? "Funded"
+                : project.contractAddress
+                  ? "Awaiting deposit"
+                  : "Not deployed yet"}
+            </span>
           </p>
           <p className="mt-1 text-xs text-muted-foreground" title={project.clientWallet}>
             From the client, {shortAddress(project.clientWallet)}
@@ -110,8 +160,10 @@ export function MilestoneLedger({
                 </span>
                 <span className="text-sm font-medium">{amountText(m.amountWei, rate)}</span>
               </div>
-              <p className={`mt-1 text-sm ${m.paid ? "font-medium text-success" : ""}`}>
-                {milestoneStatus(project, m, now)}
+              <p className="mt-2">
+                <span className={`pill ${pillFor(project, m, now)}`}>
+                  {milestoneStatus(project, m, now)}
+                </span>
               </p>
               <p className="mt-1 break-all text-xs text-muted-foreground">
                 <span title={project.developerWallet}>
