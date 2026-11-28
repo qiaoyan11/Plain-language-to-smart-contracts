@@ -1,6 +1,7 @@
 import type { ClarifyResult, DraftSession } from "@/api/types";
 import { amountText, rateText } from "@/lib/money";
 import { shortAddress } from "@/lib/address";
+import { durationText } from "@/lib/review";
 import { Row } from "./Shell";
 
 export function draftReady(session: DraftSession | undefined) {
@@ -98,13 +99,26 @@ export function DraftSummary({
           value={spec.developerWallet ? shortAddress(spec.developerWallet) : "Address needed"}
           mono
         />
+        {spec.reviewPeriodSeconds ? (
+          <Row
+            stacked
+            label="Review after each delivery"
+            value={`${durationText(spec.reviewPeriodSeconds)}${
+              spec.changeRequestLimit
+                ? `, up to ${spec.changeRequestLimit} change request${spec.changeRequestLimit === 1 ? "" : "s"}`
+                : ""
+            }`}
+          />
+        ) : null}
         {rates.map((item) => (
           <p key={item.currency} className="mt-3 text-xs text-muted-foreground">
             {rateText(item)}
           </p>
         ))}
         <p className="mt-4 text-sm text-muted-foreground">
-          The client deposits the total, then approves each payment in order.
+          {spec.reviewPeriodSeconds
+            ? "The client deposits the total. After each delivery the client approves it or asks for changes; with no answer by the end of the review, the provider can claim it."
+            : "The client deposits the total, then approves each payment in order."}
         </p>
       </div>
       {compactIssues

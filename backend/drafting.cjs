@@ -113,6 +113,15 @@ function conversationTurn(previous, result, revision, previousTurn, demoWallets 
       lines.push(`${m.id}. ${m.title}: ${m.amountWei ? amount(m.amountWei) : 'amount needed'}`);
   else if (scheduleChanged)
     lines.push(milestones.map(m => `${m.id}. ${m.title}`).join('; '));
+  // v2 review period: say once when it is added, changed or removed.
+  const period = after.reviewPeriodSeconds ?? null, limit = after.changeRequestLimit ?? 0;
+  if (period !== (before?.reviewPeriodSeconds ?? null) || (period && limit !== (before?.changeRequestLimit ?? 0))) {
+    const unit = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+    const time = period >= 86400 ? unit(Math.round(period / 86400 * 10) / 10, 'day')
+      : period >= 3600 ? unit(Math.round(period / 3600 * 10) / 10, 'hour') : unit(Math.round(period / 60), 'minute');
+    if (period) lines.push(`Review: after each delivery the client has ${time} to approve or ask for changes${limit ? ` (up to ${unit(limit, 'time')})` : ''}. With no answer, the provider can claim the payment.`);
+    else if (before?.reviewPeriodSeconds) lines.push('Automatic payment after review is off: the client approves every payment.');
+  }
   for (const rate of result.exchangeRates ?? []) {
     const old = (previous?.exchangeRates ?? []).find(r => r.currency === rate.currency);
     if (!old || old.unitsPerEth !== rate.unitsPerEth || old.source !== rate.source) lines.push(rateLine(rate));

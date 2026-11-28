@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { DraftSummary, DraftSource, draftReady } from "@/components/DraftSummary";
 import { PaymentRules, ScopeAcknowledgement } from "@/components/AgreementNotes";
+import { ReviewPeriodOption } from "@/components/ReviewPeriodOption";
 import { singleRate } from "@/lib/money";
 import { markAutoDeploy } from "@/lib/autoDeploy";
 import { useActiveDraft } from "@/hooks/use-active-draft";
@@ -81,6 +82,16 @@ export function ConfirmPage() {
                 spec={ready ? session.result?.draftSpec : undefined}
                 rate={singleRate(session.result?.exchangeRates)}
               />
+              {ready && (
+                <ReviewPeriodOption
+                  session={session}
+                  disabled={busy}
+                  onSession={(next) => {
+                    setAckRevision(null);
+                    cache.setQueryData(["draft", id], next);
+                  }}
+                />
+              )}
               <ScopeAcknowledgement
                 notEnforced={Boolean(session.settledTerms?.length)}
                 review={Boolean(ready && session.result?.draftSpec?.reviewPeriodSeconds)}

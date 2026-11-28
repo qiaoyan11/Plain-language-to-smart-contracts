@@ -9,6 +9,7 @@ from uuid import uuid4
 from agent1 import currency
 from agent1.model import extract
 from agent1.prompts import INSTRUCTIONS
+from agent1.review import DEEMED, review_terms
 from shared.handoff import MAX_UINT, ROOT, validate
 try:
     import fcntl
@@ -925,6 +926,13 @@ def reconcile(payload, extractor):
         not_enforced = [t for t in not_enforced if not t.startswith(REVISION_NOTE)]
     elif note and not any(t.startswith(REVISION_NOTE) for t in not_enforced):
         not_enforced.append(note)
+    # v2: a deemed acceptance with a stated time becomes the contract's review period.
+    period, limit, unread = review_terms(terms, payload['message'], sources, old)
+    if period:
+        draft.update(reviewPeriodSeconds=period, changeRequestLimit=limit)
+        not_enforced = [t for t in not_enforced if not DEEMED.search(t)]
+    elif unread and not any(same_term(unread, t) for t in not_enforced):
+        not_enforced.append(unread)
     draft.update(milestones=milestones, totalAmountWei=total)
     if old and draft != old:
         draft['specVersion'] += 1

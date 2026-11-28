@@ -5,7 +5,13 @@ import { OperationAssistant } from "@/components/OperationAssistant";
 import { MilestoneLedger } from "@/components/EscrowLedger";
 import { PaymentRules } from "@/components/AgreementNotes";
 import { api, type OperationPlan, type Project } from "@/api/client";
-import type { DraftSpec, MilestoneAction } from "@/api/types";
+import type { DraftSession, DraftSpec, MilestoneAction } from "@/api/types";
+import { DraftSummary } from "@/components/DraftSummary";
+import {
+  ADD_REVIEW_MESSAGE,
+  REMOVE_REVIEW_MESSAGE,
+  ReviewPeriodOption,
+} from "@/components/ReviewPeriodOption";
 import { durationText } from "@/lib/review";
 
 const DAY = 86400;
@@ -224,5 +230,68 @@ describe("review period disclosure", () => {
     expect(durationText(3 * 3600)).toBe("3 hours");
     expect(durationText(5 * 60 + 30)).toBe("5 minutes");
     expect(durationText(20)).toBe("less than a minute");
+  });
+});
+
+describe("review period on the review page", () => {
+  const session = (review: Partial<DraftSpec>): DraftSession => ({
+    id: "d1",
+    revision: 3,
+    createdAt: "2026-11-27T00:00:00Z",
+    updatedAt: "2026-11-27T00:00:00Z",
+    messages: [{ role: "user", content: "Logo for 0.01 ETH" }],
+    result: {
+      status: "readyForConfirmation",
+      questions: [],
+      unsupportedTerms: [],
+      separateTerms: [],
+      draftSpec: {
+        schemaVersion: 1,
+        projectId: "d1",
+        specVersion: 1,
+        name: "Logo",
+        clientWallet: base.clientWallet,
+        developerWallet: base.developerWallet,
+        approvalRole: "client",
+        deadline: null,
+        refundPolicy: "none",
+        totalAmountWei: "10000000000000000",
+        milestones: [{ id: 1, title: "Logo", amountWei: "10000000000000000" }],
+        ...review,
+      },
+    },
+    busy: false,
+    pendingMessage: null,
+    lastError: null,
+    confirmedProjectId: null,
+  });
+  function Option({ initial }: { initial: DraftSession }) {
+    const [current, setCurrent] = useState(initial);
+    return (
+      <>
+        <DraftSummary result={current.result} />
+        <ReviewPeriodOption session={current} onSession={setCurrent} />
+      </>
+    );
+  }
+  it("adds the 14-day rule as the user's message and shows it in the summary", async () => {
+    const send = vi
+      .spyOn(api, "sendDraftMessage")
+      .mockResolvedValue(session({ reviewPeriodSeconds: 14 * DAY, changeRequestLimit: 0 }));
+    render(<Option initial={session({})} />);
+    expect(screen.queryByText("Review after each delivery")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /release a payment automatically/ }));
+    await screen.findByRole("button", { name: "Turn this off" });
+    expect(send).toHaveBeenCalledWith("d1", ADD_REVIEW_MESSAGE, 3, expect.any(String));
+    expect(screen.getByText("Review after each delivery")).toBeTruthy();
+    expect(screen.getByText("14 days")).toBeTruthy();
+  });
+  it("shows a contract's own limit and can turn the rule off", async () => {
+    const send = vi.spyOn(api, "sendDraftMessage").mockResolvedValue(session({}));
+    render(<Option initial={session({ reviewPeriodSeconds: 10 * DAY, changeRequestLimit: 2 })} />);
+    expect(screen.getByText("10 days, up to 2 change requests")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Turn this off" }));
+    await screen.findByRole("button", { name: /release a payment automatically/ });
+    expect(send).toHaveBeenCalledWith("d1", REMOVE_REVIEW_MESSAGE, 3, expect.any(String));
   });
 });
