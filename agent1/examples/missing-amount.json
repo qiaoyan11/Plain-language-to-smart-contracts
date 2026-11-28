@@ -1,0 +1,75 @@
+{
+  "request": {
+    "interfaceVersion": 1,
+    "requestId": "missing-amount",
+    "operation": "clarify",
+    "payload": {
+      "message": "Project: Website. Client 0x1111111111111111111111111111111111111111 and provider 0x2222222222222222222222222222222222222222. Client approves in order: Homepage matches approved mockup, Checkout passes the agreed test suite. No other contract conditions.",
+      "history": [],
+      "draftSpec": null
+    }
+  },
+  "exampleExtraction": {
+    "separateTerms": [],
+    "name": "Website",
+    "clientWallet": "0x1111111111111111111111111111111111111111",
+    "developerWallet": "0x2222222222222222222222222222222222222222",
+    "total": null,
+    "milestones": [
+      {
+        "title": "Homepage matches approved mockup",
+        "amount": null
+      },
+      {
+        "title": "Checkout passes the agreed test suite",
+        "amount": null
+      }
+    ],
+    "revisionRiskOpen": false,
+    "withdrawals": [],
+    "questions": [],
+    "unsupportedTerms": []
+  },
+  "expectedResult": {
+    "status": "needsClarification",
+    "draftSpec": {
+      "schemaVersion": 1,
+      "projectId": "example-project",
+      "specVersion": 1,
+      "name": "Website",
+      "approvalRole": "client",
+      "refundPolicy": "none",
+      "deadline": null,
+      "clientWallet": "0x1111111111111111111111111111111111111111",
+      "developerWallet": "0x2222222222222222222222222222222222222222",
+      "milestones": [
+        {
+          "id": 1,
+          "title": "Homepage matches approved mockup",
+          "amountWei": null
+        },
+        {
+          "id": 2,
+          "title": "Checkout passes the agreed test suite",
+          "amountWei": null
+        }
+      ],
+      "totalAmountWei": null
+    },
+    "questions": [
+      {
+        "field": "milestones.1.amountWei",
+        "question": "What exact amount is payable for milestone 1?"
+      },
+      {
+        "field": "milestones.2.amountWei",
+        "question": "What exact amount is payable for milestone 2?"
+      },
+      {
+        "field": "totalAmountWei",
+        "question": "What is the total escrow amount in ETH or wei?"
+      }
+    ],
+    "unsupportedTerms": []
+  }
+}

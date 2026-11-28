@@ -13,17 +13,24 @@ export function Shell({ step, children }: { step: string; children: ReactNode })
     <div className="min-h-screen">
       <div className="mock-banner">
         <span className="mock-pill">{MOCK_MODE ? "MOCK MODE" : "LOCAL TEST CHAIN"}</span>
-        <span>{MOCK_MODE ? "Mock data only — no blockchain connected" : "Real contract execution on a local EVM · demo accounts auto-sign · no real funds · restart resets data"}</span>
+        <span>{MOCK_MODE ? "Mock data only — no blockchain connected" : "Built-in test accounts sign automatically · no real wallet or money · projects are saved on this computer"}</span>
         {MOCK_MODE && <label className="mock-toggle">
           <input type="checkbox" checked={fail} onChange={toggle} />
           Simulate failure: {fail ? "ON" : "OFF"}
         </label>}
       </div>
-      <header className="mx-auto flex max-w-3xl items-center justify-between px-6 py-6">
+      <header className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-4 px-6 py-6">
         <Link to="/" className="font-display text-xl font-bold">
-          Escrow<span className="text-primary">.</span>
+          Accord <span className="text-sm font-normal text-muted-foreground">Reference demo</span>
         </Link>
-        <span className="font-mono text-xs text-muted-foreground">{step}</span>
+        <nav aria-label="Main" className="flex items-center gap-5 text-xs">
+          {!MOCK_MODE && (
+            <Link to="/projects" className="font-medium text-primary underline underline-offset-4">
+              Your projects
+            </Link>
+          )}
+          <span className="font-mono text-muted-foreground">{step}</span>
+        </nav>
       </header>
       <main className="mx-auto max-w-3xl px-6 pb-20">{children}</main>
     </div>

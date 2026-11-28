@@ -10,8 +10,8 @@ Project API v2 and Python handoff v1 are unchanged. A generation run is a separa
 - Default `npm run backend` leaves generation disabled. Once Python, the validator and the local API key are configured as described in [Agent 2 setup](../agent2/README.md), explicitly start with `AGENT2_MODE=live npm run backend` to enable paid calls. The Node switch must be in the process environment, not only in `.env`.
 - Server-owned configuration: development validation, feedback setting C, `maxRepairs=3`, model `gpt-5.4-mini-2026-03-17`. This means at most one initial generation plus three repairs, with early stop on success or tool error. This is the current development configuration, not a formal A/B/C experiment budget.
 - Browser requests cannot set a model, budget, source bundle, validation report, signing key or confirmation timestamp.
-- Rules, confirmations, run lookup and duplicate-request keys are held in Node memory and reset on restart. Python's live run artifacts remain on disk under `artifacts/agent2/`; there is no HTTP restoration/import of these artifacts yet.
-- After a successful generation, a user can deploy the validated artifact to the local Hardhat chain (31337). The reference demo uses its own deployment action. Set both `AGENT2_MODE=live` and `AGENT3_MODE=live` to enable generation and natural-language operation planning.
+- The normal local backend saves project rules, confirmations, runs, request keys and test-chain receipts in `data/private/local-demo/`. Restarting it with the same directory restores these records at the original project URL. A running generation interrupted by a restart is marked interrupted and requires an explicit new request. This state stays on this computer; moving to another computer or deleting the data directory does not preserve the URL's project. Python's detailed run artifacts are separately written under `artifacts/agent2/`.
+- After a successful generation, a user can deploy the validated artifact to the local Hardhat chain (31337). The reference demo uses its own deployment action. The home-page conversation requires `AGENT1_MODE=live`; generation requires `AGENT2_MODE=live`; optional natural-language operation planning requires `AGENT3_MODE=live`. Direct deposit and milestone buttons make no model request.
 
 ## Resources
 
@@ -42,6 +42,7 @@ type AgreementContext = {
   latestRunId: string | null;
   generationEnabled: boolean;
   generatedDeploymentEnabled: boolean; // capability of this local backend
+  recoveredOnFreshChain?: boolean; // startup import from a saved Agent 2 archive, with no prior transactions
   operationsEnabled: boolean;
   deployment: null | {kind: "generated" | "reference"; runId: string | null; contractAddress: string; chainId: number; sourceHash: string; specVersion: number};
 };
@@ -57,10 +58,14 @@ type GenerationRun = {
   finishedAt: string | null;
   result: GenerateResult | null;
   error: {
-    code: 'GENERATION_TIMEOUT' | 'GENERATION_TOOL_ERROR';
+    code: 'GENERATION_TIMEOUT' | 'GENERATION_TOOL_ERROR' | 'GENERATION_INTERRUPTED';
     message: string;
   } | null;
   generatedDeploymentEnabled: boolean; // eligible to deploy now
+  // Optional, only while status is 'running': the stage the worker last reported. Advisory;
+  // removed when the run ends. Stages: writing, checking, repairing, finishing.
+  progress?: { stage: 'writing' | 'checking' | 'repairing' | 'finishing'; attempt: number;
+    maxAttempts: number; failedChecks: Array<'compilation' | 'staticAnalysis' | 'clauseTests'>; at: string };
 };
 ```
 
@@ -68,10 +73,10 @@ Timestamps are ISO date-time strings. These HTTP responses are the resources the
 
 ## Confirmation and starting a run
 
-1. Create a project with `POST /api/projects`, or retrieve the existing project.
+1. Create a project with `POST /api/projects`, complete the home-page draft and confirmation flow, or retrieve an existing project.
 2. Fetch `/agreement` and display its rules. Creating a project is **not** an Agent 2 confirmation.
 3. To save edits, PUT `/terms` with the displayed version and the entire new draft. Use the returned spec, rather than assuming IDs or totals.
-4. Only when the user clicks **Confirm rules**, POST `/confirmation` with that specVersion and `approved: true`. Node creates the confirmationId and timestamp. Repeating this request for unchanged rules returns the same confirmation.
+4. Only when the user explicitly confirms this version, POST `/confirmation` with that specVersion and `approved: true`. The home-page draft uses its separate `/api/drafts/:id/confirmation` endpoint. Node creates the confirmationId and timestamp. Repeating confirmation of unchanged rules returns the same confirmation.
 5. When the user chooses **Generate**, create a key such as `crypto.randomUUID()`. POST `/generation-runs` using the returned confirmationId and specVersion. Store the key before sending; reuse the same key if the network response is lost.
 6. Store the returned run ID and GET `/generation-runs/:runId` about every two seconds while it is running. Refreshing the page should fetch `/agreement` and use latestRunId to resume polling, not POST another generation.
 
@@ -112,7 +117,7 @@ The current response contains the **final** source and report plus attempts (att
 
 HTTP errors use the existing `{error: "message"}` body: 400 malformed input, 403 foreign host/origin, 404 missing project/run, 405 wrong method, 409 stale rules/busy/deployed project, 413 oversized body, 503 generation disabled. A worker failure after a run was accepted is reported in the polled run, not as a retroactive HTTP error.
 
-Deployment resolves the latest validated run in server memory, checks its confirmation and version, and submits the trusted artifact's bytecode with the confirmed client, provider and milestone amounts. GET `/agreement` supplies its address and source identity. Repeating the same successful deployment returns the current project. Superseded runs and a second, different deployment return 409. Project snapshots keep the Project API v2 format.
+Deployment resolves the latest stored validated run, checks its confirmation and version, and submits the trusted artifact's bytecode with the confirmed client, provider and milestone amounts. GET `/agreement` supplies its address and source identity. Repeating the same successful deployment returns the current project. Superseded runs and a second, different deployment return 409. Project snapshots keep the Project API v2 format. A startup-only import of a checked Agent 2 archive onto a fresh local chain is distinct from reopening the persisted chain: it has no prior deployment or payment receipts.
 
 For Agent 3 the project page calls `/plans` and `/plans/:planId/confirmation`. The backend supplies the ABI and address recorded at deployment. Generated-project payments use these plan endpoints. See [operation planning and receipts](INTERFACES.md#7-agent-3--plan-an-operation-then-report-the-result).
 

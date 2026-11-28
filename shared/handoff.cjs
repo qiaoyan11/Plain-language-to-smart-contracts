@@ -5,15 +5,31 @@ const { createHash } = require('node:crypto');
 const schema = require('./schemas/handoff.schema.json');
 const ajv = new Ajv({ strict: false });
 addFormats(ajv);
-const kinds = ['Response', 'ClarifyResult', 'GenerateResult', 'PlanResult', 'ReportInput', 'ReportResult'];
+const kinds = ['Request', 'Response', 'DraftSpec', 'ConfirmedSpec', 'ClarifyResult', 'GenerateResult', 'PlanResult', 'ReportInput', 'ReportResult'];
 const validators = Object.fromEntries(kinds.map(kind => [kind, ajv.compile({ ...schema, $ref: `#/$defs/${kind}` })]));
 function requireThat(condition, message) { if (!condition) throw new Error(message); }
 function check(kind, data) { requireThat(validators[kind](data), `INVALID_${kind}: ${ajv.errorsText(validators[kind].errors)}`); }
+function checkSpec(spec, complete = false) {
+  check(complete ? 'ConfirmedSpec' : 'DraftSpec', spec);
+  const addresses = [spec.clientWallet, spec.developerWallet].filter(Boolean).map(a => a.toLowerCase());
+  requireThat(!addresses.includes('0x' + '0'.repeat(40)) && new Set(addresses).size === addresses.length, 'INVALID_PARTICIPANTS');
+  requireThat(spec.milestones.every((m, i) => m.id === i + 1), 'INVALID_MILESTONE_ORDER');
+  const amounts = spec.milestones.filter(m => m.amountWei !== null).map(m => BigInt(m.amountWei));
+  const max = (1n << 256n) - 1n, sum = amounts.reduce((a, b) => a + b, 0n);
+  requireThat(amounts.every(a => a > 0n && a <= max) && sum <= max, 'INVALID_AMOUNTS');
+  if (spec.totalAmountWei !== null) {
+    const total = BigInt(spec.totalAmountWei);
+    requireThat(total > 0n && total <= max, 'INVALID_TOTAL');
+    if (amounts.length === spec.milestones.length && amounts.length) requireThat(total === sum, 'TOTAL_MISMATCH');
+  }
+}
 function canonical(x) {
   if (Array.isArray(x)) return x.map(canonical);
   if (x && typeof x === 'object') return Object.fromEntries(Object.keys(x).sort().map(k => [k, canonical(x[k])]));
   return x;
 }
+// Actions that name a milestone: v1 approval, and the v2 review-period actions.
+const MILESTONE_ACTIONS = ['acceptMilestone', 'submitDelivery', 'requestChanges', 'claimMilestone'];
 function receiptOutcome({ projectId, intent, receipt, snapshot }) {
   if (!receipt || projectId !== snapshot.id || intent.projectId !== snapshot.id ||
       snapshot.contractAddress?.toLowerCase() !== intent.contractAddress.toLowerCase()) return 'unverified';
@@ -22,8 +38,20 @@ function receiptOutcome({ projectId, intent, receipt, snapshot }) {
     tx.hash.toLowerCase() === receipt.hash.toLowerCase() && tx.blockNumber === receipt.blockNumber &&
     tx.status === receipt.status && tx.action === intent.action && (tx.milestoneId ?? null) === intent.milestoneId);
   if (!recorded || !snapshot.funded) return 'unverified';
-  if (intent.action === 'acceptMilestone' && !snapshot.milestones.some(m => m.id === intent.milestoneId && m.paid)) return 'unverified';
+  // The receipt is confirmed only when the state it should have produced is on chain now.
+  const milestone = snapshot.milestones.find(m => m.id === intent.milestoneId);
+  const expected = { acceptMilestone: m => m.paid, claimMilestone: m => m.paid,
+    submitDelivery: m => m.paid || (m.deliveredAt ?? 0) > 0, requestChanges: m => (m.changeRequests ?? 0) > 0 }[intent.action];
+  if (expected && !(milestone && expected(milestone))) return 'unverified';
   return 'confirmed';
+}
+function validateGenerationRequest(request) {
+  check('Request', request);
+  requireThat(request.operation === 'generate', 'EXPECTED_GENERATION_REQUEST');
+  const { spec, confirmation } = request.payload;
+  checkSpec(spec, true);
+  requireThat(confirmation.projectId === spec.projectId && confirmation.specVersion === spec.specVersion,
+    'CONFIRMATION_SPEC_MISMATCH');
 }
 function validateResponse(request, response) {
   check('Response', response);
@@ -37,6 +65,13 @@ function validateResponse(request, response) {
   requireThat(kind, 'INVALID_OPERATION');
   check(kind, response.result);
   const result = response.result;
+  if (request.operation === 'clarify') {
+    checkSpec(result.draftSpec, result.status === 'readyForConfirmation');
+    if (request.payload.draftSpec) requireThat(result.draftSpec.projectId === request.payload.draftSpec.projectId, 'DRAFT_PROJECT_MISMATCH');
+    if (result.status === 'readyForConfirmation') requireThat(!result.questions.length && !result.unsupportedTerms.length, 'UNRESOLVED_DRAFT');
+    const sources = request.payload.history.filter(m => m.role === 'user').map(m => m.content).concat(request.payload.message);
+    requireThat((result.separateTerms ?? []).every(term => term.trim() && sources.some(s => s.includes(term))), 'UNSOURCED_SEPARATE_TERM');
+  }
   if (request.operation === 'generate') {
     const { sourceBundle: bundle, validationReport: report, attempts } = result;
     const config = request.payload.runConfig;
@@ -71,14 +106,14 @@ function validateResponse(request, response) {
     if (intent) {
       const { deployment, projectId } = request.payload;
       requireThat(intent.projectId === projectId && intent.chainId === deployment.chainId && intent.contractAddress.toLowerCase() === deployment.contractAddress.toLowerCase(), 'INTENT_DEPLOYMENT_MISMATCH');
-      requireThat((intent.milestoneId !== null) === (intent.action === 'acceptMilestone'), 'INVALID_MILESTONE');
+      requireThat((intent.milestoneId !== null) === MILESTONE_ACTIONS.includes(intent.action), 'INVALID_MILESTONE');
     }
   }
   if (request.operation === 'reportAction') {
     check('ReportInput', request.payload);
     const { intent } = request.payload;
-    requireThat((intent.milestoneId !== null) === (intent.action === 'acceptMilestone'), 'INVALID_MILESTONE');
+    requireThat((intent.milestoneId !== null) === MILESTONE_ACTIONS.includes(intent.action), 'INVALID_MILESTONE');
     requireThat(result.outcome === receiptOutcome(request.payload), 'REPORT_OUTCOME_MISMATCH');
   }
 }
-module.exports = { validateResponse, receiptOutcome };
+module.exports = { validateGenerationRequest, validateResponse, receiptOutcome };

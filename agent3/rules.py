@@ -2,63 +2,65 @@
 import re
 from decimal import Context, Decimal
 
+# A deposit funds the whole escrow, so a deposit request that also names the milestone it covers
+# ("put the rent for Dec 21-25 into escrow") is still a deposit. Without any deposit word the model
+# may have misread "pay milestone 1" on an unfunded escrow, so that still asks first.
+DEPOSIT_WORDS = re.compile(r'\b(?:deposit|fund|funds|funding|top\s*up|put|lock|escrow)\b|\u5b58\u5165|\u5145\u503c|\u6258\u7ba1', re.I)
+PAY_WORDS = re.compile(r'\b(?:pay|pays|paid|paying|release|approve|approved|accept|accepted)\b|\u652f\u4ed8|\u4ed8\u6b3e|\u653e\u6b3e|\u9a8c\u6536', re.I)
+
 TEXT = {
     'en': {
         'done': 'No transaction has been sent.',
         'mismatch': 'The project record does not match the deployed contract address. {done}',
         'unsupported': 'This request is not supported. You can ask about the escrow, deposit funds, or accept a milestone. {done}',
+        'unsupported_held': 'This contract cannot refund, cancel, change an amount or pay anyone other than the provider '
+                            'wallet. The escrow keeps its {balance} test ETH until the client approves the next milestone; '
+                            'settle anything else under your written agreement. {done}',
         'unclear_summary': 'The request is not clear enough to act on. {done}',
         'unclear_question': 'What do you want to do: check the escrow, deposit funds, or accept a milestone?',
-        'query': 'Escrow balance: {balance} ETH. Funded: {funded}. Milestones: {items}. {done}',
-        'query_item': '#{id} {title}, {eth} ETH, {state}',
+        'query': 'Escrow balance: {balance} test ETH. Funded: {funded}. Milestones: {items}. {done}',
+        'query_item': '#{id} {title}, {eth} test ETH, {state}',
         'yes': 'yes', 'no': 'no', 'paid': 'paid', 'unpaid': 'unpaid',
-        'deposit': 'Deposit {total} ETH into the escrow. {done}',
+        'deposit': 'Deposit {total} test ETH into the escrow. {done}',
+        'deposit_named': 'Deposit {total} test ETH into the escrow. One deposit funds every milestone; '
+                         'milestone #{id} is paid to the provider only after you accept it. {done}',
+        'deposit_or_pay': 'The escrow is not funded yet, so no milestone can be paid. Deposit the full {total} test ETH '
+                          'first? Reply "yes" and I will prepare the deposit for you to review.',
         'already_funded': 'The escrow is already funded, so it cannot be deposited again. {done}',
         'all_paid': 'All milestones are already paid. {done}',
-        'ask_id_summary': 'The milestone to accept is not specified. {done}',
-        'ask_id': 'Which milestone do you want to accept? The next unpaid milestone is #{id} "{title}".',
         'unknown_id': 'Milestone #{id} does not exist in this project. {done}',
         'unfunded': 'The escrow is not funded yet, so no milestone can be accepted. {done}',
         'is_paid': 'Milestone #{id} is already paid. {done}',
         'out_of_order': 'Milestones must be accepted in order. The next unpaid milestone is #{next_id}. {done}',
-        'accept': 'Accept milestone #{id} "{title}" and pay {eth} ETH to the developer wallet {wallet}. {done}',
+        'accept': 'Accept milestone #{id} "{title}" and pay {eth} test ETH to the provider wallet {wallet}.{more} {done}',
+        'accept_more': ' After it, {count} more milestone{s} ({eth} test ETH) stay{verb} in escrow; each is paid only '
+                       'when you approve it.',
+        'no_review': 'This contract has no review period: the client approves each payment, and nothing is delivered '
+                     'or claimed on chain. {done}',
+        'deliver': 'Mark milestone #{id} "{title}" as delivered. The client then has {days} to approve it or ask for '
+                   'changes; after that the provider can claim the payment. {done}',
+        'already_delivered': 'Milestone #{id} is already delivered and in review until {ends}. {done}',
+        'not_delivered': 'Milestone #{id} has no delivery awaiting review, so there is nothing to {what}. {done}',
+        'review_running': 'The review of milestone #{id} runs until {ends}; the provider can claim the payment after that '
+                          'if the client has not responded. {done}',
+        'review_over': 'The review of milestone #{id} ended at {ends}, so changes can no longer be requested; the client can '
+                       'still approve it, or the provider can claim it. {done}',
+        'limit_reached': 'All {limit} change request(s) for milestone #{id} have been used. {done}',
+        'request_changes': 'Ask for changes to milestone #{id} "{title}". The delivery is withdrawn, and the review starts '
+                           'again when the provider delivers again. {done}',
+        'claim': 'Claim milestone #{id} "{title}": its review ended without a response, so {eth} test ETH goes to the '
+                 'provider wallet {wallet}.{more} {done}',
         'model_error': 'The request could not be understood because of a service error. Please try again. {done}',
         'too_long': 'The message is too long. Please shorten it and try again. {done}',
         'bad_ids': 'The project data is not in the expected form, so the request cannot be handled. {done}',
-    },
-    'zh': {
-        'done': '尚未发送任何交易。',
-        'mismatch': '项目记录与已部署的合约地址不一致。{done}',
-        'unsupported': '暂不支持此请求。你可以查询托管状态、存入资金或验收里程碑。{done}',
-        'unclear_summary': '请求不够明确，无法执行。{done}',
-        'unclear_question': '你想做什么：查询托管状态、存入资金，还是验收里程碑？',
-        'query': '托管余额：{balance} ETH。已注资：{funded}。里程碑：{items}。{done}',
-        'query_item': '#{id} {title}，{eth} ETH，{state}',
-        'yes': '是', 'no': '否', 'paid': '已支付', 'unpaid': '未支付',
-        'deposit': '向托管合约存入 {total} ETH。{done}',
-        'already_funded': '托管合约已注资，不能重复存入。{done}',
-        'all_paid': '所有里程碑均已支付。{done}',
-        'ask_id_summary': '未指定要验收的里程碑。{done}',
-        'ask_id': '你要验收哪个里程碑？下一个未支付的里程碑是 #{id}「{title}」。',
-        'unknown_id': '本项目中不存在里程碑 #{id}。{done}',
-        'unfunded': '托管合约尚未注资，无法验收里程碑。{done}',
-        'is_paid': '里程碑 #{id} 已支付。{done}',
-        'out_of_order': '里程碑必须按顺序验收。下一个未支付的里程碑是 #{next_id}。{done}',
-        'accept': '验收里程碑 #{id}「{title}」，并向开发者钱包 {wallet} 支付 {eth} ETH。{done}',
-        'model_error': '由于服务错误，无法理解该请求。请重试。{done}',
-        'too_long': '消息过长，请缩短后重试。{done}',
-        'bad_ids': '项目数据格式不符合预期，无法处理该请求。{done}',
     },
 }
 
 
 def _t(language, key, **kw):
-    table = TEXT.get(language, TEXT['en'])
+    # Language remains an accepted argument for existing callers; UI copy is always English.
+    table = TEXT['en']
     return table[key].format(done=table['done'], **kw)
-
-
-def guess_language(message):
-    return 'zh' if re.search('[一-鿿]', message) else 'en'
 
 
 def format_eth(wei):
@@ -88,11 +90,11 @@ def _ready(payload, action, milestone_id, summary):
     return {'status': 'readyForConfirmation', 'question': None, 'summary': summary,
             'intent': {'projectId': payload['projectId'], 'chainId': d['chainId'],
                        'contractAddress': d['contractAddress'], 'action': action,
-                       'milestoneId': milestone_id if action == 'acceptMilestone' else None}}
+                       'milestoneId': None if action in ('deposit', 'query') else milestone_id}}
 
 
 def decide(parsed, payload):
-    lang = parsed['language']
+    lang = 'en'
     kind = parsed['kind']
     mid = parsed['milestoneId']
     snap = payload['snapshot']
@@ -103,6 +105,9 @@ def decide(parsed, payload):
     if [m['id'] for m in milestones] != list(range(1, len(milestones) + 1)):
         return _blocked(lang, 'bad_ids')
     if kind == 'unsupported':
+        if snap['funded'] and any(not m['paid'] for m in milestones):
+            # Say plainly where the money stays, so a dispute is not mistaken for a pending refund.
+            return _blocked(lang, 'unsupported_held', balance=format_eth(snap['escrowBalanceWei']))
         return _blocked(lang, 'unsupported')
     if kind == 'unclear':
         return clarify(lang)
@@ -114,31 +119,107 @@ def decide(parsed, payload):
                      funded=_t(lang, 'yes' if funded else 'no'), items=items)
         return _ready(payload, 'query', None, summary)
     if kind == 'deposit':
+        total = format_eth(snap['totalAmountWei'])
         if mid is not None:
-            # A deposit never names a milestone. The model mixed two requests, so ask.
-            return clarify(lang)
+            message = payload.get('message') or ''
+            if funded or mid not in [m['id'] for m in milestones]:
+                return clarify(lang)
+            if not DEPOSIT_WORDS.search(message):
+                # Possibly "pay milestone 1" on an unfunded escrow: say what has to happen first.
+                return {'status': 'needsClarification', 'intent': None,
+                        'question': _t(lang, 'deposit_or_pay', total=total),
+                        'summary': _t(lang, 'unclear_summary')}
+            return _ready(payload, 'deposit', None, _t(lang, 'deposit_named', total=total, id=mid))
         if funded:
             return _blocked(lang, 'already_funded')
-        return _ready(payload, 'deposit', None, _t(lang, 'deposit', total=format_eth(snap['totalAmountWei'])))
+        return _ready(payload, 'deposit', None, _t(lang, 'deposit', total=total))
+    if kind in ('submitDelivery', 'requestChanges', 'claimMilestone'):
+        return _review_action(kind, mid, payload, lang)
     # acceptMilestone
     unpaid = [m for m in milestones if not m['paid']]
     if not unpaid:
         return _blocked(lang, 'all_paid')
     lowest = min(unpaid, key=lambda m: m['id'])
     if mid is None:
-        return {'status': 'needsClarification', 'intent': None,
-                'question': _t(lang, 'ask_id', id=lowest['id'], title=lowest['title']),
-                'summary': _t(lang, 'ask_id_summary')}
+        # Milestones are paid in order, so "approve it" can only mean the next unpaid one.
+        # The preview names it and its amount before anything is sent.
+        mid = lowest['id']
     target = next((m for m in milestones if m['id'] == mid), None)
     if target is None:
         return _blocked(lang, 'unknown_id', id=mid)
     if not funded:
-        return _blocked(lang, 'unfunded')
+        # Funding comes first, as on escrow platforms: offer the deposit instead of a dead end.
+        # A "yes" reply comes back with this question attached (Node keeps it briefly).
+        return {'status': 'needsClarification', 'intent': None,
+                'question': _t(lang, 'deposit_or_pay', total=format_eth(snap['totalAmountWei'])),
+                'summary': _t(lang, 'unfunded')}
     if target['paid']:
         return _blocked(lang, 'is_paid', id=mid)
     if mid != lowest['id']:
         return _blocked(lang, 'out_of_order', next_id=lowest['id'])
     wallet = snap['developerWallet']
+    # "Pay everything that's left" still pays one milestone per approval: say what remains after it.
+    later = [m for m in unpaid if m['id'] != mid]
+    more = _t(lang, 'accept_more', count=len(later), s='' if len(later) == 1 else 's',
+              verb='s' if len(later) == 1 else '',
+              eth=format_eth(sum(int(m['amountWei']) for m in later))) if later else ''
     summary = _t(lang, 'accept', id=mid, title=target['title'], eth=format_eth(target['amountWei']),
-                 wallet=wallet[:6] + '…' + wallet[-4:])
+                 wallet=wallet[:6] + '…' + wallet[-4:], more=more)
     return _ready(payload, 'acceptMilestone', mid, summary)
+
+
+def _when(seconds):
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(seconds, timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+
+
+def _review_action(kind, mid, payload, lang):
+    """v2: a delivery by the provider, a change request by the client, or the provider's claim.
+    The contract enforces the same rules; these only explain why a request cannot go ahead."""
+    snap = payload['snapshot']
+    review = snap.get('review')
+    if not review:
+        return _blocked(lang, 'no_review')
+    milestones = snap['milestones']
+    unpaid = [m for m in milestones if not m['paid']]
+    if not unpaid:
+        return _blocked(lang, 'all_paid')
+    if not snap['funded']:
+        return {'status': 'needsClarification', 'intent': None,
+                'question': _t(lang, 'deposit_or_pay', total=format_eth(snap['totalAmountWei'])),
+                'summary': _t(lang, 'unfunded')}
+    lowest = min(unpaid, key=lambda m: m['id'])
+    mid = lowest['id'] if mid is None else mid
+    target = next((m for m in milestones if m['id'] == mid), None)
+    if target is None:
+        return _blocked(lang, 'unknown_id', id=mid)
+    if target['paid']:
+        return _blocked(lang, 'is_paid', id=mid)
+    if mid != lowest['id']:
+        return _blocked(lang, 'out_of_order', next_id=lowest['id'])
+    period, now = review['periodSeconds'], review['chainTime']
+    delivered = target.get('deliveredAt') or 0
+    ends = delivered + period
+    if kind == 'submitDelivery':
+        if delivered:
+            return _blocked(lang, 'already_delivered', id=mid, ends=_when(ends))
+        days = round(period / 86400, 1)
+        days_text = f'{days:g} day' + ('' if days == 1 else 's') if period >= 86400 else f'{period // 60} minutes'
+        return _ready(payload, 'submitDelivery', mid, _t(lang, 'deliver', id=mid, title=target['title'], days=days_text))
+    if not delivered:
+        return _blocked(lang, 'not_delivered', id=mid, what='review' if kind == 'requestChanges' else 'claim')
+    if kind == 'requestChanges':
+        if now >= ends:
+            return _blocked(lang, 'review_over', id=mid, ends=_when(ends))
+        limit = review['changeRequestLimit']
+        if limit and target.get('changeRequests', 0) >= limit:
+            return _blocked(lang, 'limit_reached', id=mid, limit=limit)
+        return _ready(payload, 'requestChanges', mid, _t(lang, 'request_changes', id=mid, title=target['title']))
+    if now < ends:
+        return _blocked(lang, 'review_running', id=mid, ends=_when(ends))
+    wallet = snap['developerWallet']
+    later = [m for m in unpaid if m['id'] != mid]
+    more = _t(lang, 'accept_more', count=len(later), s='' if len(later) == 1 else 's', verb='s' if len(later) == 1 else '',
+              eth=format_eth(sum(int(m['amountWei']) for m in later))) if later else ''
+    return _ready(payload, 'claimMilestone', mid, _t(lang, 'claim', id=mid, title=target['title'],
+                                                     eth=format_eth(target['amountWei']), wallet=wallet[:6] + '…' + wallet[-4:], more=more))

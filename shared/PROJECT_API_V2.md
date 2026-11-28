@@ -1,6 +1,6 @@
 # Project API v2
 
-The HTTP/UI representation of a project is version 2. The Solidity interface remains `IMilestoneEscrow v1`. This is a breaking replacement of the fixed two-stage local-demo API; create new projects after restarting the backend. The fixed `TwoStageEscrow` and its tests remain unchanged as the baseline.
+The HTTP/UI representation of a project is version 2. The Solidity interface remains `IMilestoneEscrow v1`. This replaced the fixed two-stage local-demo API; projects created with that older format need to be recreated. The fixed `TwoStageEscrow` and its tests remain unchanged as the baseline.
 
 For versioned rules, explicit Agent 2 confirmation and asynchronous generation, use the separate [Generation HTTP API v1](GENERATION_API_V1.md). It does not change the Project response below. Creating a Project alone does not authorize AI generation.
 
@@ -28,7 +28,15 @@ Returns `schemaVersion: 2`, `id`, `name`, addresses, `createdAt`, `contractAddre
 
 Each milestone contains `id`, `title`, `amountWei`, `paid`. Transactions contain `action`, optional `milestoneId`, `hash`, `blockNumber`, `status`. All amounts are strings; milestone IDs and block numbers are numbers. Old fields `totalEth`, `escrowBalance`, `deposited`, `paid.stage1/stage2`, and `chainState` are removed.
 
-`GET /api/projects/:id` reads all deployed amounts, paid flags, funding status and balance at one common block. Titles and project metadata stay off-chain. Successful actions return the same Project representation after receipt confirmation. No database persistence is introduced; restarting the backend clears its projects and local chain.
+`GET /api/projects/:id` reads all deployed amounts, paid flags, funding status and balance at one common block. Titles and project metadata stay off-chain. Successful actions return the same Project representation after receipt confirmation. The normal local backend stores project records and signed test-chain blocks under `data/private/local-demo/`; restarting it with the same data directory restores the original project URL and receipts. This is local to that computer and directory, not a remote database.
+
+## Lists for finding saved work
+
+Both lists are read-only. They never sign a transaction or start a model job.
+
+`GET /api/projects` returns `{ "projects": [...] }`, newest first. Each item contains `id`, `name`, `kind` (`agreement` for the generated-contract page `/projects/:id`, `reference` for `/reference-projects/:id`), `stage`, `createdAt`, `contractAddress`, `funded`, `totalAmountWei`, `escrowBalanceWei`, `milestoneCount` and `paidCount`. `stage` is one of `needsConfirmation`, `readyToGenerate`, `generating`, `readyToDeploy`, `checksNotPassed`, `notDeployed`, `awaitingDeposit`, `paying`, `complete` or `unknown` (chain state could not be read; the balance and paid count are then null). Deployed values come from the same chain reads as `GET /api/projects/:id`.
+
+`GET /api/drafts` returns `{ "drafts": [...] }` for unconfirmed conversations that contain at least one message, newest first: `id`, `name` (null until the assistant records one), `createdAt`, `updatedAt`, `status`, `messageCount` and `awaitingReply`. Confirmed drafts appear as projects instead.
 
 ## Actions
 

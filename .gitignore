@@ -3,11 +3,11 @@
 !.env.example
 *.pem
 *.key
-.venv/
+.venv
 __pycache__/
 *.py[cod]
 .pytest_cache/
-node_modules/
+node_modules
 dist/
 .DS_Store
 checkpoints/

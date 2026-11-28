@@ -99,6 +99,41 @@ class Agent2Tests(unittest.TestCase):
         self.assertNotIn('test-key',str(error.exception))
         self.assertNotIn('sensitive-provider',str(error.exception))
 
+    def call_with(self, replies):
+        calls, sleeps = [], []
+        def handler(request):
+            calls.append(request)
+            item = replies[min(len(calls), len(replies)) - 1]
+            if isinstance(item, Exception):
+                raise item
+            return item
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        with patch('agent2.model.load_dotenv'), patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}), \
+                patch('agent2.model.httpx.Client', return_value=client), patch('agent2.model.time.sleep', sleeps.append):
+            try:
+                return call_model('system', 'user', DEFAULT_MODEL), calls, sleeps
+            except ModelError as error:
+                return error, calls, sleeps
+
+    def test_requests_turned_away_before_generation_are_resent_and_counted(self):
+        result, calls, sleeps = self.call_with([
+            httpx.Response(503), httpx.Response(429, headers={'retry-after': '1'}, json={'error': {'code': 'rate_limit_exceeded'}}),
+            httpx.Response(200, json=response_body())])
+        self.assertEqual(result['source'], GOOD_SOURCE)
+        self.assertEqual((len(calls), sleeps, result['metadata']['apiCalls']), (3, [2, 1.0], 3))
+        result, calls, _ = self.call_with([httpx.ConnectError('down'), httpx.Response(200, json=response_body())])
+        self.assertEqual((result['source'], len(calls), result['metadata']['apiCalls']), (GOOD_SOURCE, 2, 2))
+
+    def test_exhausted_quota_timeouts_and_a_third_refusal_are_not_resent(self):
+        quota = httpx.Response(429, json={'error': {'code': 'insufficient_quota'}})
+        for replies, count, code in [([quota], 1, 'MODEL_HTTP_429'), ([httpx.Response(503)], 3, 'MODEL_HTTP_503'),
+                                     ([httpx.ReadTimeout('slow')], 1, 'MODEL_NETWORK')]:
+            with self.subTest(code=code):
+                error, calls, _ = self.call_with(replies)
+                self.assertIsInstance(error, ModelError)
+                self.assertIn(code, str(error))
+                self.assertEqual(len(calls), count)
+
     def test_responses_request_and_usage(self):
         def handler(request):
             data=json.loads(request.content)
@@ -264,6 +299,30 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(run['metadata']['usage']['output_tokens'],8212)
         self.assertEqual(run['stopReason'],'model_error')
 
+    def test_an_answer_cut_off_by_the_output_budget_is_asked_again_within_the_call_budget(self):
+        cut = {'source': None, 'metadata': {'usage': {'output_tokens': 16384}, 'apiCalls': 1}, 'error': 'MODEL_INCOMPLETE'}
+        calls = []
+        def model(*args):
+            calls.append(args)
+            return cut if len(calls) == 1 else reply(GOOD_SOURCE)
+        run = run_generation(development_request('C', 1), model_call=model, validator=lambda spec, b: fake_report(b))
+        self.assertEqual(run['response']['result']['status'], 'validated')
+        self.assertEqual((len(run['modelCalls']), len(run['response']['result']['attempts'])), (2, 1))
+        self.assertEqual(calls[0], calls[1])
+        # The budget caps model calls: a cut-off answer uses a repair, and nothing is retried in A.
+        calls.clear()
+        run = run_generation(development_request('C', 1), model_call=lambda *a: calls.append(a) or cut,
+                             validator=lambda spec, b: self.fail('nothing to validate'))
+        self.assertEqual((len(calls), run['stopReason']), (2, 'model_error'))
+        calls.clear()
+        run_generation(development_request('A', 0), model_call=lambda *a: calls.append(a) or cut)
+        self.assertEqual(len(calls), 1)
+        calls.clear()
+        model_calls = iter([cut, reply(GOOD_SOURCE)])
+        run = run_generation(development_request('C', 1), model_call=lambda *a: next(model_calls),
+                             validator=lambda spec, b: fake_report(b, ('staticAnalysis',)))
+        self.assertEqual((len(run['modelCalls']), run['stopReason']), (2, 'repair_budget_exhausted'))
+
     def test_real_validator_checks_injected_source_and_returns_its_artifact(self):
         run=run_generation(development_request('A',0),model_call=lambda *args:reply(GOOD_SOURCE))
         result=run['response']['result']
@@ -282,6 +341,110 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(len(calls),1)
         self.assertEqual(run['response']['result']['status'],'validated')
         self.assertEqual(run['stopReason'],'passed')
+
+
+class LocalModelServerTests(unittest.TestCase):
+    """AGENT2_BASE_URL swaps the hosted API for an OpenAI-compatible server, such as a local fine-tuned model."""
+    LOCAL = {'AGENT2_BASE_URL': 'http://127.0.0.1:8000/v1', 'AGENT2_MODEL': 'escrow-coder-ft'}
+
+    def completion(self, content, finish='stop'):
+        return {'id': 'local-1', 'model': 'escrow-coder-ft', 'usage': {'prompt_tokens': 5},
+                'choices': [{'finish_reason': finish, 'message': {'role': 'assistant', 'content': content}}]}
+
+    def call(self, handler, model='escrow-coder-ft', env=None):
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        with patch('agent2.model.load_dotenv'), patch.dict('os.environ', env or self.LOCAL, clear=True), \
+                patch('agent2.model.httpx.Client', return_value=client):
+            return call_model('system', 'user', model)
+
+    def test_local_server_receives_a_strict_schema_chat_request_without_a_hosted_key(self):
+        seen = []
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(200, json=self.completion(json.dumps({'source': GOOD_SOURCE})))
+        result = self.call(handler)
+        self.assertEqual(str(seen[0].url), 'http://127.0.0.1:8000/v1/chat/completions')
+        self.assertNotIn('authorization', seen[0].headers)
+        body = json.loads(seen[0].content)
+        self.assertEqual(body['model'], 'escrow-coder-ft')
+        self.assertTrue(body['response_format']['json_schema']['strict'])
+        self.assertEqual(result['source'], GOOD_SOURCE)
+        self.assertEqual(result['metadata']['provider'], 'openai-compatible:127.0.0.1')
+        self.assertEqual(result['metadata']['returnedModel'], 'escrow-coder-ft')
+
+    def test_hosted_request_leaves_room_for_reasoning_and_a_multi_milestone_contract(self):
+        seen = []
+        def handler(request):
+            seen.append(json.loads(request.content))
+            return httpx.Response(200, json={'id': 'r1', 'model': DEFAULT_MODEL, 'status': 'completed', 'output': [
+                {'type': 'message', 'content': [{'type': 'output_text', 'text': json.dumps({'source': GOOD_SOURCE})}]}]})
+        result = self.call(handler, model=DEFAULT_MODEL, env={'OPENAI_API_KEY': 'test-key'})
+        # A realistic three-milestone agreement used 8,192 tokens and was cut off before any source.
+        self.assertGreaterEqual(seen[0]['max_output_tokens'], 16384)
+        self.assertEqual(result['metadata']['maxOutputTokens'], seen[0]['max_output_tokens'])
+
+    def test_local_output_uses_the_same_validation_as_the_hosted_api(self):
+        for content, finish in (('not json', 'stop'), (json.dumps({'source': GOOD_SOURCE}), 'length')):
+            with self.subTest(finish=finish):
+                result = self.call(lambda request: httpx.Response(200, json=self.completion(content, finish)))
+                self.assertIsNone(result['source'])
+                self.assertTrue(result['error'].startswith('MODEL_'))
+
+    def test_local_server_runs_only_its_configured_model_and_a_safe_endpoint(self):
+        never = lambda request: self.fail('must not send')
+        with self.assertRaisesRegex(ModelError, 'MODEL_CONFIG'):
+            self.call(never, model=DEFAULT_MODEL)
+        for env in ({'AGENT2_BASE_URL': 'http://192.168.1.5:8000/v1', 'AGENT2_MODEL': 'escrow-coder-ft'},
+                    {'AGENT2_BASE_URL': 'http://127.0.0.1:8000/v1'}):
+            with self.subTest(env=env), self.assertRaisesRegex(ModelError, 'MODEL_CONFIG'):
+                self.call(never, env=env)
+
+    def test_generation_graph_accepts_the_configured_local_model(self):
+        request = copy.deepcopy(REQUEST)
+        request['payload']['runConfig']['model'] = 'escrow-coder-ft'
+        with patch('agent2.model.load_dotenv'), patch.dict('os.environ', self.LOCAL, clear=True):
+            run = run_generation(request, model_call=lambda *args: reply(GOOD_SOURCE),
+                                 compiler=lambda *args: {'status': 'passed'})
+        self.assertNotEqual(run['response']['status'], 'error')
+
+
+class ProgressTests(unittest.TestCase):
+    """The stages shown while a generation runs, derived from its recorded events."""
+    config = {'maxRepairs': 3, 'feedbackSetting': 'C'}
+
+    def failed(self, attempt, *names):
+        checks = [{'name': n, 'status': 'failed', 'findings': []} for n in names]
+        return {'kind': 'validation', 'attempt': attempt, 'status': 'failed', 'validationReport': {'checks': checks}}
+
+    def test_stages_follow_writing_checking_and_repairs(self):
+        from agent2.records import progress_for
+        self.assertEqual(progress_for({'kind': 'source', 'attempt': 0}, self.config), {'stage': 'checking', 'attempt': 1})
+        self.assertEqual(progress_for(self.failed(0, 'staticAnalysis'), self.config),
+                         {'stage': 'repairing', 'attempt': 2, 'failedChecks': ['staticAnalysis']})
+        self.assertEqual(progress_for({'kind': 'validation', 'attempt': 1, 'status': 'validated'}, self.config),
+                         {'stage': 'finishing', 'attempt': 2})
+        self.assertIsNone(progress_for({'kind': 'modelCall', 'attempt': 0}, self.config))
+
+    def test_no_repair_is_announced_once_the_budget_is_spent(self):
+        from agent2.records import progress_for
+        self.assertIsNone(progress_for(self.failed(3, 'clauseTests'), self.config))
+        self.assertIsNone(progress_for(self.failed(0, 'clauseTests'), {'maxRepairs': 3, 'feedbackSetting': 'A'}))
+
+    def test_a_saved_run_reports_each_stage_in_order(self):
+        from agent2 import records
+        seen = []
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as temp, patch('agent2.records.run_generation') as run, \
+                patch.object(records, 'ROOT', Path(temp)):
+            def fake(request, initial_bundle=None, on_record=None):
+                on_record({'kind': 'source', 'attempt': 0, 'sourceBundle': None})
+                on_record({'kind': 'validation', 'attempt': 0, 'status': 'validated', 'validationReport': None})
+                raise RuntimeError('stop after the events')
+            run.side_effect = fake
+            with self.assertRaises(RuntimeError):
+                records.run_and_save(copy.deepcopy(REQUEST), on_progress=seen.append)
+        self.assertEqual([s['stage'] for s in seen], ['writing', 'checking', 'finishing'])
 
 
 if __name__=='__main__':unittest.main()

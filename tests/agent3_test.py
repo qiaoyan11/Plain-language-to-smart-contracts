@@ -58,6 +58,10 @@ class RulesTest(unittest.TestCase):
 
     def test_unsupported_blocked(self):
         self.assert_blocked(self.run_rules('unsupported'))
+        held = self.run_rules('unsupported', state(funded=True, paid=(1,)))
+        self.assert_blocked(held)
+        self.assertIn('cannot refund', held['summary'])
+        self.assertIn('until the client approves the next milestone', held['summary'])
 
     def test_unclear_asks(self):
         r = self.run_rules('unclear')
@@ -83,10 +87,39 @@ class RulesTest(unittest.TestCase):
 
     def test_deposit_with_milestone_asks(self):
         # "Pay milestone 1" on an unfunded escrow was sometimes read as a deposit with an id.
-        r = rules.decide(parsed('deposit', 1), state())
-        self.assertEqual(r['status'], 'needsClarification')
-        self.assertIsNone(r['intent'])
+        for message in ('Pay milestone 1', '\u4ed8\u6b3e\u7b2c\u4e00\u4e2a\u91cc\u7a0b\u7891'):
+            with self.subTest(message=message):
+                payload = state()
+                payload['message'] = message
+                r = rules.decide(parsed('deposit', 1), payload)
+                self.assertEqual(r['status'], 'needsClarification')
+                self.assertIsNone(r['intent'])
+                self.assertIn('not funded yet', r['question'])
+                validate('PlanResult', r)
+        # Saying "deposit", or answering "yes" to the deposit question, prepares the deposit.
+        for message in ('Deposit and release milestone 1',
+                        'Pay her the booking fee.\n(Assistant asked: "The escrow is not funded yet, so no milestone '
+                        'can be paid. Deposit the full 1 test ETH first?" The user replied: "yes")'):
+            with self.subTest(message=message):
+                payload = state()
+                payload['message'] = message
+                r = rules.decide(parsed('deposit', 1), payload)
+                self.assertEqual(r['status'], 'readyForConfirmation')
+                self.assertEqual(r['intent']['action'], 'deposit')
+
+    def test_deposit_that_names_the_milestone_it_covers_is_prepared(self):
+        # A sublease tenant: "Put the rent for Dec 21-25 into escrow now so Alex knows it's covered."
+        payload = state()
+        payload['message'] = "I'm Sam. Put the rent for Dec 21-25 into escrow now so Alex knows it's covered."
+        r = rules.decide(parsed('deposit', 1), payload)
         validate('PlanResult', r)
+        self.assertEqual(r['status'], 'readyForConfirmation')
+        self.assertEqual(r['intent']['action'], 'deposit')
+        self.assertIsNone(r['intent']['milestoneId'])
+        self.assertIn('One deposit funds every milestone', r['summary'])
+        funded = state(funded=True)
+        funded['message'] = payload['message']
+        self.assertEqual(rules.decide(parsed('deposit', 1), funded)['status'], 'needsClarification')
 
     def test_deposit_twice_blocked(self):
         self.assert_blocked(self.run_rules('deposit', state(funded=True)))
@@ -94,19 +127,24 @@ class RulesTest(unittest.TestCase):
     def test_accept_all_paid_blocked(self):
         self.assert_blocked(self.run_rules('acceptMilestone', state(True, (1, 2))))
 
-    def test_accept_without_id_asks(self):
+    def test_accept_without_id_prepares_the_next_unpaid_milestone(self):
+        # Milestones are paid in order; the preview names the milestone before anything is sent.
         r = self.run_rules('acceptMilestone', state(True))
-        self.assertEqual(r['status'], 'needsClarification')
-        self.assertIsNone(r['intent'])
-        self.assertIn('#1 ', r['question'])
-        self.assertIn('Homepage accepted', r['question'])
-        self.assertTrue(r['summary'])
+        self.assertEqual(r['status'], 'readyForConfirmation')
+        self.assertEqual(r['intent']['milestoneId'], 1)
+        self.assertIn('#1 ', r['summary'])
+        self.assertIn('Homepage accepted', r['summary'])
+        later = self.run_rules('acceptMilestone', state(True, paid=(1,)))
+        self.assertEqual(later['intent']['milestoneId'], 2)
 
     def test_accept_unknown_id_blocked(self):
         self.assert_blocked(self.run_rules('acceptMilestone', state(True), mid=5))
 
-    def test_accept_unfunded_blocked(self):
-        self.assert_blocked(self.run_rules('acceptMilestone', state(False), mid=1))
+    def test_accept_unfunded_offers_the_deposit_first(self):
+        r = self.run_rules('acceptMilestone', state(False), mid=1)
+        self.assertEqual(r['status'], 'needsClarification')
+        self.assertIsNone(r['intent'])
+        self.assertIn('Deposit the full', r['question'])
 
     def test_accept_paid_blocked(self):
         self.assert_blocked(self.run_rules('acceptMilestone', state(True, (1,)), mid=1))
@@ -132,9 +170,9 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(r['status'], 'readyForConfirmation')
         self.assertEqual(r['intent']['milestoneId'], 2)
 
-    def test_chinese_template(self):
+    def test_legacy_classifier_language_uses_english(self):
         r = self.run_rules('acceptMilestone', state(True), mid=1, lang='zh')
-        self.assertIn('尚未发送任何交易', r['summary'])
+        self.assertIn('No transaction has been sent', r['summary'])
 
     def test_unknown_language_uses_english(self):
         r = self.run_rules('acceptMilestone', state(True), mid=1, lang='fr')
@@ -145,6 +183,7 @@ class RulesTest(unittest.TestCase):
             for lang in ('en', 'zh'):
                 self.assert_blocked(rules.refusal(key, lang))
                 validate('PlanResult', rules.refusal(key, lang))
+                self.assertIn('No transaction has been sent', rules.refusal(key, lang)['summary'])
         validate('PlanResult', rules.clarify('en'))
         self.assertEqual(rules.clarify('zh')['status'], 'needsClarification')
 
@@ -170,9 +209,73 @@ class RulesTest(unittest.TestCase):
                 self.assert_blocked(r)
                 self.assertIsNone(r['intent'])
 
-    def test_guess_language(self):
-        self.assertEqual(rules.guess_language('付一下'), 'zh')
-        self.assertEqual(rules.guess_language('pay'), 'en')
+    def test_a_payment_says_what_stays_in_escrow_after_it(self):
+        payload = state(True)
+        result = self.run_rules('acceptMilestone', payload)
+        later = [m for m in payload['snapshot']['milestones'] if m['id'] != 1 and not m['paid']]
+        self.assertGreater(len(later), 0)
+        self.assertIn(f"After it, {len(later)} more milestone", result['summary'])
+        for milestone in payload['snapshot']['milestones'][:-1]:
+            milestone['paid'] = True
+        last = self.run_rules('acceptMilestone', payload)
+        self.assertNotIn('After it', last['summary'])
+        self.assertTrue(last['summary'].endswith('No transaction has been sent.'))
+
+    def test_english_summary_preserves_a_unicode_milestone_title(self):
+        payload = state(True)
+        title = '\u9996\u9875'
+        payload['snapshot']['milestones'][0]['title'] = title
+        result = self.run_rules('acceptMilestone', payload, lang='zh')
+        self.assertTrue(result['summary'].startswith('Accept milestone #1'))
+        self.assertIn(title, result['summary'])
+
+
+def review_state(funded=True, delivered=0, requests=0, now=1_000_000, period=864000, limit=0):
+    payload = state(funded)
+    snap = payload['snapshot']
+    snap['review'] = {'periodSeconds': period, 'changeRequestLimit': limit, 'chainTime': now}
+    for m in snap['milestones']:
+        m['deliveredAt'], m['changeRequests'] = (delivered, requests) if m['id'] == 1 else (0, 0)
+    return payload
+
+
+class ReviewPeriodRuleTests(unittest.TestCase):
+    """v2: deliveries, change requests and claims, explained before the contract would refuse them."""
+
+    def run_rules(self, kind, payload, mid=None):
+        result = rules.decide(parsed(kind, mid), payload)
+        validate('PlanResult', result)
+        return result
+
+    def test_a_contract_without_a_review_period_has_none_of_these_actions(self):
+        for kind in ('submitDelivery', 'requestChanges', 'claimMilestone'):
+            result = self.run_rules(kind, state(True))
+            self.assertEqual(result['status'], 'blocked')
+            self.assertIn('no review period', result['summary'])
+
+    def test_delivery_then_changes_then_claim(self):
+        ready = self.run_rules('submitDelivery', review_state())
+        self.assertEqual((ready['status'], ready['intent']['action'], ready['intent']['milestoneId']), ('readyForConfirmation', 'submitDelivery', 1))
+        self.assertIn('10 days to approve it or ask for changes', ready['summary'])
+        in_review = review_state(delivered=999_000)
+        self.assertEqual(self.run_rules('submitDelivery', in_review)['status'], 'blocked')
+        self.assertEqual(self.run_rules('requestChanges', in_review)['intent']['action'], 'requestChanges')
+        claim_early = self.run_rules('claimMilestone', in_review)
+        self.assertEqual(claim_early['status'], 'blocked')
+        self.assertIn('runs until', claim_early['summary'])
+        ended = review_state(delivered=100_000, now=100_000 + 864000)
+        self.assertIn('can no longer be requested', self.run_rules('requestChanges', ended)['summary'])
+        claim = self.run_rules('claimMilestone', ended)
+        self.assertEqual((claim['intent']['action'], claim['intent']['milestoneId']), ('claimMilestone', 1))
+        self.assertIn('review ended without a response', claim['summary'])
+
+    def test_no_delivery_no_review_and_the_change_limit(self):
+        self.assertIn('nothing to claim', self.run_rules('claimMilestone', review_state())['summary'])
+        self.assertIn('nothing to review', self.run_rules('requestChanges', review_state())['summary'])
+        capped = review_state(delivered=999_000, requests=2, limit=2)
+        self.assertIn('have been used', self.run_rules('requestChanges', capped)['summary'])
+        unfunded = self.run_rules('submitDelivery', review_state(funded=False))
+        self.assertEqual(unfunded['status'], 'needsClarification')
 
 
 def body(text, **extra):
@@ -191,6 +294,7 @@ class ModelTest(unittest.TestCase):
     def test_read_output_null_id(self):
         text = '{"kind":"query","milestoneId":null,"language":"zh"}'
         self.assertIsNone(read_output(body(text))['milestoneId'])
+        self.assertEqual(read_output(body(text))['language'], 'en')
 
     def test_read_output_rejects(self):
         def txt(**kw):
@@ -349,7 +453,8 @@ class ServiceTest(unittest.TestCase):
         self.live(fake(parsed('acceptMilestone', 1)))
         response = dispatch(copy.deepcopy(REQUEST))
         self.assertEqual(response['status'], 'ok')
-        self.assertEqual(response['result']['status'], 'blocked')
+        # The example escrow is unfunded, so approving offers the deposit first.
+        self.assertEqual(response['result']['status'], 'needsClarification')
 
     def test_ready_passes_handoff(self):
         self.live(fake(parsed('acceptMilestone', 1)))
@@ -379,10 +484,20 @@ class ServiceTest(unittest.TestCase):
         self.assertIn('No transaction', result['summary'])
         self.assertEqual(self.stderr.getvalue().strip(), 'MODEL_NETWORK')
 
-    def test_model_error_chinese(self):
-        payload = request_with(message='付一下')['payload']
+    def test_model_error_for_unicode_input_is_english(self):
+        payload = request_with(message='\u4ed8\u4e00\u4e0b')['payload']
         result = service.plan_action(payload, fake(ModelError('MODEL_NETWORK')))
-        self.assertIn('尚未发送任何交易', result['summary'])
+        self.assertIn('No transaction has been sent', result['summary'])
+
+    def test_unicode_input_is_preserved_but_the_operation_is_english(self):
+        message = '\u9a8c\u6536\u91cc\u7a0b\u78911\u3002'
+        payload = request_with(state(funded=True), message=message)['payload']
+        call = fake(parsed('acceptMilestone', 1, lang='zh'))
+        result = service.plan_action(payload, call)
+        self.assertIn(message, call.calls[0])
+        self.assertEqual(payload['message'], message)
+        self.assertTrue(result['summary'].startswith('Accept milestone #1'))
+        self.assertIn('No transaction has been sent', result['summary'])
 
     def test_unexpected_call_error_blocked(self):
         result = service.plan_action(copy.deepcopy(PAYLOAD), fake(RuntimeError('boom')))
@@ -428,14 +543,24 @@ class EvaluateTest(unittest.TestCase):
             ready = expect['status'] == 'readyForConfirmation'
             self.assertEqual(expect['action'] is not None, ready)
             self.assertEqual(expect['milestoneId'] is not None, expect['action'] == 'acceptMilestone')
-        self.assertEqual(sum(c['id'].startswith('zh-') for c in cases), 16)
-        self.assertEqual(sum(c['id'].startswith('en-') for c in cases), 16)
+        self.assertEqual({c['id'] for c in cases}, {f'en-{i:02d}' for i in range(1, 33)})
+        self.assertTrue(all(c['message'].isascii() for c in cases))
+        self.assertEqual({c['sourceCaseId'] for c in cases if 'sourceCaseId' in c},
+                         {f'zh-{i:02d}' for i in range(1, 17)})
 
     def test_states_valid(self):
         for name, payload in evaluate.STATES.items():
             validate('PlanInput', payload)
         self.assertEqual(evaluate.STATES['paid1']['snapshot']['escrowBalanceWei'], '7000000000000000')
         self.assertEqual(len(evaluate.STATES['unfunded']['snapshot']['milestones']), 3)
+
+    def test_translated_evaluation_case_keeps_its_source_reference(self):
+        cases = json.loads((ROOT / 'agent3/cases/cases.json').read_text())
+        case = next(case for case in cases if case['id'] == 'en-17')
+        report = evaluate.run([case], fake(parsed('query')))
+        self.assertTrue(report['results'][0]['correct'])
+        self.assertEqual(report['results'][0]['sourceCaseId'], 'zh-01')
+        self.assertEqual(report['results'][0]['message'], case['message'])
 
     def test_run_counts_unsafe(self):
         cases = [
@@ -473,20 +598,32 @@ class ReportTest(unittest.TestCase):
     def test_deposit_confirmed(self):
         r = report_result(self.payload('funded', 'deposit'))
         self.assertEqual(r['outcome'], 'confirmed')
-        self.assertIn('0.01 ETH', r['summary'])
+        self.assertIn('0.01 test ETH', r['summary'])
         self.assertIn('block 7', r['summary'])
 
-    def test_accept_confirmed_chinese(self):
+    def test_accept_confirmed_with_legacy_language_is_english(self):
         r = report_result(self.payload('paid1', 'acceptMilestone', 1, language='zh'))
         self.assertEqual(r['outcome'], 'confirmed')
-        self.assertIn('里程碑 #1', r['summary'])
-        self.assertIn('0.003 ETH', r['summary'])
+        self.assertIn('Milestone #1', r['summary'])
+        self.assertIn('0.003 test ETH', r['summary'])
         self.assertIn('0x7099…79C8', r['summary'])
+
+    def test_legacy_language_does_not_change_receipt_wording_or_outcome(self):
+        for state, action, mid, receipt in (
+                ('funded', 'deposit', None, 'deposit'),
+                ('paid1', 'acceptMilestone', 1, 'accept1'),
+                ('funded', 'acceptMilestone', 1, 'none'),
+                ('funded', 'acceptMilestone', 1, 'reverted'),
+                ('funded', 'acceptMilestone', 1, 'accept1')):
+            with self.subTest(state=state, action=action, receipt=receipt):
+                english = report_result(self.payload(state, action, mid, receipt, language='en'))
+                legacy = report_result(self.payload(state, action, mid, receipt, language='zh'))
+                self.assertEqual(legacy, english)
 
     def test_deposit_after_partial_payout_reports_the_observed_balance(self):
         r = report_result(self.payload('paid1', 'deposit'))
         self.assertEqual(r['outcome'], 'confirmed')
-        self.assertIn('Current escrow balance: 0.007 ETH', r['summary'])
+        self.assertIn('Current escrow balance: 0.007 test ETH', r['summary'])
 
     def test_reverted_is_failed_even_if_state_looks_done(self):
         # A second acceptance reverts while the milestone is already paid: never report success.

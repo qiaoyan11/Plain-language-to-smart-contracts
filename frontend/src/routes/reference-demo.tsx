@@ -6,7 +6,7 @@ import { api, MOCK_MODE, isValidAddress, ethToWei, formatWei, totalWei } from "@
 export const Route = createFileRoute("/reference-demo")({
   head: () => ({
     meta: [
-      { title: "Create Project · Smart Contract Escrow (Local Demo)" },
+      { title: "Create a reference project · Accord" },
       { name: "description", content: "Create a milestone-based smart contract escrow project (local development demo)." },
       { property: "og:title", content: "Create Project · Smart Contract Escrow" },
       { property: "og:description", content: "Create a milestone-based smart contract escrow project (local development demo)." },
@@ -25,7 +25,7 @@ function CreatePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const d = api.getDraft();
+    const d = api.getReferenceDraft();
     if (d) {
       setForm({ name: d.name, clientWallet: d.clientWallet, developerWallet: d.developerWallet });
       setMilestones(d.milestones.map(m => ({ title: m.title, amountEth: formatWei(m.amountWei) })));
@@ -36,10 +36,14 @@ function CreatePage() {
     e.preventDefault();
     if (!form.name.trim()) return setError("Please enter a project name");
     if (!isValidAddress(form.clientWallet)) return setError("Invalid client wallet address (0x + 40 hex characters)");
-    if (!isValidAddress(form.developerWallet)) return setError("Invalid developer wallet address");
-    if (form.clientWallet.trim().toLowerCase() === form.developerWallet.trim().toLowerCase()) return setError("Client and developer must be different");
+    if (!isValidAddress(form.developerWallet)) return setError("Invalid provider wallet address");
+    if (form.clientWallet.trim().toLowerCase() === form.developerWallet.trim().toLowerCase()) return setError("Client and provider must be different");
     try {
-      const terms = milestones.map(m => ({ title: m.title.trim(), amountWei: ethToWei(m.amountEth) }));
+      const terms = milestones.map((m, i) => {
+        if (!m.title.trim()) throw new Error(`Milestone ${i + 1}: enter a title`);
+        try { return { title: m.title.trim(), amountWei: ethToWei(m.amountEth) }; }
+        catch (e) { throw new Error(`Milestone ${i + 1}: ${(e as Error).message}`); }
+      });
       totalWei(terms);
       api.saveDraft({ ...form, name: form.name.trim(), clientWallet: form.clientWallet.trim(), developerWallet: form.developerWallet.trim(), milestones: terms });
       nav({ to: "/reference-review" });
@@ -59,7 +63,7 @@ function CreatePage() {
   return (
     <Shell step="01 / Create">
       <h1 className="font-display text-4xl font-bold">Create an escrow project</h1>
-      <p className="mt-2 text-muted-foreground">Funds are locked in the contract and released to the developer stage by stage.</p>
+      <p className="mt-2 text-muted-foreground">Funds are locked in the contract and released to the provider milestone by milestone. This handwritten contract needs no AI model.</p>
       <form onSubmit={submit} className="panel mt-8 space-y-5">
         {!MOCK_MODE && <button type="button" className="btn btn-outline" onClick={async () => {
           try { const accounts = await api.getLocalAccounts(); setForm(f => ({ ...f, ...accounts })); setError(""); }
@@ -67,25 +71,25 @@ function CreatePage() {
         }}>Use local demo accounts</button>}
         {field("name", "Project name", "e.g. Company website")}
         {field("clientWallet", "Client wallet address", "0x...")}
-        {field("developerWallet", "Developer wallet address", "0x...")}
+        {field("developerWallet", "Provider wallet address", "0x...")}
         <fieldset className="space-y-4">
-          <legend className="font-bold">Payment stages</legend>
-          <p className="text-sm text-muted-foreground">Add 1–5 stages in payment order. Each stage needs a positive amount.</p>
+          <legend className="font-bold">Payment milestones</legend>
+          <p className="text-sm text-muted-foreground">Add 1–5 milestones in payment order. Each milestone needs a positive amount.</p>
           {milestones.map((m, i) => <div key={i} className="rounded-md border p-4 space-y-3">
-            <div className="flex items-center justify-between"><span className="font-medium">Stage {i + 1}</span>
-              <button type="button" className="btn btn-outline" aria-label={`Remove stage ${i + 1}`} disabled={milestones.length === 1}
+            <div className="flex items-center justify-between"><span className="font-medium">Milestone {i + 1}</span>
+              <button type="button" className="btn btn-outline" aria-label={`Remove milestone ${i + 1}`} disabled={milestones.length === 1}
                 onClick={() => setMilestones(ms => ms.filter((_, n) => n !== i))}>Remove</button></div>
-            <label className="block"><span className="mb-1 block text-sm">Stage {i + 1} title</span>
+            <label className="block"><span className="mb-1 block text-sm">Milestone {i + 1} title</span>
               <input className="field" maxLength={120} value={m.title} onChange={e => setMilestones(ms => ms.map((x, n) => n === i ? { ...x, title: e.target.value } : x))} /></label>
-            <label className="block"><span className="mb-1 block text-sm">Stage {i + 1} amount in test ETH</span>
+            <label className="block"><span className="mb-1 block text-sm">Milestone {i + 1} amount in test ETH</span>
               <input className="field font-mono" inputMode="decimal" value={m.amountEth} placeholder="0.001"
                 onChange={e => setMilestones(ms => ms.map((x, n) => n === i ? { ...x, amountEth: e.target.value } : x))} /></label>
           </div>)}
           <button type="button" className="btn btn-outline" disabled={milestones.length === 5}
-            onClick={() => setMilestones(ms => [...ms, { title: "", amountEth: "" }])}>Add stage</button>
+            onClick={() => setMilestones(ms => [...ms, { title: "", amountEth: "" }])}>Add milestone</button>
         </fieldset>
         <div className="rounded-md bg-muted p-4 text-sm flex justify-between font-medium"><span>Total</span><span className="font-mono break-all">{total} test ETH</span></div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <button type="submit" className="btn btn-primary w-full">Next: Review rules</button>
       </form>
     </Shell>

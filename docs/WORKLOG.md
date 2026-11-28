@@ -32,6 +32,15 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
+| 2026-11-27 | 验收期与超时领取作为 v2 第一项，方案见 [REVIEW_PERIOD_V2.md](REVIEW_PERIOD_V2.md)：合同写了才启用，没写时默认关闭但确认页可选开启；修改次数按合同，没写不限；新验证测试先放 `tests/v2/`。已实现（见 11-27 日志）。 | 真实合同几乎都有“N 天不提异议视为验收”，当前合约只能靠客户批准，客户不回应时钱会锁住。 |
+| 2026-11-27 | GenerationRun gains an optional, advisory `progress` field while running (shared/GENERATION_API_V1.md); the Python worker reports stages on stderr as `ACCORD_PROGRESS {json}`. Confirming an agreement in the browser starts generation, and the same tab then deploys the checked contract to the local chain without another click. | The user's direction: treat users as beginners and remove steps they cannot judge. Generation and deployment are one "Set up contract" stage; only the confirmation made in that tab is deployed automatically, so older projects keep their explicit button. |
+| 2026-11-27 | ClarifyResult gains optional `notEnforced` and `exchangeRates` (shared/schemas, INTERFACES.md). Conditions the contract cannot enforce no longer block confirmation; amounts in other currencies are converted at the live ETH price; local drafts use the built-in test accounts without asking. | The user's direction: a first-time user describes needs in everyday words, so the system should work out currency, wallets and unenforceable conditions instead of asking. Required fields are unchanged. |
+| 2026-11-27 | Add read-only `GET /api/projects` and `GET /api/drafts` to Project API v2 (documented in shared/PROJECT_API_V2.md). Existing endpoints and fields are unchanged. | A first-time user who loses a project URL must be able to find the project or unfinished conversation again. The lists never sign or start model jobs. |
+| 2026-11-27 | 冻结的 Solidity 接口及共享源码样例中的注释改为英文，接口签名和规则不变；生成提示词明确要求英文源码。旧项目的已生成源码和交易历史按原样保留。 | 避免中文接口注释被原样复制到新生成的合约中，同时保持已部署项目可追溯。 |
+| 2026-11-27 | 网页、助手提示、回执说明和演示测试统一用英文。用户提交的协议原文和地址按原样保存。 | 团队要求使用英文演示、测试和评估。 |
+| 2026-11-27 | 草稿响应保留每轮呈现给用户的摘要和一个首要问题；服务器保留全部待解决项。确认页按本单金额说明余款风险。生成合约页增设存款和逐期付款按钮，沿用先预览、确认再执行的流程。 | 让用户在本地用中文走完 30%／70% 案例的首期付款。 |
+| 2026-11-26 | 用户选择先接通真实 Agent 1→2→3，保持 v1 付款规则，后续扩展条款。独立分支纳入 PR #4，修复已复现的跨轮遗漏和金额、地址边界问题。 | 保留参考演示，先交付完整可操作 demo，再替换微调模型。 |
+| 2026-11-26 | Node 新增版本化对话草稿及明确确认入口，服务端保存完整历史、待解决事项及原文。ClarifyResult 增加可选 separateTerms 原文列表，保持既有四个必填字段。 | 防止链下约定在 worker 交接中丢失；生成、部署和交易继续走现有受控接口。 |
 | 2026-11-19 | 保留当前运行版，采用并行 v2 逐步表达合同自己的角色、条件和资金效果。此前开工、退出讨论作为合同可选约定。本轮只交付规划，不修改运行接口。 | 用户要求提高适应性。三个 Agent 的改造、接口交接、验证及回退顺序见[灵活合同架构规划](FLEXIBLE_CONTRACT_ARCHITECTURE.md)。 |
 | 2026-11-13 | 每个阶段由 Bob 申请，Alice 对该阶段确认成功时才记为开工。 | 给“未开工阶段可退出退款”一个双方可查的判断依据。见[阶段开工与资金规则](MILESTONE_REVISION_RULES.md)。 |
 | 2026-11-13 | 签约时约定，Alice 或 Bob 任一方可终止后续尚未开工的阶段，相关阶段款退给 Alice；当前阶段的争议款继续托管。 | 组长选定的产品规则。参见[多轮修改时的资金示例](MILESTONE_REVISION_RULES.md)，实现待排期。 |
@@ -73,6 +82,128 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-28 · Jiahao Zhang · 按上线标准整理，准备线上部署
+
+- 评估见 [LAUNCH_READINESS.md](LAUNCH_READINESS.md)：主流程可以上线给受邀的人用；必须补的五项已补（访问控制、按密钥分隔数据、每日调用上限、对外访问、容器重启卡锁）。
+- 去掉页面上的 local demo 横幅、页脚说明和开发者入口，右上角改为“Test network”标识，页脚一句话说明测试网和未审计。
+- 线上模式：`backend/gateway.cjs` 访问密钥封面和登录 Cookie，每个密钥一个工作区，模型调用每天有上限；`scripts/serve.cjs`、`Dockerfile`、`railway.json`；部署步骤见 [DEPLOY.md](DEPLOY.md)，推荐 Railway（预计每月 $5–10，用两个月）。
+- 网页风格：做了三种 web3 风格样稿（Electric Blue、Midnight、Vault）放在设计画布里，本地也可以用 `?theme=` 在真实页面上粗看；等老板选定后再正式改。
+- 测试：HTTP 67（新增线上模式 7 项），合约 26，v2 全套，前端 122，tsc 通过。
+- 需要老板决定：网页风格选哪一个；部署平台是否用 Railway。
+
+### 2026-11-27 · Jiahao Zhang · 验收期（v2）上线，Agent 2 小修
+
+- 合约与验证：新接口 IMilestoneReviewEscrow（服务方标记交付 → 客户在验收期内批准或要求修改 → 到期无回应服务方领取），手写参考合约，12 条条款测试和故意写错的合约全部被抓到；v1 验证不改，v2 测试在 `tests/v2/`。
+- Agent 1：合同写了“N 天内不提异议视为验收”就直接读出天数和修改轮数（程序换算，工作日只多不少），不再列进“合约不执行”；不追问起算点，默认从标记交付起算并显示在确认页。确认页有一个可选项“客户 14 天不回应自动付款”，一键加上或关掉。
+- Agent 2/3：按验收期生成合约并独立检查；Agent 3 能听懂“标记交付”“要求修改”“领取”。付款页按角色显示按钮（服务方：标记交付、领取；客户：批准、要求修改），显示剩余验收时间，本地测试链可以一键跳到验收期结束。
+- Agent 2 修正：模型服务临时拒绝（限流、过载、网关错误、连不上）时最多重发两次并计入调用次数，超时和未完成的回答不重发；生成超时从每轮 15 分钟改为 1 + 每轮 5 分钟。Agent 1 同样重发一次。
+- 真实模型实测（老板重启后端后）：Pelican 式合同读出 10 天、2 轮修改；中文“7 天内未提书面异议视为验收”读出 7 天；“客户 5 天内审核”没有被当成验收期；确认页 14 天选项加上、去掉都正确。第一次生成因推理用完 16k 输出额度没有返回合约，已把额度提到 32k，并允许被截断时在本次预算内重问；第二次一轮通过编译、静态分析和 24 项条款测试，自动部署。随后存款 → 用一句话标记交付 → 要求修改 → 再交付 → 跳到验收期结束 → 用一句话领取 → 第 2、3 期付清，余额为 0。
+- 测试：合约 26，HTTP 60，v2 全套通过，Agent 1/2/3 为 77/35/75，前端 122，tsc 通过。老板同意后删除了 36 个未完成的测试草稿。
+- 需要老板决定：同样规则的 v1 合约现在每次都重新生成（约 1 分钟、要付费）。是否允许直接复用已通过独立检查的合约？会影响 A/B/C 实验的计数方式，先不改。
+
+### 2026-11-27 · Jiahao Zhang · 合同上传、真实合同实测和流程简化
+
+- 合同上传：PDF、Word、文本都能直接拖进来或选文件，在浏览器里读取，用户确认文字后再发送；扫描件、.doc、照片会给出说明。长合同只保留金额、付款、交付和验收相关的段落。
+- 真实合同实测，全部走完全流程直到付清：用户本人的转租合同和求职服务合同；上海政府采购合同（727 万元，付款节点 10%、50%、审价后付至 97%、质保尾款）；SEC 公开的 Pelican Delivers 软件开发合同（$279,000，5 期各 20%）；另外是日常一句话描述的需求。
+- 修复：能识别"付至 97%"这类累计百分比；模型把"800 dollars"写成"$800"、自己算出"剩下的"或"等额"的金额时，以用户原话为准；PDF 表头字段和页码不再混在正文里；并发对话时 trace 不再互相覆盖；Agent 2 首轮编译失败的两个常见原因已写进提示词。
+- 流程：从 5 步改为 4 步（描述 → 确认 → 准备合同 → 存款和付款）。确认后系统自动生成并部署，生成过程中显示进度。确认页用三句话说明合同会怎么执行。全站文案缩短，金额先显示约定币种，地址显示缩写。
+- 日常需求评测 14/14 通过（13 个一条消息就进入确认）。
+- 测试：合约 26，HTTP 60，交接 OK，Agent 1/2/3 为 65/32/72，前端 111，tsc 通过。需要老板决定：无。
+
+### 2026-11-27 · Jiahao Zhang · Everyday requests reach confirmation without format knowledge
+
+- Ten requests written the way first-time users write them (a $500 logo, "half upfront, rest when it's live", 厨房翻新 3万8 with 剩下的, 家教 20 节每节 300 块, a £500 wedding booking deposit, €9,000 in 3 equal payments, a vague "translate my book", a sublet with a security deposit, ¥80,000 JPY, plain ETH). Before: 4 reached confirmation in one message. Now: 9 in one message, the vague one in two (it needed the price).
+- What changed: amounts in any currency are converted at the live ETH price (CoinGecko, then Coinbase, cached; the rate is locked per draft and shown); Chinese numerals and everyday phrases are understood; share words match by meaning, since the model translates them; built-in test accounts replace wallet questions; conditions the contract cannot enforce, including open-ended revisions, become review-page notes. The raw extraction of every live turn is kept in `data/private/agent1-traces.jsonl` (git-ignored), which found most of these causes and can seed the local model's training data.
+- Agent 3 prepares the next unpaid milestone for "approve it" and reads a short reply with the question it answers. Project pages show "≈ 500 USD" next to test ETH. Unfinished conversations can be discarded. `npm run demo:live` starts all three agents.
+- Product choices, from Upwork (14-day review then auto-release), Fiverr (3 days) and Escrow.com (1–30-day inspection): a review window with auto-release is the missing contract capability, so it is the first v2 item; asking users to define "satisfied" is not. Contract v2 and shared hosted links are not started: the frozen interface and validation suite cover v1 only, and hosting needs real wallets and sign-in.
+- Browser check after the restart: "Wedding photographer, £1,800. £500 deposit to book the date, the rest after we get the edited photos. If she cancels we get the deposit back." reached review in one message (live GBP rate, ≈ GBP beside each amount, the cancellation refund listed as not enforced), passed 24/24 checks, deployed, and was paid in full with "pay her the booking fee" (answered "yes" to "deposit first?") and "the photos came in and they look amazing!" (blocks 84–86).
+- Tests: contracts 26, HTTP 60, handoff 18, Agent 1/2/3 60/29/71, frontend 89; tsc passes. Needs a decision: none.
+
+### 2026-11-27 · Jiahao Zhang · Real contracts end to end (round 3)
+
+- Five agreements went through the whole flow with paid model calls: a NY sublease (rent as one milestone, security deposit kept on paper), a three-milestone SOW, a USD website agreement (1 ETH = 1,000 USD), a Chinese career-consulting contract (RMB, restructured into three installments, Agent 3 commands in Chinese) and a casual "half upfront, revise until I'm happy" request. Each was confirmed, passed 24/24 checks, deployed, funded and paid in full; every project shows deploy, deposit and one receipt per milestone (blocks 62–82), no duplicates.
+- Fixed from these runs: Agent 2 output budget 8,192 → 16,384 tokens (the SOW's first call needed 8,903 and returned nothing; the page now says the model returned no contract instead of "checks did not pass"). Agent 1 settles amount questions when one message states the whole ETH schedule, drops numbered questions after a restructure, keeps paper-agreement terms out on later turns, reads "6, 24 ETH" as a list and writes unsupported terms as short phrases.
+- Agent 3 prepares a deposit that names the milestone it covers, says the deposit comes first for "pay milestone 1" on an unfunded escrow, and on a refund request says where the money stays. After deploying, the page moves to the escrow section.
+- Drafting replies name the flagged terms that no longer block the draft and ask for agreed ETH figures when prices are in another currency; the review page lists conditions "Not enforced by the contract". These Node changes are live after the next backend restart; Python and frontend changes are live now.
+- Tests: contracts 26, HTTP 57, handoff 18, Agent 1/2/3 36/29/71, validation 14, frontend 87; tsc passes. Needs a decision: none.
+
+### 2026-11-27 · Jiahao Zhang · Main-flow polish after a real restart
+
+- After the user restarted `npm run demo:web`, the same URLs restored every project: 工作室官网 kept its address, receipts (blocks 26, 27) and 0.007 balance with 3 transactions; milestone 2 was then paid (block 31, balance 0). The photography project was unchanged (blocks 17–21). Your projects listed all projects and both unfinished conversations; a conversation whose tab closed mid-reply was resumed from that list.
+- A five-step progress bar (Describe, Confirm, Generate & check, Deploy, Fund & pay) replaces the breadcrumb. Passed checks are summarized in one plain sentence ("24/24 payment-rule tests passed"); check cards stay open only when something failed. A finished escrow says the agreement is complete.
+- Home offers a fill-in example. When the assistant asks for a wallet it points to **Use local test accounts**. The confirm page says what happens next. Internal names (Agent 2/3, worker) left the UI; the reference demo link moved to the footer.
+- Agent 1 no longer drops "half now": a live message flagged it, and the next answer turned it into a 0.005/0.005 schedule. The unsupported-term question now suggests a milestone or a separate written agreement (Node text; live after the next restart). Agent 3 receipts say "test ETH".
+- Optional `AGENT2_BASE_URL`/`AGENT3_BASE_URL` (like Agent 1's) let a locally served fine-tuned model replace the hosted API later; defaults are unchanged. See [LOCAL_MODELS.md](LOCAL_MODELS.md).
+- Tests: contracts 26, HTTP 55, handoff 18+13, Agent 1/2/3 28/28/70, frontend 85; tsc and build pass. Three Agent 1 messages were sent for this check; no generation call. Needs a decision: none.
+
+### 2026-11-27 · Jiahao Zhang · Find saved work, clearer milestone receipts and demo limits
+
+- First-time-user browser review (two new reference projects, the validated 工作室官网 generated project, photography project read-only). Top problems: a lost URL meant a lost project; recipient and receipt per milestone were buried; after checks passed the paid "Start another generation" was the primary button; reference deposit and payments were sent on one click; the banner did not say that test accounts sign automatically.
+- Added the read-only project and draft lists, a **Your projects** page (header link) and **Copy project link**. A shared `EscrowLedger` shows each milestone's amount, recipient, paid state and receipt on both project pages. Reference deposit/payment now has a review step; a stale second confirmation says nothing new was sent.
+- After checks pass, deploying is the primary next step and regeneration is secondary with a cost note. Banner, footer and "About this local demo" state auto-signing, no wallet or real money, no refund/cancellation/deadline/dispute. Reference demo uses Accord branding, "milestone" and "test ETH".
+- Browser: 工作室官网 deployed at `0xa85233C6…32338f`, deposit block 26, milestone 1 block 27, balance 0.007 after reload; reference A paid in full and a stale second tab was rejected (4 transactions, no duplicate); reference B is funded with both milestones open. One Agent 1 message was sent to check an unclear input; no generation call.
+- Not verified in the browser: the new lists against the running Mac backend and a real service restart, because this session cannot restart that process. A new HTTP test covers list + restart + receipts.
+- Tests: contracts 26, HTTP 55 (2 new), handoff 18+13, Agent 1/2/3 28/24/68, validation 14, frontend 80 (7 new); tsc and build pass. Push is blocked from this environment; the commits are in a bundle (see the handoff note).
+- Follow-ups for owners: Agent 3 receipt text says "ETH" rather than "test ETH" (agent3/report.py); Agent 1 dropped "probably half now" instead of asking about an upfront payment. Needs a decision: none.
+
+### 2026-11-27 · 英文合约模板与摄影项目最终核对
+
+- 摄影项目由用户自行完成付款；只读刷新原网址后，三期 0.02／0.03／0.05 均为 Paid，余额 0，合约地址仍为 `0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1`。页面列出部署、存款、三期付款共五笔交易（区块 17–21）；再次刷新状态不变。
+- 中文来源是固定接口 `IMilestoneEscrow.sol` 的注释：它被 Agent 2 原样复制进生成包。现已把接口、共享样例注释改成英文，并让新生成源码使用英文标识符、注释和错误文本；不改接口签名、付款规则或旧项目源码哈希。
+- 旧生成包在离线模拟验证下可恢复，原哈希不变、零模型调用；错误接口仍被拒绝。项目部署后不再显示“上一条本地链的交易不可用”的过时提示，原网址实际刷新核对通过。
+- 合约 26、Agent 2 离线 24、交接 18+13、前端 73 项通过，前端类型检查与构建通过。HTTP 46 项中 4 项通过、42 项因本执行环境 `listen EPERM` 无法监听本机端口；不能将其计为通过。需要老板决定：无。
+
+### 2026-11-27 · 独立网页付款验收与仓库整理
+
+- 摄影项目只查看并刷新：仍已确认、24/24 检查通过、尚未部署；没有替用户点击交易按钮。
+- 在独立的 Studio website 生成项目 `0da92330-0a52-4bc2-b636-74f4d5db36cb` 用网页部署到 `0x5FbDB2315678afecb367f032d93F642f64180aa3`，存入 0.01、支付首期 0.003；页面显示首期 Paid、余额 0.007。再付第二期 0.007，最终两期 Paid、余额 0；四笔交易分属区块 1–4。
+- 同一项目网址刷新后地址、首期交易哈希 `0x8dbed2af…1a47ac`、状态和余额仍相符，没有重复付款。另一个生成项目仅打开存款预览后刷新，也没有发生存款；从零创建的手写参考项目完成两期付款。
+- 用第三个独立 Studio 项目 `200542f6-5c20-4a5c-80db-f8b13a772409` 网页部署、存 0.01、付首期 0.003；服务真正重启后原网址恢复同一合约 `0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0`、首期区块 15 回执 `0x0a621acb…abd985` 和余额 0.007。网页再付 0.007（区块 16），刷新后两期 Paid、余额 0，恰好四笔交易。
+- 新进程也独立重放过付款前保存的 12 个本地区块，核对回执和余额；重复首期调用被合约拒绝。
+- 修复付款失败后状态读取的错误传播、快捷操作异常提示，给启动器增加前端 Node 版本预检；同步过时的重启和 Agent 模式说明。没有调用付费模型，也没有手工补项目状态。
+- 体验待优化：首页找回项目、让每期回执更醒目、参考演示增加付款前二次确认；真实钱包和退款仍需单独设计。
+- 合约 26、交接 18+13、前端 72 项和前端类型检查、构建通过。HTTP 46 项中 4 项通过、42 项因本执行环境 `listen EPERM` 无法监听本机端口；不能将其计为通过。需要老板决定：无。
+
+### 2026-11-27 · Agent 1 能接着上一句理解付款金额
+
+- 用真实模型重放金融应用案例，复现了总价问两次、四个功能已有报价却无法进入下一步的问题。
+- 现在用户被问总价是多少 ETH 时可以直接答数字。模型负责把交付项和报价配对，程序按已知单位核算金额，再把各期金额与总价对齐。
+- 英文网页用原话跑完五轮。第三轮四项各记 0.02，总价 0.08 测试 ETH，接着问客户钱包。第四轮重申总价、第五轮补充首期占 25%，四笔金额保持一致，仍是草稿。
+- 自动测试 292 项通过：Agent 1/2/3 各 28/24/68，合约 26，接口 48，模块交接 31，前端 67。前端类型检查及构建通过。[复现步骤](AGENT1_DEMO.md#try-answering-in-fragments)
+- 下一步请组员用不同写法试填同一份协议，优先记录对话中重复追问或错配金额的例子。需要老板决定：无。
+
+### 2026-11-27 · 英文界面与测试
+
+- 界面、草稿追问、付款预览和交易回执统一使用英文；用户贴入的原文和钱包地址原样保存。
+- Agent 3 的 32 条操作评测用例现在全是英文，保留旧编号的对应关系；此前的模型成绩单独保留。
+- 用英文在浏览器走完 30%／70% 示例。生成的合约修复一次后通过 24 项条款测试。首期已付 0.003，第二期 0.007 未付，刷新后余额相符。[英文步骤及交易回执](AGENT1_DEMO.md#english-browser-run-on-november-27)
+- 280 项自动测试通过：Agent 1/2/3 各 19/24/68，合约 26，HTTP 46，交接 31，前端 66；前端类型检查和构建均通过。
+- 需要老板决定：无。
+
+### 2026-11-27 · 中文对话走到第一期付款
+
+- Agent 1 在对话里说明本轮记下了什么，每次只问一个问题。其他未解决事项仍会阻止确认。
+- 确认页按实际金额说明余款可能永久锁定。项目页新增存款和分期付款按钮，预览金额及地址后须再次确认。
+- 浏览器实测「工作室官网」：分别补齐两个钱包，Agent 2 修复一次后通过编译、静态检查和 24/24 条款测试。本地链收录存款和首期付款，刷新后已付 0.003、待付 0.007、余额 0.007 测试 ETH。[输入与交易回执](AGENT1_DEMO.md#走一次流程)
+- 回归通过 275 项：Agent 1 有 19 项，前端 66 项、HTTP 接口 44 项、合约 26 项、模块交接 31 项，Agent 2 有 24 项、Agent 3 有 65 项。前端类型检查及构建通过。
+- 下一步可请一位没参与开发的组员按自己的说法重复演示。需要老板决定：无。
+
+### 2026-11-26 · Codex · 接通真实 Agent 1→2→3 本地演示
+- 保留 PR #4 原提交，修复跨轮问题遗漏、金额尾部误读和超长钱包地址截断；网页改为真实对话、摘要与明确确认。
+- 后端保存草稿、原文与版本，失败可原请求重试，确认后封存；接入现有生成、验证、部署和操作，参考演示保持可用。
+- 256 项自动测试通过：Agent 1 为 14、合约 26、HTTP 41、交接 31、Agent 2 为 24、Agent 3 为 65、前端 55；前端类型检查和构建通过。
+- 真实模型提取 30%/70% 并追问钱包；Agent 2 在 C 设置下修复两次，通过编译、Slither 和 24/24 开发条款检查。
+- 网页完成本地部署、0.01 测试 ETH 存款和两阶段付款，最终余额 0、刷新后记录正确；详见 [完整运行记录](DEMO_RUN_2026-11-26.md)。
+- 本轮未改 validation/ 或 REVIEW.md，未接公共链，未把单个演示当成正式评测；启动和接口见 [演示说明](AGENT1_DEMO.md)。
+- 下一步固定样例与评分方式，再整理微调数据；v2 条款和 Sepolia 后续分开接。需要老板决定：无。
+
+### 2026-11-23 · Agent 1 合同引导与模板
+- 新增多轮描述、可读草案与 v1 JSON 交接；OpenAI 兼容服务可切换到本地模型。
+- 对持续修改追问验收证据、修改轮数、反馈期限与争议处理；超范围的自动放款、退款要求单列。
+- 提供完整、缺金额、退款与无限修改四个样例；模型替身验证 worker 和 HTTP 通路，真实模型效果待联调。
+- 复用现有共享格式与确认流程；仅为 live clarify 调整桥接等待时间，网页由负责人后续接入。
+
 
 ### 2026-11-19 · 灵活合同架构规划
 - 核对了三个 Agent、交接格式、生成提示词、部署和操作路径中的固定假设，整理 v2 并行扩展方案。

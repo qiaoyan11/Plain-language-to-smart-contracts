@@ -1,15 +1,25 @@
 """Bounded generation/validation/repair graph. Only trusted tools issue reports."""
 import copy
+import hashlib
 import time
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langsmith import tracing_context
-from agent2.model import call_model, ModelError, ALLOWED_MODELS
-from agent2.prompts import build_messages, build_repair_messages, PROMPT_VERSION, REPAIR_PROMPT_VERSION
+from agent2.model import call_model, ModelError, model_allowed
+from agent2.prompts import build_messages, build_repair_messages, is_review, prompt_versions
 from agent2.compiler import compile_bundle
 from shared.handoff import ROOT, validate, validate_request, validate_response, source_hash
 
 MAX_REPAIRS = 5  # operational ceiling, not the formal experiment budget
+LEGACY_INTERFACE_SHA256 = 'ceb8eee4699298bcdba7f4d93237ca486331aad3133535ea8bc125d0ced2f436'
+
+
+def is_frozen_interface(source):
+    """Allow existing runs with the original comment-only interface revision."""
+    if not isinstance(source, str):
+        return False
+    current = (ROOT / 'contracts/IMilestoneEscrow.sol').read_text()
+    return source == current or hashlib.sha256(source.encode('utf-8')).hexdigest() == LEGACY_INTERFACE_SHA256
 
 
 class State(TypedDict, total=False):
@@ -23,6 +33,7 @@ class State(TypedDict, total=False):
     history: list
     modelCalls: list
     stopReason: str | None
+    retry: bool
 
 
 def envelope(request, result):
@@ -34,8 +45,20 @@ def empty_result(status):
 
 
 def trusted_validate(spec, bundle):
+    if is_review(spec):
+        return review_validator().validate_review(spec, bundle)
     from validation import validate_development
     return validate_development(spec, bundle)
+
+
+def review_validator():
+    """The independent v2 validator (tests/v2/review_validation.py), loaded by file path so a
+    third-party package named "tests" can never stand in for it."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('accord_review_validation', ROOT / 'tests/v2/review_validation.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def allowed_feedback(report, setting):
@@ -63,20 +86,21 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
             raise ValueError('A/baseline cannot repair.')
         if config['validationMode'] == 'none' and (config['maxRepairs'] != 0 or config['feedbackSetting'] not in ('A', 'baseline')):
             raise ValueError('Compilation smoke mode requires A/baseline and maxRepairs=0.')
-        if config['model'] not in ALLOWED_MODELS:
-            raise ValueError('Select the supported GPT-5.4 mini model explicitly for a live run.')
+        if not model_allowed(config['model']):
+            raise ValueError('Select the supported GPT-5.4 mini model, or the AGENT2_MODEL served at '
+                             'AGENT2_BASE_URL, explicitly for a live run.')
         system, user = build_messages(request['payload']['spec'])
         result = empty_result('toolError')
         if initial_bundle is not None:
             if config['validationMode'] != 'development':
                 raise ValueError('Resuming source requires fresh development validation.')
             validate('SourceBundle', initial_bundle)
-            if initial_bundle['sources'].get('IMilestoneEscrow.sol') != (ROOT / 'contracts/IMilestoneEscrow.sol').read_text():
+            if not is_frozen_interface(initial_bundle['sources'].get('IMilestoneEscrow.sol')):
                 raise ValueError('Resumed source must retain the frozen interface.')
             result = {'status': 'generated', 'sourceBundle': copy.deepcopy(initial_bundle), 'validationReport': None,
                       'attempts': [{'attempt': 0, 'sourceHash': initial_bundle['sourceHash'], 'reportId': None, 'feedbackUsed': []}]}
             validate_response(request, envelope(request, result))
-        return {'prompts': {'version': PROMPT_VERSION, 'system': system, 'user': user},
+        return {'prompts': {'version': prompt_versions(request['payload']['spec'])[0], 'system': system, 'user': user},
                 'compilation': None, 'error': None, 'result': result,
                 'history': [], 'modelCalls': [], 'feedback': [], 'stopReason': None}
 
@@ -93,7 +117,15 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
             status = 'failed' if output['error'] else None
         call.update(metadata=output['metadata'], error=output['error'], source=output['source'])
         record({'kind': 'modelCall', **call})
-        updates = {'modelOutput': output, 'modelCalls': state['modelCalls'] + [call]}
+        calls = state['modelCalls'] + [call]
+        updates = {'modelOutput': output, 'modelCalls': calls, 'retry': False}
+        # An answer cut off by the output budget left no source to check or repair. Ask again with the
+        # same prompt while the run's call budget lasts: never more than maxRepairs + 1 calls in all.
+        config = state['request']['payload']['runConfig']
+        if (status == 'failed' and str(output['error']).startswith('MODEL_INCOMPLETE')
+                and config['feedbackSetting'] not in ('A', 'baseline') and len(calls) < config['maxRepairs'] + 1):
+            updates['retry'] = True
+            return updates
         if status:
             result = copy.deepcopy(state['result'])
             result['status'] = status
@@ -102,9 +134,11 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
 
     def package(state):
         spec = state['request']['payload']['spec']
-        bundle = {'projectId': spec['projectId'], 'specVersion': spec['specVersion'],
-                  'sources': {'GeneratedMilestoneEscrow.sol': state['modelOutput']['source'],
-                              'IMilestoneEscrow.sol': (ROOT / 'contracts/IMilestoneEscrow.sol').read_text()},
+        sources = {'GeneratedMilestoneEscrow.sol': state['modelOutput']['source'],
+                   'IMilestoneEscrow.sol': (ROOT / 'contracts/IMilestoneEscrow.sol').read_text()}
+        if is_review(spec):
+            sources['IMilestoneReviewEscrow.sol'] = (ROOT / 'contracts/IMilestoneReviewEscrow.sol').read_text()
+        bundle = {'projectId': spec['projectId'], 'specVersion': spec['specVersion'], 'sources': sources,
                   'entryFile': 'GeneratedMilestoneEscrow.sol', 'entryContract': 'GeneratedMilestoneEscrow',
                   'compilerVersion': '0.8.28', 'buildSettings': {'evmVersion': 'paris', 'optimizer': {'enabled': True, 'runs': 200}},
                   'dependencies': []}
@@ -158,7 +192,7 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
             reason = 'passed' if result['status'] == 'validated' else 'smoke_complete'
         elif config['feedbackSetting'] in ('A', 'baseline') or config['maxRepairs'] == 0:
             reason = 'no_repairs'
-        elif len(result['attempts']) >= config['maxRepairs'] + 1:
+        elif len(result['attempts']) >= config['maxRepairs'] + 1 or len(state['modelCalls']) >= config['maxRepairs'] + 1:
             reason = 'repair_budget_exhausted'
         else:
             feedback = allowed_feedback(result['validationReport'], config['feedbackSetting'])
@@ -170,7 +204,7 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
     def prepare_repair(state):
         system, user = build_repair_messages(state['request']['payload']['spec'],
                                             state['result']['sourceBundle'], state['feedback'])
-        return {'prompts': {'version': REPAIR_PROMPT_VERSION, 'system': system, 'user': user}}
+        return {'prompts': {'version': prompt_versions(state['request']['payload']['spec'])[1], 'system': system, 'user': user}}
 
     graph = StateGraph(State)
     for name, fn in [('check_input', check_input), ('generate_source', generate), ('package_source', package),
@@ -178,7 +212,8 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
         graph.add_node(name, fn)
     graph.add_edge(START, 'check_input')
     graph.add_conditional_edges('check_input', lambda s: 'check_source' if initial_bundle is not None else 'generate_source')
-    graph.add_conditional_edges('generate_source', lambda s: END if s['error'] else 'package_source')
+    graph.add_conditional_edges('generate_source', lambda s: 'generate_source' if s.get('retry')
+                                else END if s['error'] else 'package_source')
     graph.add_edge('package_source', 'check_source')
     graph.add_edge('check_source', 'decide')
     graph.add_conditional_edges('decide', lambda s: END if s['stopReason'] else 'prepare_repair')

@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, type AgreementContext, type GenerationRun, type Project } from "@/api/client";
 import { DetailPage } from "@/routes/projects.$id";
+import { ReferenceProject } from "@/routes/reference-projects.$id";
+import { markAutoDeploy, takeAutoDeploy } from "@/lib/autoDeploy";
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: object) => ({ ...options, useParams: () => ({ id: "p" }) }),
@@ -129,6 +131,51 @@ afterEach(() => {
 });
 
 describe("generated project operations", () => {
+  it("loads the server conversation and keeps confirmed conversation terms sealed", async () => {
+    serve(project, { ...context, draftOrigin: { draftId: "draft-origin", revision: 1 } }, run);
+    const getDraft = vi.spyOn(api, "getDraft").mockResolvedValue({
+      id: "draft-origin",
+      revision: 1,
+      createdAt: "",
+      updatedAt: "",
+      busy: false,
+      pendingMessage: null,
+      lastError: null,
+      confirmedProjectId: project.id,
+      messages: [
+        { role: "user", content: "This is the website agreement approved by both parties." },
+      ],
+      result: {
+        status: "readyForConfirmation",
+        draftSpec: context.spec,
+        questions: [],
+        unsupportedTerms: [],
+        separateTerms: ["Maintenance will be agreed separately."],
+      },
+    });
+    openPage();
+    await screen.findByText("This is the website agreement approved by both parties.");
+    expect(getDraft).toHaveBeenCalledWith("draft-origin");
+    expect(screen.getByText("Maintenance will be agreed separately.")).toBeTruthy();
+    expect(screen.queryByText("Add or change agreement details")).toBeNull();
+    expect(screen.getByText("Start a new agreement to change these terms")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Start another generation" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Set up the escrow" })).toBeTruthy();
+  });
+  it("sets up the escrow by itself right after this tab confirmed the agreement", async () => {
+    serve(project, context, run);
+    const deploy = vi.spyOn(api, "deployGeneration").mockImplementation(async () => {
+      serve(deployed, { ...context, deployment }, { ...run, generatedDeploymentEnabled: false });
+      return deployed;
+    });
+    markAutoDeploy("p", context.confirmation!.confirmationId);
+    openPage();
+    await screen.findByText("Ask in plain language");
+    expect(deploy).toHaveBeenCalledTimes(1);
+    expect(deploy).toHaveBeenCalledWith("p", "r", context.confirmation);
+    // The mark is used once: reloading does not set up anything again.
+    expect(takeAutoDeploy("p", context.confirmation!.confirmationId)).toBe(false);
+  });
   it("deploys only on click, restores the generated contract after reload and updates the escrow after confirmation", async () => {
     serve(project, context, run);
     const deploy = vi.spyOn(api, "deployGeneration").mockImplementation(async () => {
@@ -160,21 +207,25 @@ describe("generated project operations", () => {
       },
     });
     const first = openPage();
-    const button = await screen.findByRole("button", { name: "Deploy generated contract locally" });
+    const button = await screen.findByRole("button", { name: "Set up the escrow" });
     expect(deploy).not.toHaveBeenCalled();
     expect(screen.queryByText("Ask in plain language")).toBeNull();
     fireEvent.click(button);
     await screen.findByText("Ask in plain language");
     expect(deploy).toHaveBeenCalledWith("p", "r", context.confirmation);
+    // The deposit step sits above the deploy button, so focus moves to the escrow section.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("region", { name: "Escrow" })),
+    );
     first.unmount();
     openPage();
     await screen.findByText("Ask in plain language");
     expect(screen.getByText(deployment.contractAddress)).toBeTruthy();
     expect(screen.queryByText("Open reference payment controls")).toBeNull();
-    expect(screen.queryByText("Deploy generated contract locally")).toBeNull();
+    expect(screen.queryByText("Set up the escrow")).toBeNull();
     expect(screen.getByText("Awaiting deposit")).toBeTruthy();
     expect(plan).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("Your request (English or Chinese)"), {
+    fireEvent.change(screen.getByLabelText("Your request"), {
       target: { value: "Deposit" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
@@ -203,7 +254,7 @@ describe("generated project operations", () => {
       serve(project, { ...context, ...agreement }, { ...run, ...generation });
       openPage();
       await screen.findByRole("heading", { name: "Website" });
-      expect(screen.queryByText("Deploy generated contract locally")).toBeNull();
+      expect(screen.queryByText("Set up the escrow")).toBeNull();
       expect(screen.queryByText("Ask in plain language")).toBeNull();
     },
   );
@@ -217,7 +268,7 @@ describe("generated project operations", () => {
     const first = openPage();
     await screen.findByText("Open reference payment controls");
     expect(screen.queryByText("Ask in plain language")).toBeNull();
-    expect(screen.queryByText("Deploy generated contract locally")).toBeNull();
+    expect(screen.queryByText("Set up the escrow")).toBeNull();
     first.unmount();
     serve(deployed, { ...context, deployment: { ...deployment, sourceHash: "different" } }, run);
     openPage();
@@ -231,13 +282,117 @@ describe("generated project operations", () => {
     await screen.findByText(/Plain-language operations are disabled/);
     expect(screen.getByText(deployment.contractAddress)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Deposit .* test ETH/ })).toBeEnabled();
+  });
+  it("keeps payment controls in English for a Chinese project title without source conversation", async () => {
+    const projectName = "中文项目名称";
+    serve(
+      deployed,
+      {
+        ...context,
+        spec: { ...context.spec, name: projectName },
+        deployment,
+        operationsEnabled: false,
+      },
+      run,
+    );
+    openPage();
+    await screen.findByRole("button", { name: /Deposit .* test ETH/ });
+    expect(screen.getByRole("heading", { name: projectName })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Payment actions" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
   });
   it("reports a rejected deployment and keeps Agent 3 unavailable", async () => {
     serve(project, context, run);
     vi.spyOn(api, "deployGeneration").mockRejectedValue(new Error("Deployment rejected"));
     openPage();
-    fireEvent.click(await screen.findByText("Deploy generated contract locally"));
+    fireEvent.click(await screen.findByText("Set up the escrow"));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Deployment rejected"));
     expect(screen.queryByText("Ask in plain language")).toBeNull();
+  });
+  it("offers the recovered contract for deployment and explains which chain is visible", async () => {
+    serve(project, { ...context, recoveredOnFreshChain: true }, run);
+    const deploy = vi.spyOn(api, "deployGeneration");
+    const regenerate = vi.spyOn(api, "startGeneration");
+    openPage();
+    await screen.findByText(/set it up again on the test network without generating it again/i);
+    expect(
+      screen.getByText(/transactions from before the test network was reset are not shown/i),
+    ).toBeVisible();
+    expect(screen.queryByText("Add or change agreement details")).toBeNull();
+    expect(screen.queryByText("Original description & additional terms")).toBeNull();
+    expect(screen.getByText("Start a new agreement to change these terms")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Set up the escrow" })).toBeEnabled();
+    expect(deploy).not.toHaveBeenCalled();
+    expect(regenerate).not.toHaveBeenCalled();
+  });
+  it("does not show the previous-chain warning after the recovered project is deployed", async () => {
+    serve(deployed, { ...context, recoveredOnFreshChain: true, deployment }, run);
+    openPage();
+    await screen.findByText(/^Your contract is ready\. Deposit .* to start\.$/);
+    expect(
+      screen.queryByText(/transactions from before the test network was reset are not shown/i),
+    ).toBeNull();
+  });
+  it("automatically reconnects to a passed run after a lost deployment response without resending it", async () => {
+    serve(project, context, run);
+    const deploy = vi.spyOn(api, "deployGeneration").mockImplementation(async () => {
+      vi.mocked(api.getProjectSnapshot).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      throw new TypeError("Failed to fetch");
+    });
+    const regenerate = vi.spyOn(api, "startGeneration");
+    openPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Set up the escrow" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Reconnecting to the server to check deployment status automatically",
+      ),
+    );
+    expect(screen.getByText("Automatic checks passed")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Set up the escrow" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start another generation" })).toBeDisabled();
+    serve(deployed, { ...context, deployment }, { ...run, generatedDeploymentEnabled: false });
+    expect(await screen.findByText("In escrow now", {}, { timeout: 4500 })).toBeVisible();
+    expect(screen.getByText(deployment.contractAddress)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(deploy).toHaveBeenCalledTimes(1);
+    expect(regenerate).not.toHaveBeenCalled();
+  });
+  it("permits retry of the existing checked version after a status read finds no deployment", async () => {
+    serve(project, context, run);
+    const deploy = vi
+      .spyOn(api, "deployGeneration")
+      .mockRejectedValue(new TypeError("Load failed"));
+    const regenerate = vi.spyOn(api, "startGeneration");
+    openPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Set up the escrow" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("No deployment is recorded"),
+    );
+    expect(screen.getByRole("button", { name: "Set up the escrow" })).toBeEnabled();
+    expect(deploy).toHaveBeenCalledTimes(1);
+    expect(regenerate).not.toHaveBeenCalled();
+  });
+  it("resumes the handwritten reference project with read-only requests after a proxy outage", async () => {
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("", { status: 500 }))
+      .mockImplementation(async (url) =>
+        Response.json(
+          String(url).endsWith("/agreement")
+            ? { ...context, latestRunId: null, confirmation: null }
+            : project,
+        ),
+      );
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ReferenceProject id="p" />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("Reconnecting to the server to check project status automatically.");
+    expect(
+      await screen.findByRole("heading", { name: project.name }, { timeout: 4500 }),
+    ).toBeVisible();
+    expect(fetch.mock.calls.every(([, init]) => init?.method === "GET")).toBe(true);
   });
 });

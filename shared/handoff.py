@@ -36,10 +36,18 @@ def receipt_outcome(payload):
                    for tx in snapshot['transactions'])
     if not recorded or not snapshot['funded']:
         return 'unverified'
-    if intent['action'] == 'acceptMilestone' and not any(
-            m['id'] == intent['milestoneId'] and m['paid'] for m in snapshot['milestones']):
+    milestone = next((m for m in snapshot['milestones'] if m['id'] == intent['milestoneId']), None)
+    # The receipt is confirmed only when the state it should have produced is on chain now.
+    expected = {'acceptMilestone': lambda m: m['paid'], 'claimMilestone': lambda m: m['paid'],
+                'submitDelivery': lambda m: m['paid'] or m.get('deliveredAt', 0) > 0,
+                'requestChanges': lambda m: m.get('changeRequests', 0) > 0}.get(intent['action'])
+    if expected and not (milestone and expected(milestone)):
         return 'unverified'
     return 'confirmed'
+
+
+# Actions that name a milestone: v1 approval, and the v2 review-period actions.
+MILESTONE_ACTIONS = ('acceptMilestone', 'submitDelivery', 'requestChanges', 'claimMilestone')
 
 
 def validate(kind, data):
@@ -107,11 +115,11 @@ def validate(kind, data):
         intent = data['intent']
         require((intent is not None) == (data['status'] == 'readyForConfirmation'), 'Intent status mismatch')
         if intent:
-            require((intent['milestoneId'] is not None) == (intent['action'] == 'acceptMilestone'), 'Invalid milestone argument')
+            require((intent['milestoneId'] is not None) == (intent['action'] in MILESTONE_ACTIONS), 'Invalid milestone argument')
     elif kind == 'ReportInput':
         intent = data['intent']
         require(intent['projectId'] == data['projectId'], 'Intent project mismatch')
-        require((intent['milestoneId'] is not None) == (intent['action'] == 'acceptMilestone'), 'Invalid milestone argument')
+        require((intent['milestoneId'] is not None) == (intent['action'] in MILESTONE_ACTIONS), 'Invalid milestone argument')
     return data
 
 

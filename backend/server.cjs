@@ -1,11 +1,17 @@
-// Local development only: auto-signs with disposable Hardhat accounts.
+// Auto-signs with disposable Hardhat test accounts. Locally it serves one user; on a hosted site
+// (hosted: true, behind backend/gateway.cjs) every draft and project belongs to one access key.
 const http = require('node:http');
+const path = require('node:path');
 const { randomUUID, createHash } = require('node:crypto');
 const hre = require('hardhat');
 const { BrowserProvider, ContractFactory, Contract, getAddress, MaxUint256 } = require('ethers');
 const { milestoneArtifact } = require('../scripts/compile.cjs');
 const { createGeneration, fields } = require('./generation.cjs');
 const { createOperations } = require('./operations.cjs');
+const { createDrafting } = require('./drafting.cjs');
+const { readSavedGeneration, verifySavedGeneration, latestLocalGenerations } = require('./saved-generation.cjs');
+const { openStateStore } = require('./state-store.cjs');
+const { openLocalChain } = require('./local-chain.cjs');
 const CHAIN_ID = 31337;
 
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
@@ -21,69 +27,214 @@ function readMilestones(value) {
   });
   return { milestones, totalAmountWei: total.toString() };
 }
-async function createServer({ generation: generationOptions, operations: operationsOptions } = {}) {
-  const provider = new BrowserProvider(hre.network.provider, undefined, { cacheTimeout: -1 });
+// v2: a review period after each delivery (docs/REVIEW_PERIOD_V2.md). Absent: a v1 agreement.
+function readReview(b) {
+  if (b.reviewPeriodSeconds === undefined || b.reviewPeriodSeconds === null) return {};
+  const period = b.reviewPeriodSeconds, limit = b.changeRequestLimit ?? 0;
+  if (!Number.isInteger(period) || period < 60 || period > 90 * 86400) fail(400, 'The review period must be 1 minute to 90 days');
+  if (!Number.isInteger(limit) || limit < 0 || limit > 20) fail(400, 'The change-request limit must be 0 (no limit) to 20');
+  return { reviewPeriodSeconds: period, changeRequestLimit: limit };
+}
+async function createServer(options = {}) {
+  const store = options.stateDirectory ? openStateStore(options.stateDirectory) : null;
+  try {
+    const server = await buildServer(options, store);
+    if (store) {
+      server.once('close', store.close);
+      server.once('error', () => { if (!server.listening) store.close(); });
+    }
+    return server;
+  } catch (error) { store?.close(); throw error; }
+}
+async function buildServer({ generation: generationOptions, operations: operationsOptions, drafting: draftingOptions,
+  savedGeneration, importLegacy = false, hosted = process.env.ACCORD_HOSTED === '1' }, store) {
+  const saved = store?.saved;
+  const chain = store ? await openLocalChain(saved?.chain ?? null) : null;
+  const provider = chain?.provider ?? new BrowserProvider(hre.network.provider, undefined, { cacheTimeout: -1 });
   if (hre.network.name !== 'hardhat' || BigInt(await provider.send('eth_chainId', [])) !== BigInt(CHAIN_ID))
     throw new Error('The local signing backend requires the in-process Hardhat chain (31337)');
   const client = await provider.getSigner(0), developer = await provider.getSigner(1);
   const accounts = { clientWallet: await client.getAddress(), developerWallet: await developer.getAddress() };
   const compiled = milestoneArtifact();
-  const projects = new Map();
-  const deployments = new Map();
-  const generation = createGeneration(generationOptions);
+  const projects = new Map(saved?.projects), deployments = new Map(saved?.deployments);
+  const draftOrigins = new Map(saved?.draftOrigins), recoveredProjectIds = new Set(saved?.recoveredProjectIds);
+  let committedChain = chain?.chainState(), storageFailure = null, closed = false;
+  // Chain time follows the wall clock (plus any demo fast-forward), also across restarts, so a
+  // review period keeps running while the backend is stopped. Saved with the chain history.
+  let clockOffset = Number.isInteger(saved?.clock?.offsetSeconds) ? saved.clock.offsetSeconds : 0;
+  const generation = createGeneration({ ...generationOptions, saved: saved?.generation, onChange: persist });
   const operations = createOperations(operationsOptions);
+  const drafting = createDrafting({ demoWallets: accounts, ...draftingOptions, saved: saved?.drafts, onChange: persist });
+  function persist() {
+    if (!store || closed) return;
+    if (storageFailure) fail(503, 'Local storage is unavailable. Changes cannot be confirmed.');
+    try {
+      store.write({ chain: committedChain, clock: { offsetSeconds: clockOffset }, projects: [...projects], deployments: [...deployments],
+        draftOrigins: [...draftOrigins], recoveredProjectIds: [...recoveredProjectIds],
+        drafts: drafting.exportState(), generation: generation.exportState() });
+    } catch (error) { storageFailure = error; throw error; }
+  }
   // The reference build has its own identity and entry point.
   const referenceHash = 'sha256:' + createHash('sha256').update(compiled.bytecode).digest('hex');
   function agreement(p, context = generation.context(p)) {
     const deployment = deployments.get(p.id);
     const { abi, ...metadata } = deployment ?? {};
-    return { ...context, deployment: deployment ? metadata : null, operationsEnabled: operations.enabled };
+    return { ...context, ...(draftOrigins.has(p.id) ? { draftOrigin: draftOrigins.get(p.id) } : {}),
+      ...(recoveredProjectIds.has(p.id) ? { recoveredOnFreshChain: true } : {}),
+      deployment: deployment ? metadata : null, operationsEnabled: operations.enabled };
   }
   function readTerms(b) {
     if (typeof b.name !== 'string' || !b.name.trim() || b.name.length > 120) fail(400, 'Project name must contain 1–120 characters');
     let a, d;
     try { a = getAddress(b.clientWallet); d = getAddress(b.developerWallet); } catch { fail(400, 'Invalid wallet address'); }
     if (a !== accounts.clientWallet || d !== accounts.developerWallet) fail(400, 'Use the local demo accounts. External wallets are not supported in this mode.');
-    return { name: b.name.trim(), clientWallet: a, developerWallet: d, ...readMilestones(b.milestones) };
+    return { name: b.name.trim(), clientWallet: a, developerWallet: d, ...readMilestones(b.milestones), ...readReview(b) };
+  }
+  function newProject(terms, id = randomUUID()) {
+    return { schemaVersion: 2, id, ...terms, contractAddress: null, escrowBalanceWei: '0', funded: false,
+      createdAt: new Date().toISOString(), transactions: [] };
+  }
+  function importGeneration(savedGeneration) {
+    verifySavedGeneration(savedGeneration);
+    const spec = savedGeneration.request.payload.spec;
+    const project = newProject(readTerms(spec), spec.projectId);
+    generation.restore(project, savedGeneration);
+    recoveredProjectIds.add(project.id);
+    projects.set(project.id, project);
+  }
+  if (saved) {
+    // A stale deployment address or a receipt from a different local chain must not appear usable.
+    for (const [id, project] of projects) {
+      const deployment = deployments.get(id);
+      if (project.id !== id || (project.contractAddress ?? null) !== (deployment?.contractAddress ?? null)
+          || Boolean(project.contractAddress) !== project.transactions.some(tx => tx.action === 'deploy'))
+        throw new Error('Saved project and deployment records disagree.');
+      for (const tx of project.transactions) {
+        const receipt = await provider.getTransactionReceipt(tx.hash);
+        const address = tx.action === 'deploy' ? receipt?.contractAddress : receipt?.to;
+        if (receipt?.status !== 1 || receipt.blockNumber !== tx.blockNumber || address !== project.contractAddress)
+          throw new Error('Saved transaction could not be verified on the restored local chain.');
+      }
+    }
+  } else if (savedGeneration !== undefined || importLegacy) {
+    if (BigInt(await provider.send('eth_blockNumber', [])) !== 0n)
+      throw new Error('A saved generation can only be restored on a fresh local chain.');
+    if (savedGeneration !== undefined) importGeneration(savedGeneration);
+    else {
+      let archives = [];
+      try { archives = latestLocalGenerations(); }
+      catch { console.warn('Skipped legacy import: archive order could not be verified.'); }
+      for (const name of archives) {
+        try { importGeneration(readSavedGeneration(name)); }
+        catch { console.warn(`Skipped incomplete or ineligible legacy Agent 2 archive ${name}.`); }
+      }
+    }
+  }
+  const sealed = p => draftOrigins.has(p.id) || recoveredProjectIds.has(p.id);
+  // Read-only project summary so a user can find a project again without its URL.
+  async function summary(p) {
+    const context = generation.context(p), deployment = deployments.get(p.id);
+    const kind = deployment ? (deployment.kind === 'reference' ? 'reference' : 'agreement')
+      : sealed(p) || context.confirmation || context.latestRunId ? 'agreement' : 'reference';
+    const base = { id: p.id, name: p.name, kind, createdAt: p.createdAt, contractAddress: p.contractAddress,
+      totalAmountWei: p.totalAmountWei, milestoneCount: p.milestones.length };
+    let current;
+    try { current = await snapshot(p); }
+    catch { return { ...base, stage: 'unknown', funded: false, escrowBalanceWei: null, paidCount: null }; }
+    const paidCount = current.milestones.filter(m => m.paid).length;
+    let stage;
+    if (current.contractAddress)
+      stage = paidCount === current.milestones.length ? 'complete' : current.funded ? 'paying' : 'awaitingDeposit';
+    else if (kind === 'reference') stage = 'notDeployed';
+    else if (!context.confirmation) stage = 'needsConfirmation';
+    else if (!context.latestRunId) stage = 'readyToGenerate';
+    else {
+      const run = generation.getRun(p, context.latestRunId);
+      stage = !run.finishedAt ? 'generating' : run.generatedDeploymentEnabled ? 'readyToDeploy' : 'checksNotPassed';
+    }
+    return { ...base, stage, funded: current.funded, totalAmountWei: current.totalAmountWei,
+      escrowBalanceWei: current.escrowBalanceWei, paidCount };
   }
   // All projects use the same disposable signer, so serialize its transactions.
   let busy = false;
   const hostnames = new Set(['127.0.0.1', 'localhost']);
+  async function latestTime() { return Number((await provider.getBlock('latest')).timestamp); }
+  async function chainTime() { return Math.max(await latestTime(), Math.floor(Date.now() / 1000) + clockOffset); }
+  // Every transaction is mined at the current chain time (never before the previous block).
+  async function stampNextBlock() {
+    const next = Math.max(await latestTime() + 1, Math.floor(Date.now() / 1000) + clockOffset);
+    await provider.send('evm_setNextBlockTimestamp', [next]);
+  }
+  // A project as the browser sees it: the workspace it belongs to stays on the server.
+  const view = p => { const { owner, ...visible } = p; return { ...visible }; };
+  const hasReview = p => Boolean(deployments.get(p.id)?.abi?.some(item => item.type === 'function' && item.name === 'claimMilestone'));
   async function snapshot(p) {
-    if (!p.contractAddress) return { ...p };
+    if (!p.contractAddress) return view(p);
     const contract = new Contract(p.contractAddress, deployments.get(p.id).abi, client);
     const blockTag = await provider.send('eth_blockNumber', []);
+    const review = hasReview(p);
     const milestones = await Promise.all(p.milestones.map(async m => ({ ...m,
       amountWei: (await contract.milestoneAmount(m.id, { blockTag })).toString(),
-      paid: await contract.isPaid(m.id, { blockTag })
+      paid: await contract.isPaid(m.id, { blockTag }),
+      ...(review ? { deliveredAt: Number(await contract.deliveredAt(m.id, { blockTag })),
+        changeRequests: Number(await contract.changeRequests(m.id, { blockTag })) } : {})
     })));
-    return { ...p, milestones,
+    return { ...view(p), milestones,
       clientWallet: await contract.client({ blockTag }), developerWallet: await contract.provider({ blockTag }),
       totalAmountWei: (await contract.totalAmount({ blockTag })).toString(),
       funded: await contract.funded({ blockTag }),
-      escrowBalanceWei: BigInt(await provider.send('eth_getBalance', [p.contractAddress, blockTag])).toString() };
+      escrowBalanceWei: BigInt(await provider.send('eth_getBalance', [p.contractAddress, blockTag])).toString(),
+      ...(review ? { review: { periodSeconds: Number(await contract.reviewPeriod({ blockTag })),
+        changeRequestLimit: Number(await contract.changeRequestLimit({ blockTag })), chainTime: await chainTime() } } : {}) };
   }
-  // Sends one state-changing call with the local client signer and returns its receipt.
+  // Sends one state-changing call and returns its receipt. The client signs deposits, approvals
+  // and change requests; the provider signs v2 deliveries and claims (both local test accounts).
+  const PROVIDER_ACTIONS = new Set(['submitDelivery', 'claimMilestone']);
   async function transact(p, action, milestoneId) {
-    const c = new Contract(p.contractAddress, deployments.get(p.id).abi, client);
-    const tx = action === 'deposit' ? await c.deposit({ value: BigInt(p.totalAmountWei) }) : await c.acceptMilestone(milestoneId);
-    return tx.wait();
+    const signer = PROVIDER_ACTIONS.has(action) ? developer : client;
+    const c = new Contract(p.contractAddress, deployments.get(p.id).abi, signer);
+    try {
+      await stampNextBlock();
+      const tx = action === 'deposit' ? await c.deposit({ value: BigInt(p.totalAmountWei) }) : await c[action](milestoneId);
+      const receipt = await tx.wait();
+      await commitReceipt(p, action, milestoneId, receipt);
+      return receipt;
+    } catch (error) { await captureRevert(p, action, milestoneId, error); throw error; }
   }
-  const record = (p, action, milestoneId, receipt) => p.transactions.push({ action, ...(action === 'acceptMilestone' ? { milestoneId } : {}),
+  const record = (p, action, milestoneId, receipt) => p.transactions.push({ action, ...(milestoneId !== undefined && milestoneId !== null ? { milestoneId } : {}),
     hash: receipt.hash, blockNumber: receipt.blockNumber, status: receipt.status });
-  async function deploy(p, artifact, terms, kind, runId, sourceHash) {
-    const factory = new ContractFactory(artifact.abi, artifact.bytecode, client);
-    const contract = await factory.deploy(terms.clientWallet, terms.developerWallet, terms.milestones.map(m => BigInt(m.amountWei)));
-    const receipt = await contract.deploymentTransaction().wait();
-    if (receipt?.status !== 1 || !receipt.contractAddress) fail(409, 'Deployment was not confirmed');
-    p.contractAddress = receipt.contractAddress;
-    deployments.set(p.id, { kind, runId, chainId: CHAIN_ID, contractAddress: p.contractAddress,
-      sourceHash, specVersion: terms.specVersion, abi: artifact.abi });
-    record(p, 'deploy', undefined, receipt);
+  async function captureRevert(p, action, milestoneId, error) {
+    if (!chain) return;
+    const hash = error.transactionHash ?? error.info?.error?.data?.txHash;
+    const receipt = error.receipt ?? (hash ? await provider.getTransactionReceipt(hash) : null);
+    if (receipt?.status === 0) await commitReceipt(p, action, milestoneId, receipt);
   }
-  async function body(req) {
+  async function commitReceipt(p, action, milestoneId, receipt, deployment) {
+    if (chain) {
+      try { await chain.captureMined(receipt); }
+      catch (error) { storageFailure = error; throw error; }
+    }
+    if (receipt.status === 1) {
+      if (deployment) { p.contractAddress = receipt.contractAddress; deployments.set(p.id, deployment); }
+      record(p, action, milestoneId, receipt);
+    }
+    if (chain) committedChain = chain.chainState();
+    persist(); // The signed block and its project record become visible in the same disk write.
+  }
+  async function deploy(p, artifact, terms, kind, runId, sourceHash) {
+    try {
+      const factory = new ContractFactory(artifact.abi, artifact.bytecode, client);
+      await stampNextBlock();
+      const contract = await factory.deploy(terms.clientWallet, terms.developerWallet, terms.milestones.map(m => BigInt(m.amountWei)));
+      const receipt = await contract.deploymentTransaction().wait();
+      if (receipt?.status !== 1 || !receipt.contractAddress) fail(409, 'Deployment was not confirmed');
+      await commitReceipt(p, 'deploy', undefined, receipt, { kind, runId, chainId: CHAIN_ID,
+        contractAddress: receipt.contractAddress, sourceHash, specVersion: terms.specVersion, abi: artifact.abi });
+    } catch (error) { await captureRevert(p, 'deploy', undefined, error); throw error; }
+  }
+  async function body(req, limit = 16384) {
     let data = '';
-    for await (const chunk of req) { data += chunk; if (data.length > 16384) fail(413, 'Request too large'); }
+    for await (const chunk of req) { data += chunk; if (Buffer.byteLength(data) > limit) fail(413, 'Request too large'); }
     try {
       const parsed = JSON.parse(data || '{}');
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) fail(400, 'Expected a JSON object');
@@ -91,23 +242,68 @@ async function createServer({ generation: generationOptions, operations: operati
     } catch { fail(400, 'Invalid JSON object'); }
   }
   const server = http.createServer(async (req, res) => {
-    const send = (code, data) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); };
+    const send = (code, data) => {
+      if (req.method !== 'GET' && code < 400) persist();
+      res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data));
+    };
     try {
+      if (storageFailure) fail(503, 'The local backend could not verify or save its state. Check the backend log.');
       if (!hostnames.has(new URL(`http://${req.headers.host}`).hostname)) fail(403, 'Local host required');
       if (req.headers.origin && !hostnames.has(new URL(req.headers.origin).hostname)) fail(403, 'Local origin required');
       const path = new URL(req.url, 'http://localhost').pathname;
+      // The gateway names the caller's workspace; it removes any such header sent by a browser.
+      const owner = hosted ? req.headers['x-accord-owner'] : null;
+      if (hosted && (typeof owner !== 'string' || !/^[0-9a-f]{32}$/.test(owner))) fail(401, 'Enter your access key to continue.');
+      const findProject = id => {
+        const p = projects.get(id);
+        if (!p || (hosted && p.owner !== owner)) fail(404, 'Project not found.');
+        return p;
+      };
+      const ownDraft = id => {
+        if (hosted && drafting.ownerOf(id) !== owner) fail(404, 'Draft not found.');
+        return id;
+      };
       if (req.method === 'GET' && path === '/api/local-accounts') return send(200, { ...accounts, chainId: CHAIN_ID, mode: 'local-chain' });
+      if (req.method === 'GET' && path === '/api/drafts/context')
+        return send(200, { clarificationEnabled: drafting.enabled, mode: 'local-chain', ...accounts });
+      if (req.method === 'GET' && path === '/api/drafts') return send(200, { drafts: drafting.list(hosted ? owner : undefined) });
+      if (req.method === 'POST' && path === '/api/drafts') return send(201, drafting.create(await body(req), owner));
+      const dr = path.match(/^\/api\/drafts\/([^/]+)(?:\/(messages|confirmation|discard))?$/);
+      if (dr) {
+        const [, , resource] = dr;
+        const id = ownDraft(dr[1]);
+        if (req.method === 'GET' && !resource) return send(200, drafting.get(id));
+        if (req.method === 'POST' && resource === 'discard') return send(200, drafting.discard(id, await body(req)));
+        if (req.method === 'POST' && resource === 'messages') return send(200, await drafting.message(id, await body(req, 100000)));
+        if (req.method === 'POST' && resource === 'confirmation') {
+          const candidate = drafting.confirmationCandidate(id, await body(req));
+          if (candidate.projectId) {
+            const p = projects.get(candidate.projectId);
+            return send(200, { project: await snapshot(p), agreement: agreement(p) });
+          }
+          const terms = readTerms(candidate.spec);
+          const p = { ...newProject(terms), ...(hosted ? { owner } : {}) };
+          const context = generation.confirm(p, { specVersion: 1, approved: true });
+          projects.set(p.id, p);
+          draftOrigins.set(p.id, { draftId: id, revision: drafting.get(id).revision });
+          drafting.markConfirmed(id, p.id);
+          return send(201, { project: view(p), agreement: agreement(p, context) });
+        }
+        fail(405, 'Method not allowed');
+      }
+      if (req.method === 'GET' && path === '/api/projects') {
+        const list = await Promise.all([...projects.values()].filter(p => !hosted || p.owner === owner).map(summary));
+        return send(200, { projects: list.sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
+      }
       if (req.method === 'POST' && path === '/api/projects') {
         const b = await body(req);
         const terms = readTerms(b);
-        const p = { schemaVersion: 2, id: randomUUID(), ...terms, contractAddress: null, escrowBalanceWei: '0', funded: false,
-          createdAt: new Date().toISOString(), transactions: [] };
-        projects.set(p.id, p); return send(201, p);
+        const p = { ...newProject(terms), ...(hosted ? { owner } : {}) };
+        projects.set(p.id, p); return send(201, view(p));
       }
       const ai = path.match(/^\/api\/projects\/([^/]+)\/(agreement|confirmation|terms|generation-runs)(?:\/([^/]+))?(\/deployment)?$/);
       if (ai) {
-        const p = projects.get(ai[1]);
-        if (!p) fail(404, 'Project not found. Local projects reset when the backend restarts.');
+        const p = findProject(ai[1]);
         const [, , resource, runId, deploymentRoute] = ai;
         if (deploymentRoute) {
           if (resource !== 'generation-runs' || !runId) fail(404, 'Endpoint not found');
@@ -130,6 +326,7 @@ async function createServer({ generation: generationOptions, operations: operati
         if (resource === 'agreement' && req.method === 'GET') return send(200, agreement(p));
         if (resource === 'confirmation' && req.method === 'POST') return send(200, agreement(p, generation.confirm(p, await body(req))));
         if (resource === 'terms' && req.method === 'PUT') {
+          if (sealed(p)) fail(409, 'This project keeps its confirmed source agreement. Start a new draft to change it.');
           const b = await body(req); fields(b, ['expectedSpecVersion', 'draft']);
           fields(b.draft, ['name', 'clientWallet', 'developerWallet', 'milestones']);
           if (busy) fail(409, 'A transaction is in progress; wait before editing rules');
@@ -143,10 +340,30 @@ async function createServer({ generation: generationOptions, operations: operati
         }
         fail(405, 'Method not allowed');
       }
+      // Local demo only: move chain time forward so a review period can end during a demo.
+      const clock = path.match(/^\/api\/projects\/([^/]+)\/clock$/);
+      if (clock) {
+        const p = findProject(clock[1]);
+        if (req.method !== 'POST') fail(405, 'Method not allowed');
+        const b = await body(req);
+        fields(b, ['advanceSeconds']);
+        if (!Number.isInteger(b.advanceSeconds) || b.advanceSeconds < 1 || b.advanceSeconds > 90 * 86400) fail(400, 'Advance by 1 second to 90 days');
+        if (!hasReview(p)) fail(409, 'This agreement has no review period');
+        if (busy) fail(409, 'Another transaction is in progress; retry after it completes');
+        clockOffset += b.advanceSeconds;
+        return send(200, await snapshot(p));
+      }
+      const known = path.match(/^\/api\/projects\/([^/]+)\/action-plans$/);
+      if (known) {
+        const p = findProject(known[1]);
+        if (req.method !== 'POST') fail(405, 'Method not allowed');
+        if (!p.contractAddress) fail(409, 'Deploy the contract first');
+        if (busy) fail(409, 'Another transaction is in progress; retry after it completes');
+        return send(200, operations.planKnown(p, await body(req), deployments.get(p.id), await snapshot(p)));
+      }
       const op = path.match(/^\/api\/projects\/([^/]+)\/plans(?:\/([^/]+)\/confirmation)?$/);
       if (op) {
-        const p = projects.get(op[1]);
-        if (!p) fail(404, 'Project not found. Local projects reset when the backend restarts.');
+        const p = findProject(op[1]);
         if (req.method !== 'POST') fail(405, 'Method not allowed');
         const b = await body(req);
         if (!p.contractAddress) fail(409, 'Deploy the contract first');
@@ -167,18 +384,17 @@ async function createServer({ generation: generationOptions, operations: operati
             receipt = e.receipt ?? null; // A rejected call has no receipt; a mined revert has status 0.
           }
           receipt = receipt && { hash: receipt.hash, blockNumber: receipt.blockNumber, status: receipt.status };
-          if (receipt?.status === 1) record(p, action, milestoneId, receipt);
           const project = await snapshot(p);
           return send(200, { report: await operations.report(p, stored, receipt, project), project });
         } finally { busy = false; }
       }
       const m = path.match(/^\/api\/projects\/([^/]+)(?:\/actions)?$/);
       if (!m) fail(404, 'Endpoint not found');
-      const p = projects.get(m[1]);
-      if (!p) fail(404, 'Project not found. Local projects reset when the backend restarts.');
+      const p = findProject(m[1]);
       if (req.method === 'GET' && !path.endsWith('/actions')) return send(200, await snapshot(p));
       if (req.method !== 'POST' || !path.endsWith('/actions')) fail(405, 'Method not allowed');
       const { action, milestoneId } = await body(req);
+      if (sealed(p)) fail(409, 'Use validated generation and confirmed operation plans for this agreement');
       if (deployments.get(p.id)?.kind === 'generated') fail(409, 'Use a confirmed operation plan for this generated contract');
       if (!['deploy', 'deposit', 'acceptMilestone'].includes(action)) fail(400, 'Unknown action');
       if (action === 'acceptMilestone' && (!Number.isInteger(milestoneId) || milestoneId < 1 || milestoneId > p.milestones.length)) fail(400, 'Invalid milestone ID');
@@ -194,7 +410,6 @@ async function createServer({ generation: generationOptions, operations: operati
           if (!p.contractAddress) fail(409, 'Deploy first');
           receipt = await transact(p, action, milestoneId);
           if (receipt.status !== 1) fail(409, 'Transaction reverted');
-          record(p, action, milestoneId, receipt);
         }
         return send(200, await snapshot(p));
       } finally { busy = false; }
@@ -203,9 +418,18 @@ async function createServer({ generation: generationOptions, operations: operati
       if (!e.status && e.code !== 'CALL_EXCEPTION') console.error(e);
     }
   });
+  server.once('close', () => { closed = true; });
+  persist();
   return server;
 }
-if (require.main === module) createServer().then(server => server.listen(3001, '127.0.0.1', () => {
-  console.log('Local EVM API: http://127.0.0.1:3001 — disposable test accounts only; restart resets projects.');
-})).catch(e => { console.error(e); process.exitCode = 1; });
+if (require.main === module) {
+  const port = Number(process.env.LOCAL_API_PORT ?? 3001);
+  Promise.resolve().then(() => {
+    const name = process.env.LOCAL_RECOVER_GENERATION;
+    return createServer({ stateDirectory: process.env.LOCAL_STATE_DIR || path.resolve(__dirname, '../data/private/local-demo'),
+      importLegacy: true, ...(name ? { savedGeneration: readSavedGeneration(name) } : {}) });
+  }).then(server => server.listen(port, '127.0.0.1', () => {
+    console.log(`Local EVM API: http://127.0.0.1:${server.address().port} — local projects and test-chain receipts saved on disk.`);
+  })).catch(e => { console.error(e.message); process.exitCode = 1; });
+}
 module.exports = { createServer };

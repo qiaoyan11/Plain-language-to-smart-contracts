@@ -47,7 +47,7 @@
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
   --color-success: var(--success);
-  --font-display: "DM Sans", sans-serif;
+  --font-display: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -148,56 +148,56 @@
   }
 }
 
-body { font-family: "DM Sans", system-ui, sans-serif; letter-spacing: 0; }
+/* Electric Blue: a light, fintech-style look (chosen 2026-11-28). Inter for text, JetBrains Mono
+   for addresses and on-chain values. */
+body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: 0; -webkit-font-smoothing: antialiased; }
 :root {
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.24 0.008 165);
+  --radius: 0.875rem;
+  --background: oklch(0.982 0.005 255);
+  --foreground: oklch(0.21 0.035 264);
   --card: oklch(1 0 0);
   --card-foreground: var(--foreground);
   --popover: var(--card);
   --popover-foreground: var(--foreground);
-  --primary: oklch(0.42 0.075 166);
+  --primary: oklch(0.52 0.25 263);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.95 0.003 165);
+  --secondary: oklch(0.96 0.01 260);
   --secondary-foreground: var(--foreground);
-  --muted: oklch(0.95 0 0);
-  --muted-foreground: oklch(0.48 0.008 165);
-  --accent: oklch(0.945 0.012 165);
-  --accent-foreground: var(--foreground);
-  --border: oklch(0.89 0.003 165);
-  --input: var(--border);
+  --muted: oklch(0.965 0.008 260);
+  --muted-foreground: oklch(0.5 0.025 262);
+  --accent: oklch(0.95 0.035 262);
+  --accent-foreground: oklch(0.42 0.2 263);
+  --border: oklch(0.915 0.012 260);
+  --input: oklch(0.885 0.015 260);
   --ring: var(--primary);
+  --success: oklch(0.52 0.15 152);
+  --success-soft: oklch(0.96 0.04 155);
+  --warning-soft: oklch(0.97 0.04 85);
+  --warning-foreground: oklch(0.47 0.1 70);
+  --shadow-card: 0 1px 2px oklch(0.21 0.035 264 / 0.04), 0 8px 24px oklch(0.21 0.035 264 / 0.05);
 }
-.dark {
-  --background: oklch(0.18 0.004 165);
-  --foreground: oklch(0.94 0 0);
-  --primary: oklch(0.75 0.08 166);
-  --primary-foreground: oklch(0.2 0.01 165);
-  --card: oklch(0.22 0.004 165);
-  --popover: var(--card);
-  --muted: oklch(0.25 0.004 165);
-  --muted-foreground: oklch(0.72 0.005 165);
-  --accent: oklch(0.29 0.015 165);
-  --accent-foreground: var(--foreground);
-  --border: oklch(0.34 0.004 165);
-  --input: var(--border);
-  --ring: var(--primary);
-}
-h1 { font-size: 36px; font-weight: 500; line-height: 1.22; letter-spacing: 0; }
-h2 { font-size: 16px; font-weight: 600; }
-.intro { margin: 16px 0 32px; font-size: 15px; color: var(--muted-foreground); line-height: 1.6; }
-.prototype-label { position: sticky; top: 0; z-index: 20; padding: 9px 24px; text-align: center; font-size: 11px; color: var(--primary); background: var(--accent); border-bottom: 1px solid var(--border); }
-.field { width: 100%; min-width: 0; border: 1px solid var(--input); background: var(--card); color: var(--foreground); border-radius: 5px; padding: 11px 12px; font-size: 14px; outline: none; }
+h1 { font-size: 34px; font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; }
+h2 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.intro { margin: 14px 0 30px; font-size: 15px; color: var(--muted-foreground); line-height: 1.6; }
+.brand-mark { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: var(--primary); color: var(--primary-foreground); }
+/* Which network contracts run on, as wallets show it: an amber dot marks a test network. */
+.network-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--warning-foreground); background: var(--warning-soft); white-space: nowrap; }
+.network-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: oklch(0.76 0.16 70); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.4; background: var(--muted); color: var(--muted-foreground); }
+.pill-info { background: var(--accent); color: var(--accent-foreground); }
+.pill-success { background: var(--success-soft); color: var(--success); }
+.pill-active { background: var(--primary); color: var(--primary-foreground); }
+.field { width: 100%; min-width: 0; border: 1px solid var(--input); background: var(--card); color: var(--foreground); border-radius: 10px; padding: 11px 12px; font-size: 14px; outline: none; }
 .field-label { display: block; margin-bottom: 8px; font-size: 13px; color: var(--muted-foreground); }
-.field:focus, .agreement-text:focus { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in oklab, var(--ring) 12%, transparent); }
-.agreement-text { width: 100%; min-height: 220px; resize: vertical; padding: 22px; border: 1px solid var(--input); background: var(--card); color: var(--foreground); border-radius: 6px; font-size: 16px; line-height: 1.8; outline: none; }
+.field:focus, .agreement-text:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 15%, transparent); }
+.agreement-text { width: 100%; min-height: 220px; resize: vertical; padding: 20px; border: 1px solid var(--input); background: var(--card); color: var(--foreground); border-radius: 16px; font-size: 16px; line-height: 1.75; outline: none; box-shadow: var(--shadow-card); }
 .agreement-text::placeholder, .field::placeholder { color: var(--muted-foreground); }
 .milestone-edit { display: grid; grid-template-columns: 18px minmax(0,1fr) 140px 36px; gap: 10px; align-items: center; margin-bottom: 10px; }
 summary { cursor: pointer; font-size: 12px; color: var(--muted-foreground); }
 button { white-space: normal; }
 input[type=checkbox] { accent-color: var(--primary); }
 @media (max-width: 600px) {
- h1 { font-size: 29px; }
+ h1 { font-size: 28px; }
  .milestone-edit { grid-template-columns: 18px minmax(0,1fr) 36px; }
  .milestone-edit label:nth-child(3) { grid-column: 2; grid-row: 2; }
  .milestone-edit button { grid-column: 3; grid-row: 1; }
@@ -206,15 +206,22 @@ input[type=checkbox] { accent-color: var(--primary); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
 .chat-message { padding: 16px 20px; border-left: 2px solid var(--border); }
-.chat-user { background: var(--accent); border: 0; border-radius: 8px; }
-.agreement-summary { padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
-.panel { padding: 22px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
-.btn { display: inline-flex; align-items: center; justify-content: center; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border); font-size: 14px; cursor: pointer; }
-.btn-primary { background: var(--primary); color: var(--primary-foreground); }
-.btn-outline { background: var(--card); }
+.chat-user { background: var(--accent); border: 0; border-radius: 16px; }
+.agreement-summary { padding: 20px 22px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); box-shadow: var(--shadow-card); }
+.panel { padding: 22px 24px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); box-shadow: var(--shadow-card); }
+.btn { display: inline-flex; align-items: center; justify-content: center; padding: 11px 20px; border-radius: 999px; border: 1px solid var(--input); font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color .15s, box-shadow .15s; }
+.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.btn-primary:hover:not(:disabled) { background: oklch(0.47 0.24 263); }
+.btn-outline { background: var(--card); color: var(--foreground); }
+.btn-outline:hover:not(:disabled) { background: var(--muted); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .badge { font-size: 12px; color: var(--muted-foreground); }
 .badge-paid { color: var(--primary); }
+/* The escrow balance at the top of the payment area. */
+.escrow-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 24px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); box-shadow: var(--shadow-card); }
+.progress-track { display: block; width: 160px; height: 8px; border-radius: 999px; background: var(--accent); overflow: hidden; }
+.progress-fill { display: block; height: 100%; border-radius: 999px; background: var(--primary); }
 .mock-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; padding: 10px 18px; font-size: 11px; line-height: 1.6; background: var(--accent); }
 .mock-pill { font-weight: 700; }
 .mock-toggle { display: flex; align-items: center; gap: 6px; }
+

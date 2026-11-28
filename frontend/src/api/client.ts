@@ -1,9 +1,23 @@
 /** Project API v2. All page data access stays here; local chain is the default. */
-import type { AgreementContext, ConfirmationRecord, GenerationRun } from "./types";
+import type {
+  AgreementContext,
+  ConfirmationRecord,
+  DraftContext,
+  DraftSession,
+  GenerationRun,
+  KnownAction,
+  MilestoneAction,
+  ReviewState,
+} from "./types";
 import { workspaceStorage } from "./workspace";
-export type { AgreementContext, GenerationRun } from "./types";
+export type { AgreementContext, GenerationRun, KnownAction, ReviewState } from "./types";
 export const MOCK_MODE = import.meta.env["VITE_API_MODE"] === "mock";
+const ACTIVE_DRAFT_KEY = "active-agreement-draft-v1";
 const API_BASE = import.meta.env["VITE_API_BASE"] || "/api";
+// Callers apply this delay to read-only status queries. A failed write is never replayed here.
+export function reconnectDelay(error: unknown): number | false {
+  return error instanceof TypeError ? 2000 : false;
+}
 async function request<T>(
   path: string,
   body?: unknown,
@@ -14,6 +28,14 @@ async function request<T>(
     headers: { "Content-Type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+  // A stopped local API may leave the dev proxy serving an empty 5xx instead of JSON.
+  if (
+    !response.ok &&
+    response.status >= 500 &&
+    !response.headers.get("content-type")?.includes("json")
+  ) {
+    throw new TypeError("The local server could not be reached.");
+  }
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Backend request failed");
   return data as T;
@@ -32,7 +54,19 @@ export interface Project extends Omit<ProjectDraft, "milestones"> {
   schemaVersion: 2;
   id: string;
   totalAmountWei: string;
-  milestones: (MilestoneDraft & { id: number; paid: boolean })[];
+  milestones: (MilestoneDraft & {
+    id: number;
+    paid: boolean;
+    /** v2 only: chain time of the current delivery, 0 when not delivered. */
+    deliveredAt?: number;
+    /** v2 only: change requests made for this milestone so far. */
+    changeRequests?: number;
+  })[];
+  /** v2 agreed terms, present before deployment too. */
+  reviewPeriodSeconds?: number;
+  changeRequestLimit?: number;
+  /** v2 only, read from the deployed contract. */
+  review?: ReviewState;
   contractAddress: string | null;
   escrowBalanceWei: string;
   funded: boolean;
@@ -57,14 +91,50 @@ export interface OperationPlan {
     projectId: string;
     chainId: number;
     contractAddress: string;
-    action: "query" | "deposit" | "acceptMilestone";
+    action: "query" | "deposit" | MilestoneAction;
     milestoneId: number | null;
   } | null;
+  payment?: { amountWei: string; from: string; to: string; milestoneTitle: string | null } | null;
 }
 export interface OperationReport {
   outcome: "confirmed" | "failed" | "unverified";
   summary: string;
 }
+/** Read-only summaries for finding a saved project or an unfinished draft again. */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  kind: "agreement" | "reference";
+  stage:
+    | "needsConfirmation"
+    | "readyToGenerate"
+    | "generating"
+    | "readyToDeploy"
+    | "checksNotPassed"
+    | "notDeployed"
+    | "awaitingDeposit"
+    | "paying"
+    | "complete"
+    | "unknown";
+  createdAt: string;
+  contractAddress: string | null;
+  funded: boolean;
+  totalAmountWei: string;
+  escrowBalanceWei: string | null;
+  milestoneCount: number;
+  paidCount: number | null;
+}
+export interface DraftSummary {
+  id: string;
+  name: string | null;
+  createdAt: string;
+  updatedAt: string;
+  status: string | null;
+  messageCount: number;
+  awaitingReply: boolean;
+}
+/** A backend started before the list endpoints existed answers 404 for them. */
+export const LIST_UNAVAILABLE = "Endpoint not found";
 const AGENT3_LOCAL_ONLY = "Plain-language operations need local API mode with AGENT3_MODE=live.";
 const MAX_WEI = (1n << 256n) - 1n;
 const UNIT = 10n ** 18n;
@@ -103,10 +173,10 @@ export function actionBlockReason(p: Project, intent: ProjectAction): string | n
   if (intent.action === "deposit") return p.funded ? "Funds already deposited" : null;
   const milestone = p.milestones.find((m) => m.id === intent.milestoneId);
   if (!milestone) return "Invalid milestone ID";
-  if (milestone.paid) return `Stage ${milestone.id} already paid`;
+  if (milestone.paid) return `Milestone ${milestone.id} already paid`;
   if (!p.funded) return "No funds deposited yet — cannot pay";
   if (p.milestones.some((m) => m.id < milestone.id && !m.paid))
-    return "Earlier stages must be paid first";
+    return "Earlier milestones must be paid first";
   return null;
 }
 export function applyAction(p: Project, intent: ProjectAction): Project {
@@ -160,6 +230,48 @@ function getProjectSnapshot(id: string): Promise<Project> {
 export const api = {
   ...workspaceStorage,
   getProjectSnapshot,
+  getActiveDraftId(): string | null {
+    return typeof window === "undefined" ? null : sessionStorage.getItem(ACTIVE_DRAFT_KEY);
+  },
+  setActiveDraftId(id: string | null) {
+    if (id) sessionStorage.setItem(ACTIVE_DRAFT_KEY, id);
+    else sessionStorage.removeItem(ACTIVE_DRAFT_KEY);
+  },
+  async getDraftContext(): Promise<DraftContext> {
+    if (MOCK_MODE)
+      throw new Error(
+        "Open local API mode to draft an agreement. The reference demo is available in mock mode.",
+      );
+    return request("/drafts/context");
+  },
+  async createDraft(): Promise<DraftSession> {
+    if (MOCK_MODE) throw new Error("Open local API mode to draft an agreement.");
+    return request("/drafts", {});
+  },
+  async getDraft(id: string): Promise<DraftSession> {
+    return request(`/drafts/${encodeURIComponent(id)}`);
+  },
+  async sendDraftMessage(
+    id: string,
+    message: string,
+    expectedRevision: number,
+    requestKey: string,
+  ): Promise<DraftSession> {
+    return request(`/drafts/${encodeURIComponent(id)}/messages`, {
+      message,
+      expectedRevision,
+      requestKey,
+    });
+  },
+  async confirmDraft(
+    id: string,
+    expectedRevision: number,
+  ): Promise<{ project: Project; agreement: AgreementContext }> {
+    return request(`/drafts/${encodeURIComponent(id)}/confirmation`, {
+      approved: true,
+      expectedRevision,
+    });
+  },
   parseEth: ethToWei,
   formatEth: formatWei,
   validateDraft(d: ProjectDraft, requireWallets = true): string | null {
@@ -246,6 +358,24 @@ export const api = {
       },
     );
   },
+  async listProjects(): Promise<ProjectSummary[]> {
+    if (MOCK_MODE) throw new Error("Saved projects are listed in local API mode.");
+    return (await request<{ projects: ProjectSummary[] }>("/projects")).projects;
+  },
+  async listDrafts(): Promise<DraftSummary[]> {
+    if (MOCK_MODE) return [];
+    return (await request<{ drafts: DraftSummary[] }>("/drafts")).drafts;
+  },
+  /** Removes an unfinished conversation. Confirmed agreements cannot be discarded. */
+  async discardDraft(id: string): Promise<void> {
+    await request(`/drafts/${encodeURIComponent(id)}/discard`, {});
+    if (api.getActiveDraftId() === id) api.setActiveDraftId(null);
+  },
+  /** On a hosted site: who is signed in with an access key. A local run has no session (404). */
+  async getSession(): Promise<{ signedIn: boolean; label: string }> {
+    if (MOCK_MODE) throw new Error("No session in mock mode.");
+    return request("/session");
+  },
   async getLocalAccounts(): Promise<{ clientWallet: string; developerWallet: string }> {
     return request("/local-accounts");
   },
@@ -258,7 +388,7 @@ export const api = {
   saveDraft(draft: ProjectDraft) {
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   },
-  getDraft(): ProjectDraft | null {
+  getReferenceDraft(): ProjectDraft | null {
     if (typeof window === "undefined") return null;
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);
@@ -305,6 +435,19 @@ export const api = {
   async planOperation(id: string, message: string): Promise<OperationPlan> {
     if (MOCK_MODE) throw new Error(AGENT3_LOCAL_ONLY);
     return request(`/projects/${encodeURIComponent(id)}/plans`, { message });
+  },
+  async planKnownOperation(id: string, action: KnownAction): Promise<OperationPlan> {
+    if (MOCK_MODE) throw new Error("Payment controls need local API mode.");
+    const body =
+      action.action === "deposit"
+        ? { action: action.action }
+        : { action: action.action, milestoneId: action.milestoneId };
+    return request(`/projects/${encodeURIComponent(id)}/action-plans`, body);
+  },
+  /** Local test chain only: move chain time forward so a review period can end during a demo. */
+  async advanceClock(id: string, advanceSeconds: number): Promise<Project> {
+    if (MOCK_MODE) throw new Error("The test chain clock needs local API mode.");
+    return request(`/projects/${encodeURIComponent(id)}/clock`, { advanceSeconds });
   },
   async confirmOperation(
     id: string,

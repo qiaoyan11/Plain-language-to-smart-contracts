@@ -1,5 +1,5 @@
 """One request per process. All stdout is a single JSON envelope.
-Agent 2 and Agent 3 can each opt into live mode; Agent 1 is a fixture. Receipt reports use no model.
+Each agent can opt into live mode. Receipt reports use no model.
 """
 import json
 import os
@@ -22,6 +22,8 @@ def dispatch(request):
     if request['operation'] == 'generate' and mode == 'live':
         from agent2.service import generate
         print('LIVE Agent 2: explicit generation/validation budget; no deployment.', file=sys.stderr)
+    elif request['operation'] == 'clarify' and os.getenv('AGENT1_MODE') == 'live':
+        print('LIVE Agent 1: drafting terms for review.', file=sys.stderr)
     elif request['operation'] == 'planAction' and os.getenv('AGENT3_MODE', 'stub') == 'live':
         print('LIVE Agent 3: plans one operation; no signing and no transaction.', file=sys.stderr)
     elif request['operation'] == 'reportAction':

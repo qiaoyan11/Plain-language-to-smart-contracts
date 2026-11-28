@@ -1,8 +1,8 @@
 # Python 和 LangGraph 工作流
 
 `worker.py` 是统一 JSON 入口：stdin 收请求，stdout 返回一个响应，日志到 stderr。
-默认使用模拟模块；显式 `AGENT2_MODE=live` 后，generate 调用 Agent 2 的真实工作流。
-Agent 1 和 Agent 3 仍为模拟实现。
+默认使用模拟模块；显式 `AGENT1_MODE=live`、`AGENT2_MODE=live` 或 `AGENT3_MODE=live`
+后，相应操作调用已接入的真实模块。未开启的模块不会把模拟结果当作真实生成或交易。
 
 `generation.py`：检查确认规则 → 模型生成 → 打包源码 → 独立验证 → 通过或停止；
 失败时按 B/C 可见反馈修复，再验证，最多 maxRepairs 次。工具错误立即停止。

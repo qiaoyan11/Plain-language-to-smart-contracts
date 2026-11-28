@@ -1,10 +1,10 @@
 # 新组员从这里开始
 
-这个仓库就是共享上下文。新的 GPT 不需要知道过去的聊天，但必须先读规则，不能直接重写项目。
+这个仓库就是共享上下文。新的 GPT 不需要知道过去的聊天，但必须先读规则，不能直接重写项目。当前先完成 v1 本地演示，再推进 v2 条款扩展和模型微调。
 
 ## 1. 先运行共同版本
 
-先按 [网页运行说明](FRONTEND_INTEGRATION.md) 跑一次创建、部署、存款、付款。
+先按[完整 v1 演示](AGENT1_DEMO.md)跑一次描述、澄清、确认、生成、部署、存款、付款；安装步骤沿用[网页运行说明](FRONTEND_INTEGRATION.md)。
 再从仓库根目录运行下面命令（Python 3.11 或更高，排除 3.12.0，建议已实测的 3.14.3；现有 Node 版本要求保持不变）：
 
 ```sh
@@ -19,17 +19,17 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 
 `e2e` 目前检查的是模块交接，不是完整 AI 产品，也不部署代码。它包括格式检查、Node 调用 Python、模拟输出和失败处理。网页原有演示独立保留。
 
-## 2. 每人替换哪一块
+## 2. 每人维护哪一块
 
-| 负责人 | 主要编辑位置 | 替换什么 | 第一项完成标准 |
+| 负责人 | 主要编辑位置 | 核心入口 | 当前状态与下一步 |
 | --- | --- | --- | --- |
-| 徐露源 Luyuan Xu | agent1/ | stub.py 的 clarify(payload) | 按[追问与超范围处理说明](../agent1/README.md)接模型，核对完整、缺失、矛盾和含超范围条件的描述 |
+| 徐露源 Luyuan Xu | agent1/ | service.py 的 draft_agreement(payload)、clarify(payload) | 已接可配置模型服务及网页草稿流程；按[追问与超范围处理说明](../agent1/README.md)继续核对真实模型的完整、缺失、矛盾和跨轮描述 |
 | B | agent2/、flows/ | service.py 的 generate(payload)、flows/generation.py | 生成、可信验证、有限修复已接通；继续完善规则与实验配置 |
-| C + Claude | validation/ | 自己实现 validate_development(spec, sourceBundle) | 编译、静态检查、条款测试组成可信报告；工具没准备好不能报通过 |
-| Jiahao Zhang | backend/、frontend/、Sepolia | 接生成、部署、操作接口和测试钱包签名 | 本地流程已接通。张嘉豪负责在 Sepolia 完成部署、存款和验收付款，并核对公开回执 |
+| C + Claude | validation/ | validate_development(spec, sourceBundle) | 编译、静态检查、条款测试已接通；继续维护独立验证和正式评分，工具没准备好不能报通过 |
+| Jiahao Zhang | backend/、frontend/、Sepolia | drafting.cjs 草稿及确认接口、既有生成部署操作接口 | Agent 1→2→3 本地路径已接通；先完善 v1 联调。张嘉豪继续负责后续 Sepolia 钱包签名、部署及公开回执核对 |
 | Xiangyi Zhu | agent3/ | service.py 的 plan_action(payload)、report.py 的 report_result(payload) | 已接模型并接入网页；需以 AGENT3_MODE=live 启动后端 |
 
-模拟函数的文件名以后可改为 service.py，届时只调整 flows/worker.py 中对应 import。
+真实 Agent 入口已在 service.py 等模块中实现，flows/worker.py 按各自运行模式调用；保留 stub 供独立格式测试使用，不再把“替换 stub”当作尚未完成的接入任务。
 业务模块不互相 import；flows 统一调用它们。shared 仅放格式和共用校验。
 不要把同一套修复循环分别放在 Node 和 Python。
 
@@ -41,16 +41,16 @@ Windows 的 Python 路径是 `.venv\Scripts\python.exe`。也可以通过 `PYTHO
 .venv/bin/python -m agent3 shared/examples/planAction.request.json
 ```
 
-默认模拟模式下：Agent 1 返回待核对样例；Agent 2 返回手写参考源码；Agent 3 返回 blocked。
+上述独立 CLI 默认模拟模式下：Agent 1 返回待核对样例；Agent 2 返回手写参考源码；Agent 3 返回 blocked。网页草稿入口要求开启 `AGENT1_MODE=live`，未开启时明确提示禁用，不返回模拟理解结果；三 Agent 的启动方式见[演示说明](AGENT1_DEMO.md)。
 Agent 2 另有显式 --live 的真实生成命令，见 [Agent 2 说明](../agent2/README.md)。
-输出 stderr 的 STUB 提示不能删除，直到真实实现替换完成且文档同步。
-LangGraph 已接通 Agent 2 生成、独立开发验证和有限修复；后端 HTTP 和网页确认/生成查询已接通；正式评测尚未实施。
+模拟调用保留 stderr 的 STUB 提示，不能将其作为真实模型结果。真实服务已接入，但模型效果仍需按正式样例单独评测。
+LangGraph 已接通 Agent 2 生成、独立开发验证和有限修复；网页从 Agent 1 澄清、明确确认到生成及本地操作已接通；正式评测尚未实施。
 默认 stub 模式的 development 请求仍返回 toolError；显式 live 模式已接 C 的真实验证器，按当前 clause-v2 返回报告，不自动部署。
 
 ## 3. 接口究竟如何连接
 
 ```text
-Node HTTP 入口（server.cjs → generation.cjs）/ 独立连接测试
+Node HTTP 入口（server.cjs → drafting.cjs / generation.cjs / operations.cjs）
   → backend/python-bridge.cjs
   → 固定 Python 入口 flows.worker（stdin JSON）
   → shared.handoff 检查输入
@@ -62,8 +62,9 @@ Node HTTP 入口（server.cjs → generation.cjs）/ 独立连接测试
 - `shared/schemas/handoff.schema.json`：格式字典，包含规则、源码、报告、部署记录和操作输入输出。
 - `shared/handoff.py`：补充跨字段检查，例如金额之和、连续阶段编号、确认版本、源码指纹。
 - `shared/examples/`：各类交接对象的合法样例。地址、确认记录、部署记录均为虚构，不证明真的部署或确认。
-- `backend/python-bridge.cjs`：固定程序入口，无 shell；输入 1 MiB 上限，输出和日志合计 1 MiB，模拟模式默认 10 秒；live 编译 smoke 为 210 秒，development 为每轮 900 秒乘以 1+maxRepairs（最多 6 轮），同项目同时只允许一项任务。
-- generation.cjs 保存明确确认过的规则版本，调用 bridge 时用 isCurrent 核对最新版本。新 HTTP 格式见 [GENERATION_API_V1.md](../shared/GENERATION_API_V1.md)；确认和运行查询仍在内存里，重启会清空，持久化未做。
+- `backend/python-bridge.cjs`：固定程序入口，无 shell；输入 1 MiB 上限，输出和日志合计 1 MiB，模拟模式默认 10 秒；live Agent 1 默认 60 秒，live 编译 smoke 为 210 秒，development 为每轮 900 秒乘以 1+maxRepairs（最多 6 轮），同项目同时只允许一项任务。
+- `backend/drafting.cjs`：保存完整对话、草稿版本、待处理消息及 Agent 1 结果，包括可选 `separateTerms` 原文。`/api/drafts` 系列接口通过 `expectedRevision` 和 `requestKey` 控制并发与重试；只有就绪草稿经明确确认后才创建付款项目并调用既有 `generation.confirm`。确认后的草稿封存，失败消息未解决时不能确认旧结果。见[草稿接口及恢复规则](AGENT1_DEMO.md)。
+- generation.cjs 保存明确确认过的规则版本，调用 bridge 时用 isCurrent 核对最新版本。普通本地服务保存确认和运行记录；重开原链接可继续查看。新 HTTP 格式见 [GENERATION_API_V1.md](../shared/GENERATION_API_V1.md)。
 - Node HTTP 当前固定 C、最多 3 次修复；默认禁用，AGENT2_MODE=live 才开放生成。前端仅提交版本、确认 ID 和重复请求键，不直接传 Python 信封、模型设置或验证报告。
 - worker 在返回前检查完整输出；Node 使用同一 JSON Schema 独立检查完整结果，并核对请求 ID、项目版本、修复预算和最终报告关联。所有金额跨语言传字符串。
 - 格式合法不代表语义正确、更不代表安全。只有独立验证能给真实 passed 报告；格式校验本身不能认证报告来源。
@@ -79,7 +80,7 @@ PR 写清：改了什么、输入输出例子、测试结果、还没做什么�
 给新 GPT 的第一条消息：
 
 > 请先读 AGENTS.md、README.md、docs/WORKLOG.md、docs/TASKS.md、shared/INTERFACES.md 和我负责模块的 README。
-> 我负责【模块】，这次只做【具体任务】。先检查现有实现，再替换对应 stub。
+> 我负责【模块】，这次只做【具体任务】。先检查现有 service、工作流及接口，沿用已经接通的路径完成任务。
 > 保持已有接口；需要修改公共格式或别人的模块时先说明并等我们确认。
 > 不重写已有网页、后端或合约，不把模拟结果当作验证通过，不接触隐藏评测或提交密钥。
 > 完成后运行模块测试和 npm run e2e，给出修改列表、结果和限制。

@@ -6,13 +6,19 @@
     "compile": "node scripts/compile.cjs",
     "test": "node --test tests/escrow.test.cjs tests/milestone.test.cjs",
     "demo": "node scripts/demo.cjs",
+    "demo:web": "node scripts/web-demo.cjs",
+    "demo:live": "node scripts/web-demo.cjs --live",
     "backend": "node backend/server.cjs",
-    "test:api": "node --test tests/api.test.cjs tests/generation-api.test.cjs tests/operations-api.test.cjs",
+    "test:api": "node --test tests/api.test.cjs tests/generation-api.test.cjs tests/operations-api.test.cjs tests/drafting-api.test.cjs tests/project-list-api.test.cjs tests/hosted.test.cjs",
+    "serve": "node scripts/serve.cjs",
+    "test:agent1": "node scripts/test-agent1.cjs",
     "test:handoff": "node scripts/test-handoff.cjs",
     "e2e": "npm run test:handoff && node --test tests/python-bridge.test.cjs",
     "test:agent2": "node scripts/test-agent2.cjs",
     "test:agent3": "node scripts/test-agent3.cjs",
-    "test:validation": "node scripts/test-validation.cjs"
+    "test:validation": "node scripts/test-validation.cjs",
+    "eval:agent1": "node scripts/eval-agent1.cjs",
+    "test:v2": "node scripts/test-v2.cjs"
   },
   "engines": {
     "node": ">=20 <23"

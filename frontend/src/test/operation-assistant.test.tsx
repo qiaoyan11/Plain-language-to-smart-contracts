@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OperationAssistant } from "@/components/OperationAssistant";
 import { api, type OperationPlan, type Project } from "@/api/client";
@@ -17,7 +18,7 @@ const project: Project = {
   milestones: [{ id: 1, title: "Homepage", amountWei: "10", paid: false }],
   transactions: [],
 };
-const ready = (action: "query" | "acceptMilestone"): OperationPlan => ({
+const ready = (action: "query" | "deposit" | "acceptMilestone"): OperationPlan => ({
   planId: "plan-1",
   status: "readyForConfirmation",
   question: null,
@@ -30,8 +31,41 @@ const ready = (action: "query" | "acceptMilestone"): OperationPlan => ({
     milestoneId: action === "acceptMilestone" ? 1 : null,
   },
 });
+
+const schedule = {
+  ...project,
+  totalAmountWei: "10000000000000000",
+  escrowBalanceWei: "10000000000000000",
+  milestones: [
+    { id: 1, title: "Homepage", amountWei: "3000000000000000", paid: false },
+    { id: 2, title: "Checkout", amountWei: "7000000000000000", paid: false },
+  ],
+};
+function buttonPlan(action: "deposit" | "acceptMilestone"): OperationPlan {
+  return {
+    ...ready(action),
+    payment: {
+      amountWei: action === "deposit" ? schedule.totalAmountWei : schedule.milestones[0]!.amountWei,
+      from: action === "deposit" ? schedule.clientWallet : schedule.contractAddress!,
+      to: action === "deposit" ? schedule.contractAddress! : schedule.developerWallet,
+      milestoneTitle: action === "deposit" ? null : schedule.milestones[0]!.title,
+    },
+  };
+}
+function PaymentPanel({ initial }: { initial: Project }) {
+  const [current, setCurrent] = useState(initial);
+  return (
+    <OperationAssistant
+      project={current}
+      disabled={false}
+      onProject={setCurrent}
+      quickActions
+      naturalLanguageEnabled={false}
+    />
+  );
+}
 const type = (text: string) =>
-  fireEvent.change(screen.getByLabelText("Your request (English or Chinese)"), {
+  fireEvent.change(screen.getByLabelText("Your request"), {
     target: { value: text },
   });
 afterEach(() => {
@@ -58,6 +92,19 @@ describe("plain-language operations", () => {
     await screen.findByText('Milestone #1 "Homepage" is paid.');
     expect(confirm).toHaveBeenCalledWith("p1", "plan-1");
     expect(onProject).toHaveBeenCalledWith(paid);
+  });
+  it("shows a payment asked for in words as one preview, with what stays in escrow after it", async () => {
+    vi.spyOn(api, "planOperation").mockResolvedValue(buttonPlan("acceptMilestone"));
+    render(<OperationAssistant project={schedule} disabled={false} onProject={vi.fn()} />);
+    type("the homepage is done, pay her");
+    fireEvent.click(screen.getByText("Ask"));
+    const preview = await screen.findByLabelText("Payment confirmation details");
+    expect(preview).toHaveTextContent("Accepts milestone #1 “Homepage”. This cannot be undone.");
+    expect(preview).toHaveTextContent(
+      "After it, 1 more milestone (0.007 test ETH) stays in escrow until approved.",
+    );
+    // The assistant's own sentence would repeat the preview, so it is not shown as well.
+    expect(screen.queryByText("Accept milestone #1. No transaction has been sent.")).toBeNull();
   });
   it("offers no confirm button for a query, a question or a refusal", async () => {
     const plan = vi.spyOn(api, "planOperation");
@@ -110,5 +157,145 @@ describe("plain-language operations", () => {
     );
     type("deposit");
     expect((screen.getByText("Ask") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("payment buttons", () => {
+  it("previews a deposit beside its button and sends only after a second, single confirmation", async () => {
+    let planned!: (value: OperationPlan) => void;
+    let completed!: (value: Awaited<ReturnType<typeof api.confirmOperation>>) => void;
+    const known = vi.spyOn(api, "planKnownOperation").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          planned = resolve;
+        }),
+    );
+    const natural = vi.spyOn(api, "planOperation");
+    const confirm = vi.spyOn(api, "confirmOperation").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          completed = resolve;
+        }),
+    );
+    const onProject = vi.fn();
+    render(
+      <OperationAssistant
+        project={{ ...schedule, funded: false, escrowBalanceWei: "0" }}
+        disabled={false}
+        onProject={onProject}
+        quickActions
+      />,
+    );
+    const deposit = screen.getByRole("button", { name: "Deposit 0.01 test ETH" });
+    fireEvent.click(deposit);
+    fireEvent.click(deposit);
+    expect(known).toHaveBeenCalledTimes(1);
+    expect(known).toHaveBeenCalledWith("p1", { action: "deposit" });
+    expect(confirm).not.toHaveBeenCalled();
+    planned(buttonPlan("deposit"));
+    const approve = await screen.findByRole("button", { name: "Confirm deposit" });
+    const preview = screen.getByLabelText("Payment confirmation details");
+    expect(preview).toHaveTextContent("0.01 test ETH");
+    expect(preview).toHaveTextContent(
+      `${schedule.contractAddress!.slice(0, 6)}…${schedule.contractAddress!.slice(-4)}`,
+    );
+    expect(preview).toHaveTextContent("stays in escrow until the client approves each payment");
+    expect(preview).toHaveTextContent("This cannot be undone.");
+    expect(
+      preview.compareDocumentPosition(screen.getByLabelText("Your request")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByText("Review a deposit")).toBeNull();
+    fireEvent.click(approve);
+    fireEvent.click(approve);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith("p1", "plan-1");
+    completed({
+      project: schedule,
+      report: { outcome: "confirmed", summary: "Deposit confirmed." },
+    });
+    await screen.findByText("Deposit confirmed.");
+    expect(onProject).toHaveBeenCalledWith(schedule);
+    expect(natural).not.toHaveBeenCalled();
+  });
+
+  it("accepts the first unpaid milestone, updates its receipt state and offers only the next payment", async () => {
+    const known = vi
+      .spyOn(api, "planKnownOperation")
+      .mockResolvedValue(buttonPlan("acceptMilestone"));
+    const natural = vi.spyOn(api, "planOperation");
+    const paid = {
+      ...schedule,
+      escrowBalanceWei: "7000000000000000",
+      milestones: schedule.milestones.map((m) => ({ ...m, paid: m.id === 1 })),
+    };
+    const confirm = vi.spyOn(api, "confirmOperation").mockResolvedValue({
+      project: paid,
+      report: { outcome: "confirmed", summary: "Homepage payment confirmed." },
+    });
+    render(<PaymentPanel initial={schedule} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Accept milestone 1 and pay 0.003 test ETH" }),
+    );
+    const approve = await screen.findByRole("button", { name: "Confirm acceptance and payment" });
+    expect(screen.getByLabelText("Payment confirmation details")).toHaveTextContent(
+      `${schedule.developerWallet.slice(0, 6)}…${schedule.developerWallet.slice(-4)}`,
+    );
+    expect(screen.getByLabelText("Payment confirmation details")).toHaveTextContent(
+      "Accepts milestone #1 “Homepage”. This cannot be undone.",
+    );
+    expect(confirm).not.toHaveBeenCalled();
+    fireEvent.click(approve);
+    await screen.findByRole("button", { name: "Accept milestone 2 and pay 0.007 test ETH" });
+    expect(screen.queryByRole("button", { name: /Accept milestone 1/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
+    expect(known).toHaveBeenCalledWith("p1", { action: "acceptMilestone", milestoneId: 1 });
+    expect(known).toHaveBeenCalledTimes(1);
+    expect(natural).not.toHaveBeenCalled();
+  });
+
+  it("refreshes state after a lost confirmation response instead of resending a deposit", async () => {
+    const known = vi.spyOn(api, "planKnownOperation").mockResolvedValue(buttonPlan("deposit"));
+    const confirm = vi
+      .spyOn(api, "confirmOperation")
+      .mockRejectedValue(new Error("Connection lost after submission"));
+    const refresh = vi.spyOn(api, "getProjectSnapshot").mockResolvedValue(schedule);
+    render(<PaymentPanel initial={{ ...schedule, funded: false, escrowBalanceWei: "0" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Deposit 0.01 test ETH" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm deposit" }));
+    await screen.findByRole("button", { name: "Accept milestone 1 and pay 0.003 test ETH" });
+    expect(screen.queryByRole("button", { name: "Deposit 0.01 test ETH" })).toBeNull();
+    expect(screen.getByText("Connection lost after submission")).toHaveClass("text-destructive");
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(known).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledWith("p1");
+  });
+
+  it("does not offer another payment after completion or submit while disabled", () => {
+    const known = vi.spyOn(api, "planKnownOperation");
+    const first = render(
+      <PaymentPanel
+        initial={{
+          ...schedule,
+          milestones: schedule.milestones.map((m) => ({ ...m, paid: true })),
+        }}
+      />,
+    );
+    expect(screen.getByText("All milestones paid.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Accept milestone/ })).toBeNull();
+    first.unmount();
+    render(
+      <OperationAssistant
+        project={schedule}
+        disabled
+        onProject={vi.fn()}
+        quickActions
+        naturalLanguageEnabled={false}
+      />,
+    );
+    const pay = screen.getByRole("button", { name: /Accept milestone 1/ });
+    expect(pay).toBeDisabled();
+    fireEvent.click(pay);
+    expect(known).not.toHaveBeenCalled();
   });
 });
