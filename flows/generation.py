@@ -33,6 +33,7 @@ class State(TypedDict, total=False):
     history: list
     modelCalls: list
     stopReason: str | None
+    retry: bool
 
 
 def envelope(request, result):
@@ -116,7 +117,15 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
             status = 'failed' if output['error'] else None
         call.update(metadata=output['metadata'], error=output['error'], source=output['source'])
         record({'kind': 'modelCall', **call})
-        updates = {'modelOutput': output, 'modelCalls': state['modelCalls'] + [call]}
+        calls = state['modelCalls'] + [call]
+        updates = {'modelOutput': output, 'modelCalls': calls, 'retry': False}
+        # An answer cut off by the output budget left no source to check or repair. Ask again with the
+        # same prompt while the run's call budget lasts: never more than maxRepairs + 1 calls in all.
+        config = state['request']['payload']['runConfig']
+        if (status == 'failed' and str(output['error']).startswith('MODEL_INCOMPLETE')
+                and config['feedbackSetting'] not in ('A', 'baseline') and len(calls) < config['maxRepairs'] + 1):
+            updates['retry'] = True
+            return updates
         if status:
             result = copy.deepcopy(state['result'])
             result['status'] = status
@@ -183,7 +192,7 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
             reason = 'passed' if result['status'] == 'validated' else 'smoke_complete'
         elif config['feedbackSetting'] in ('A', 'baseline') or config['maxRepairs'] == 0:
             reason = 'no_repairs'
-        elif len(result['attempts']) >= config['maxRepairs'] + 1:
+        elif len(result['attempts']) >= config['maxRepairs'] + 1 or len(state['modelCalls']) >= config['maxRepairs'] + 1:
             reason = 'repair_budget_exhausted'
         else:
             feedback = allowed_feedback(result['validationReport'], config['feedbackSetting'])
@@ -203,7 +212,8 @@ def build_graph(model_call=call_model, compiler=compile_bundle, validator=truste
         graph.add_node(name, fn)
     graph.add_edge(START, 'check_input')
     graph.add_conditional_edges('check_input', lambda s: 'check_source' if initial_bundle is not None else 'generate_source')
-    graph.add_conditional_edges('generate_source', lambda s: END if s['error'] else 'package_source')
+    graph.add_conditional_edges('generate_source', lambda s: 'generate_source' if s.get('retry')
+                                else END if s['error'] else 'package_source')
     graph.add_edge('package_source', 'check_source')
     graph.add_edge('check_source', 'decide')
     graph.add_conditional_edges('decide', lambda s: END if s['stopReason'] else 'prepare_repair')

@@ -14,10 +14,10 @@ function defaultTimeout(request) {
   const config = request.payload?.runConfig;
   if (request.operation !== 'generate' || config?.validationMode !== 'development') return 210000;
   const repairs = Number.isInteger(config.maxRepairs) ? Math.min(5, Math.max(0, config.maxRepairs)) : 0;
-  // Each attempt is one model call (at most 150 s, plus quick resends when the provider turns a
-  // request away) and one validation, about 10 s; recorded runs took under 90 s in all. Five
+  // Each attempt is one model call (at most 300 s, plus quick resends when the provider turns a
+  // request away) and one validation, about 10 s; recorded runs took under 90 s in all. Seven
   // minutes per attempt keeps a stuck worker from holding the page for an hour.
-  return 60000 + 300000 * (1 + repairs);
+  return 60000 + 420000 * (1 + repairs);
 }
 
 const PROGRESS_PREFIX = 'ACCORD_PROGRESS ';

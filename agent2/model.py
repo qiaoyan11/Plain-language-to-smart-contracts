@@ -58,8 +58,9 @@ def model_allowed(model):
 
 
 # Reasoning tokens count against this budget. Contracts with several milestones used up to ~8.9k
-# tokens in one call, so 8192 cut realistic agreements off before any source was returned.
-MAX_OUTPUT_TOKENS = 16384
+# tokens in one call, so 8192 cut realistic agreements off before any source was returned; a v2
+# review-period contract then used 14.9k reasoning tokens and was cut off at 16384.
+MAX_OUTPUT_TOKENS = 32768
 # Statuses that mean the request was not served; seconds to wait before each new request.
 RETRY_STATUS = {429, 500, 502, 503, 504}
 RETRY_DELAYS = (2, 6)
@@ -103,7 +104,7 @@ def call_model(system, user, model):
     start = time.monotonic()
     requests = 0
     try:
-        with httpx.Client(timeout=httpx.Timeout(150, connect=15), follow_redirects=False,
+        with httpx.Client(timeout=httpx.Timeout(300, connect=15), follow_redirects=False,
                           trust_env=not (server and server['loopback'])) as client:
             for default_delay in (*RETRY_DELAYS, None):
                 requests += 1

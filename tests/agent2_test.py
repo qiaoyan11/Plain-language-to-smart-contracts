@@ -299,6 +299,30 @@ class RepairTests(unittest.TestCase):
         self.assertEqual(run['metadata']['usage']['output_tokens'],8212)
         self.assertEqual(run['stopReason'],'model_error')
 
+    def test_an_answer_cut_off_by_the_output_budget_is_asked_again_within_the_call_budget(self):
+        cut = {'source': None, 'metadata': {'usage': {'output_tokens': 16384}, 'apiCalls': 1}, 'error': 'MODEL_INCOMPLETE'}
+        calls = []
+        def model(*args):
+            calls.append(args)
+            return cut if len(calls) == 1 else reply(GOOD_SOURCE)
+        run = run_generation(development_request('C', 1), model_call=model, validator=lambda spec, b: fake_report(b))
+        self.assertEqual(run['response']['result']['status'], 'validated')
+        self.assertEqual((len(run['modelCalls']), len(run['response']['result']['attempts'])), (2, 1))
+        self.assertEqual(calls[0], calls[1])
+        # The budget caps model calls: a cut-off answer uses a repair, and nothing is retried in A.
+        calls.clear()
+        run = run_generation(development_request('C', 1), model_call=lambda *a: calls.append(a) or cut,
+                             validator=lambda spec, b: self.fail('nothing to validate'))
+        self.assertEqual((len(calls), run['stopReason']), (2, 'model_error'))
+        calls.clear()
+        run_generation(development_request('A', 0), model_call=lambda *a: calls.append(a) or cut)
+        self.assertEqual(len(calls), 1)
+        calls.clear()
+        model_calls = iter([cut, reply(GOOD_SOURCE)])
+        run = run_generation(development_request('C', 1), model_call=lambda *a: next(model_calls),
+                             validator=lambda spec, b: fake_report(b, ('staticAnalysis',)))
+        self.assertEqual((len(run['modelCalls']), run['stopReason']), (2, 'repair_budget_exhausted'))
+
     def test_real_validator_checks_injected_source_and_returns_its_artifact(self):
         run=run_generation(development_request('A',0),model_call=lambda *args:reply(GOOD_SOURCE))
         result=run['response']['result']
