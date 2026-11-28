@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { api } from "@/api/client";
 import { FileText } from "lucide-react";
 
 const FLOW = ["Describe", "Confirm", "Set up contract", "Fund & pay"] as const;
@@ -79,6 +80,7 @@ export function Shell({
           Accord runs on a test network: amounts are test ETH and no real money moves. Contracts are
           written by AI and checked automatically; they have not had a professional security audit.
         </p>
+        <SignOut />
       </footer>
     </div>
   );
@@ -109,5 +111,28 @@ export function Row({
         {value}
       </span>
     </div>
+  );
+}
+
+/** Shown only on a hosted site, where an access key opened this browser session. */
+function SignOut() {
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    let current = true;
+    api
+      .getSession()
+      .then((session) => current && setSignedIn(session.signedIn))
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, []);
+  if (!signedIn) return null;
+  return (
+    <form method="post" action="/access/sign-out">
+      <button type="submit" className="underline underline-offset-4">
+        Sign out of this browser
+      </button>
+    </form>
   );
 }

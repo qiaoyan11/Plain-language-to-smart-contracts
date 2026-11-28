@@ -193,7 +193,7 @@ export function ProjectLink() {
       </Button>
       <p className="mt-2 text-xs text-muted-foreground" aria-live="polite">
         {state === "copied"
-          ? "Link copied. Anyone with access to Accord can open this project with it."
+          ? "Link copied. Open it later to return to this project."
           : state === "failed"
             ? "This browser blocked copying. Copy the link below instead."
             : ""}

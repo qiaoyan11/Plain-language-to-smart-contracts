@@ -187,17 +187,18 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
   function exportState() {
     return Array.from(sessions, ([id, s]) => [id, { ...s, keys: [...s.keys] }]);
   }
-  function create(body) {
+  // owner: the access key's workspace on a hosted site (null when running locally).
+  function create(body, owner = null) {
     fields(body, []);
     const id = randomUUID(), now = new Date().toISOString();
-    const s = { id, revision: 0, createdAt: now, updatedAt: now, messages: [], turns: [], result: null,
+    const s = { id, owner, revision: 0, createdAt: now, updatedAt: now, messages: [], turns: [], result: null,
       busy: false, confirmedProjectId: null, pendingMessage: null, lastError: null, history: [], keys: new Map() };
     sessions.set(id, s);
     return snapshot(s);
   }
   function state(id) {
     const s = sessions.get(id);
-    if (!s) fail(404, 'Draft not found in this local workspace.');
+    if (!s) fail(404, 'Draft not found.');
     return s;
   }
   // Conditions flagged on an earlier turn that no longer block the draft: the user replaced them
@@ -214,7 +215,7 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
     return seen;
   }
   function snapshot(s) {
-    const { history, keys, ...visible } = s;
+    const { history, keys, owner, ...visible } = s;
     const settled = settledTerms(s);
     for (const term of s.result?.notEnforced ?? []) if (!settled.includes(term)) settled.push(term);
     return copy({ ...visible, settledTerms: settled });
@@ -299,9 +300,12 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
     return { id, discarded: true };
   }
   function get(id) { return snapshot(state(id)); }
-  // Unconfirmed conversations, newest first, so a closed tab does not lose a draft.
-  function list() {
+  function ownerOf(id) { return state(id).owner ?? null; }
+  // Unconfirmed conversations, newest first, so a closed tab does not lose a draft. On a hosted
+  // site only the caller's own workspace is listed.
+  function list(owner) {
     return [...sessions.values()]
+      .filter(s => owner === undefined || (s.owner ?? null) === owner)
       .filter(s => !s.confirmedProjectId && (s.messages.length || s.pendingMessage))
       .map(s => {
         const name = s.result?.draftSpec?.name;
@@ -311,6 +315,6 @@ function createDrafting({ runner = runPython, enabled = process.env.AGENT1_MODE 
       })
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
-  return { enabled, create, get, list, message, confirmationCandidate, markConfirmed, discard, exportState };
+  return { enabled, create, get, ownerOf, list, message, confirmationCandidate, markConfirmed, discard, exportState };
 }
 module.exports = { createDrafting };

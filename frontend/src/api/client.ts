@@ -371,6 +371,11 @@ export const api = {
     await request(`/drafts/${encodeURIComponent(id)}/discard`, {});
     if (api.getActiveDraftId() === id) api.setActiveDraftId(null);
   },
+  /** On a hosted site: who is signed in with an access key. A local run has no session (404). */
+  async getSession(): Promise<{ signedIn: boolean; label: string }> {
+    if (MOCK_MODE) throw new Error("No session in mock mode.");
+    return request("/session");
+  },
   async getLocalAccounts(): Promise<{ clientWallet: string; developerWallet: string }> {
     return request("/local-accounts");
   },

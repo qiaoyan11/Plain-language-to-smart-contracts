@@ -1,4 +1,5 @@
-// Local development only: auto-signs with disposable Hardhat accounts.
+// Auto-signs with disposable Hardhat test accounts. Locally it serves one user; on a hosted site
+// (hosted: true, behind backend/gateway.cjs) every draft and project belongs to one access key.
 const http = require('node:http');
 const path = require('node:path');
 const { randomUUID, createHash } = require('node:crypto');
@@ -46,7 +47,7 @@ async function createServer(options = {}) {
   } catch (error) { store?.close(); throw error; }
 }
 async function buildServer({ generation: generationOptions, operations: operationsOptions, drafting: draftingOptions,
-  savedGeneration, importLegacy = false }, store) {
+  savedGeneration, importLegacy = false, hosted = process.env.ACCORD_HOSTED === '1' }, store) {
   const saved = store?.saved;
   const chain = store ? await openLocalChain(saved?.chain ?? null) : null;
   const provider = chain?.provider ?? new BrowserProvider(hre.network.provider, undefined, { cacheTimeout: -1 });
@@ -164,9 +165,11 @@ async function buildServer({ generation: generationOptions, operations: operatio
     const next = Math.max(await latestTime() + 1, Math.floor(Date.now() / 1000) + clockOffset);
     await provider.send('evm_setNextBlockTimestamp', [next]);
   }
+  // A project as the browser sees it: the workspace it belongs to stays on the server.
+  const view = p => { const { owner, ...visible } = p; return { ...visible }; };
   const hasReview = p => Boolean(deployments.get(p.id)?.abi?.some(item => item.type === 'function' && item.name === 'claimMilestone'));
   async function snapshot(p) {
-    if (!p.contractAddress) return { ...p };
+    if (!p.contractAddress) return view(p);
     const contract = new Contract(p.contractAddress, deployments.get(p.id).abi, client);
     const blockTag = await provider.send('eth_blockNumber', []);
     const review = hasReview(p);
@@ -176,7 +179,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
       ...(review ? { deliveredAt: Number(await contract.deliveredAt(m.id, { blockTag })),
         changeRequests: Number(await contract.changeRequests(m.id, { blockTag })) } : {})
     })));
-    return { ...p, milestones,
+    return { ...view(p), milestones,
       clientWallet: await contract.client({ blockTag }), developerWallet: await contract.provider({ blockTag }),
       totalAmountWei: (await contract.totalAmount({ blockTag })).toString(),
       funded: await contract.funded({ blockTag }),
@@ -248,14 +251,27 @@ async function buildServer({ generation: generationOptions, operations: operatio
       if (!hostnames.has(new URL(`http://${req.headers.host}`).hostname)) fail(403, 'Local host required');
       if (req.headers.origin && !hostnames.has(new URL(req.headers.origin).hostname)) fail(403, 'Local origin required');
       const path = new URL(req.url, 'http://localhost').pathname;
+      // The gateway names the caller's workspace; it removes any such header sent by a browser.
+      const owner = hosted ? req.headers['x-accord-owner'] : null;
+      if (hosted && (typeof owner !== 'string' || !/^[0-9a-f]{32}$/.test(owner))) fail(401, 'Enter your access key to continue.');
+      const findProject = id => {
+        const p = projects.get(id);
+        if (!p || (hosted && p.owner !== owner)) fail(404, 'Project not found.');
+        return p;
+      };
+      const ownDraft = id => {
+        if (hosted && drafting.ownerOf(id) !== owner) fail(404, 'Draft not found.');
+        return id;
+      };
       if (req.method === 'GET' && path === '/api/local-accounts') return send(200, { ...accounts, chainId: CHAIN_ID, mode: 'local-chain' });
       if (req.method === 'GET' && path === '/api/drafts/context')
         return send(200, { clarificationEnabled: drafting.enabled, mode: 'local-chain', ...accounts });
-      if (req.method === 'GET' && path === '/api/drafts') return send(200, { drafts: drafting.list() });
-      if (req.method === 'POST' && path === '/api/drafts') return send(201, drafting.create(await body(req)));
+      if (req.method === 'GET' && path === '/api/drafts') return send(200, { drafts: drafting.list(hosted ? owner : undefined) });
+      if (req.method === 'POST' && path === '/api/drafts') return send(201, drafting.create(await body(req), owner));
       const dr = path.match(/^\/api\/drafts\/([^/]+)(?:\/(messages|confirmation|discard))?$/);
       if (dr) {
-        const [, id, resource] = dr;
+        const [, , resource] = dr;
+        const id = ownDraft(dr[1]);
         if (req.method === 'GET' && !resource) return send(200, drafting.get(id));
         if (req.method === 'POST' && resource === 'discard') return send(200, drafting.discard(id, await body(req)));
         if (req.method === 'POST' && resource === 'messages') return send(200, await drafting.message(id, await body(req, 100000)));
@@ -266,29 +282,28 @@ async function buildServer({ generation: generationOptions, operations: operatio
             return send(200, { project: await snapshot(p), agreement: agreement(p) });
           }
           const terms = readTerms(candidate.spec);
-          const p = newProject(terms);
+          const p = { ...newProject(terms), ...(hosted ? { owner } : {}) };
           const context = generation.confirm(p, { specVersion: 1, approved: true });
           projects.set(p.id, p);
           draftOrigins.set(p.id, { draftId: id, revision: drafting.get(id).revision });
           drafting.markConfirmed(id, p.id);
-          return send(201, { project: p, agreement: agreement(p, context) });
+          return send(201, { project: view(p), agreement: agreement(p, context) });
         }
         fail(405, 'Method not allowed');
       }
       if (req.method === 'GET' && path === '/api/projects') {
-        const list = await Promise.all([...projects.values()].map(summary));
+        const list = await Promise.all([...projects.values()].filter(p => !hosted || p.owner === owner).map(summary));
         return send(200, { projects: list.sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
       }
       if (req.method === 'POST' && path === '/api/projects') {
         const b = await body(req);
         const terms = readTerms(b);
-        const p = newProject(terms);
-        projects.set(p.id, p); return send(201, p);
+        const p = { ...newProject(terms), ...(hosted ? { owner } : {}) };
+        projects.set(p.id, p); return send(201, view(p));
       }
       const ai = path.match(/^\/api\/projects\/([^/]+)\/(agreement|confirmation|terms|generation-runs)(?:\/([^/]+))?(\/deployment)?$/);
       if (ai) {
-        const p = projects.get(ai[1]);
-        if (!p) fail(404, 'Project not found in this local workspace.');
+        const p = findProject(ai[1]);
         const [, , resource, runId, deploymentRoute] = ai;
         if (deploymentRoute) {
           if (resource !== 'generation-runs' || !runId) fail(404, 'Endpoint not found');
@@ -328,8 +343,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
       // Local demo only: move chain time forward so a review period can end during a demo.
       const clock = path.match(/^\/api\/projects\/([^/]+)\/clock$/);
       if (clock) {
-        const p = projects.get(clock[1]);
-        if (!p) fail(404, 'Project not found in this local workspace.');
+        const p = findProject(clock[1]);
         if (req.method !== 'POST') fail(405, 'Method not allowed');
         const b = await body(req);
         fields(b, ['advanceSeconds']);
@@ -341,8 +355,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
       }
       const known = path.match(/^\/api\/projects\/([^/]+)\/action-plans$/);
       if (known) {
-        const p = projects.get(known[1]);
-        if (!p) fail(404, 'Project not found in this local workspace.');
+        const p = findProject(known[1]);
         if (req.method !== 'POST') fail(405, 'Method not allowed');
         if (!p.contractAddress) fail(409, 'Deploy the contract first');
         if (busy) fail(409, 'Another transaction is in progress; retry after it completes');
@@ -350,8 +363,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
       }
       const op = path.match(/^\/api\/projects\/([^/]+)\/plans(?:\/([^/]+)\/confirmation)?$/);
       if (op) {
-        const p = projects.get(op[1]);
-        if (!p) fail(404, 'Project not found in this local workspace.');
+        const p = findProject(op[1]);
         if (req.method !== 'POST') fail(405, 'Method not allowed');
         const b = await body(req);
         if (!p.contractAddress) fail(409, 'Deploy the contract first');
@@ -378,8 +390,7 @@ async function buildServer({ generation: generationOptions, operations: operatio
       }
       const m = path.match(/^\/api\/projects\/([^/]+)(?:\/actions)?$/);
       if (!m) fail(404, 'Endpoint not found');
-      const p = projects.get(m[1]);
-      if (!p) fail(404, 'Project not found in this local workspace.');
+      const p = findProject(m[1]);
       if (req.method === 'GET' && !path.endsWith('/actions')) return send(200, await snapshot(p));
       if (req.method !== 'POST' || !path.endsWith('/actions')) fail(405, 'Method not allowed');
       const { action, milestoneId } = await body(req);

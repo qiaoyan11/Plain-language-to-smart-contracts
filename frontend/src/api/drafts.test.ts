@@ -129,7 +129,7 @@ describe("server-owned drafting API", () => {
     [
       "restore",
       () => api.getDraft(session.id),
-      "Draft not found in this local workspace.",
+      "Draft not found.",
     ],
     [
       "send",

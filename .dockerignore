@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+!.env.example
+.venv
+**/node_modules
+**/__pycache__
+frontend/.output
+frontend/dist
+data/private
+artifacts
+cache
+checkpoints
+*.log
+*.pem
+*.key
+frontend/upload-check.local
