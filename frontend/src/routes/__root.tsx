@@ -8,7 +8,7 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 
 import appCss from "../styles.css?url";
 
@@ -108,8 +108,24 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Style samples only: ?theme=blue|midnight|vault previews a colour scheme for this tab. */
+function useStyleSample() {
+  useEffect(() => {
+    const themes = ["blue", "midnight", "vault"];
+    const asked = new URLSearchParams(window.location.search).get("theme");
+    if (asked !== null) {
+      if (themes.includes(asked)) sessionStorage.setItem("accord-style-sample", asked);
+      else sessionStorage.removeItem("accord-style-sample");
+    }
+    const theme = sessionStorage.getItem("accord-style-sample");
+    if (theme && themes.includes(theme)) document.documentElement.dataset["theme"] = theme;
+    else delete document.documentElement.dataset["theme"];
+  }, []);
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  useStyleSample();
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -220,3 +220,84 @@ input[type=checkbox] { accent-color: var(--primary); }
 .mock-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 16px; padding: 10px 18px; font-size: 11px; line-height: 1.6; background: var(--accent); }
 .mock-pill { font-weight: 700; }
 .mock-toggle { display: flex; align-items: center; gap: 6px; }
+
+/*
+ * Style samples (preview only, chosen with ?theme=blue|midnight|vault; the default above is unchanged).
+ * Each sample sets the same tokens, so every page follows it without component changes.
+ */
+html[data-theme] body { transition: background-color 0.2s; }
+html[data-theme="blue"] {
+  --radius: 0.875rem;
+  --background: oklch(0.985 0.004 255);
+  --foreground: oklch(0.22 0.03 262);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --primary: oklch(0.52 0.25 263);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.01 260);
+  --muted: oklch(0.965 0.008 260);
+  --muted-foreground: oklch(0.52 0.025 262);
+  --accent: oklch(0.95 0.035 262);
+  --accent-foreground: var(--foreground);
+  --border: oklch(0.91 0.012 260);
+  --input: var(--border);
+  --ring: var(--primary);
+  --success: oklch(0.58 0.16 155);
+}
+html[data-theme="midnight"] {
+  color-scheme: dark;
+  --radius: 1rem;
+  --background: oklch(0.16 0.035 285);
+  --foreground: oklch(0.95 0.012 285);
+  --card: oklch(0.21 0.04 285);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.24 0.045 285);
+  --primary: oklch(0.68 0.2 295);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.26 0.045 285);
+  --muted: oklch(0.25 0.04 285);
+  --muted-foreground: oklch(0.74 0.03 285);
+  --accent: oklch(0.28 0.07 290);
+  --accent-foreground: var(--foreground);
+  --border: oklch(1 0 0 / 0.11);
+  --input: oklch(1 0 0 / 0.16);
+  --ring: var(--primary);
+  --success: oklch(0.8 0.16 160);
+  --destructive: oklch(0.72 0.19 22);
+}
+html[data-theme="midnight"] body {
+  background: radial-gradient(1200px 500px at 50% -120px, oklch(0.32 0.12 290 / 0.55), transparent 70%), var(--background);
+}
+html[data-theme="midnight"] .btn-primary,
+html[data-theme="midnight"] .bg-primary { background-image: linear-gradient(135deg, oklch(0.6 0.24 300), oklch(0.58 0.2 265)); border-color: transparent; }
+html[data-theme="vault"] {
+  color-scheme: dark;
+  --radius: 0.75rem;
+  --background: oklch(0.15 0.006 165);
+  --foreground: oklch(0.95 0.004 165);
+  --card: oklch(0.195 0.008 165);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.22 0.01 165);
+  --primary: oklch(0.87 0.19 152);
+  --primary-foreground: oklch(0.17 0.03 160);
+  --secondary: oklch(0.24 0.01 165);
+  --muted: oklch(0.23 0.01 165);
+  --muted-foreground: oklch(0.72 0.012 165);
+  --accent: oklch(0.25 0.035 155);
+  --accent-foreground: var(--foreground);
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.15);
+  --ring: var(--primary);
+  --success: oklch(0.85 0.18 152);
+  --destructive: oklch(0.72 0.19 22);
+}
+html[data-theme] .panel, html[data-theme] .agreement-summary { border-radius: var(--radius); }
+html[data-theme] .btn { border-radius: 999px; padding: 10px 18px; font-weight: 600; }
+html[data-theme] .field, html[data-theme] .agreement-text { border-radius: calc(var(--radius) - 4px); }
+html[data-theme] .chat-user { border-radius: var(--radius); }
+html[data-theme="blue"] .panel, html[data-theme="blue"] .agreement-summary { box-shadow: 0 1px 2px oklch(0.22 0.03 262 / 0.05), 0 8px 24px oklch(0.22 0.03 262 / 0.05); }
+html[data-theme="midnight"] .panel, html[data-theme="midnight"] .agreement-summary,
+html[data-theme="vault"] .panel, html[data-theme="vault"] .agreement-summary { background: var(--card); }
+html[data-theme="midnight"] h1, html[data-theme="vault"] h1 { font-weight: 600; letter-spacing: -0.01em; }
+html[data-theme="vault"] .font-mono, html[data-theme="vault"] .network-badge { font-family: "JetBrains Mono", monospace; }
