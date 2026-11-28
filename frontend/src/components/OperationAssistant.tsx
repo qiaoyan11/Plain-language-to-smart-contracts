@@ -187,7 +187,7 @@ export function OperationAssistant({
                 ? "It stays in escrow until each payment is approved or claimed after its review. This cannot be undone."
                 : "It stays in escrow until the client approves each payment. This cannot be undone."
               : plan.intent?.action === "claimMilestone"
-                ? `Claims milestone #${plan.intent.milestoneId} “${plan.payment.milestoneTitle}”: its review ended with no change request. This cannot be undone.`
+                ? `Claims milestone #${plan.intent.milestoneId} “${plan.payment.milestoneTitle}”: its review ended without an answer from the client. This cannot be undone.`
                 : `Accepts milestone #${plan.intent?.milestoneId} “${plan.payment.milestoneTitle}”. This cannot be undone.`}
           </p>
           {plan.intent?.action !== "deposit" && later.length > 0 && (
@@ -195,7 +195,7 @@ export function OperationAssistant({
               {`After it, ${later.length} more milestone${later.length === 1 ? "" : "s"} (${amountText(
                 later.reduce((sum, m) => sum + BigInt(m.amountWei), 0n).toString(),
                 rate,
-              )}) ${later.length === 1 ? "stays" : "stay"} in escrow until approved.`}
+              )}) ${later.length === 1 ? "stays" : "stay"} in escrow until ${project.review ? "approved or claimed" : "approved"}.`}
             </p>
           )}
         </div>
@@ -250,6 +250,7 @@ export function OperationAssistant({
               amount={short(nextMilestone.amountWei)}
               period={durationText(reviewPeriod(project) ?? 0)}
               left={changesLeft(project, nextMilestone)}
+              requested={nextMilestone.changeRequests ?? 0}
               disabled={disabled || busy !== null || !project.contractAddress}
               skipping={busy === "clock"}
               onAction={known}
@@ -343,6 +344,7 @@ function ReviewActions({
   amount,
   period,
   left,
+  requested,
   disabled,
   skipping,
   onAction,
@@ -353,15 +355,20 @@ function ReviewActions({
   amount: string;
   period: string;
   left: number | null;
+  /** Change requests already made for this milestone. */
+  requested: number;
   disabled: boolean;
   skipping: boolean;
   onAction: (action: MilestoneAction) => void;
   onSkip: () => void;
 }) {
   const status = {
-    notDelivered: `Not delivered yet. Once the provider marks it delivered, the client has ${period} to approve it or ask for changes.`,
+    notDelivered: requested
+      ? `Changes requested. Once the provider delivers again, the client has ${period} to approve it or ask for changes.`
+      : `Not delivered yet. Once the provider marks it delivered, the client has ${period} to approve it or ask for changes.`,
     inReview: `Delivered. The client has ${stage.kind === "inReview" ? durationText(stage.remaining) : ""} left to approve it or ask for changes. With no answer by then, the provider can claim the payment.`,
-    reviewOver: "The review ended with no change request. The provider can now claim the payment.",
+    reviewOver:
+      "The review ended without an answer from the client. The provider can now claim the payment.",
   }[stage.kind];
   const button = (action: MilestoneAction, label: string, primary = false) => (
     <button

@@ -148,6 +148,16 @@ describe("review period (v2) payment actions", () => {
     ).toBeTruthy();
   });
 
+  it("says changes were requested while the provider works on a new delivery", () => {
+    render(<Panel initial={withFirst({ deliveredAt: 0, changeRequests: 1 })} />);
+    expect(screen.getByTestId("review-actions")).toHaveTextContent(
+      "Changes requested. Once the provider delivers again, the client has 10 days",
+    );
+    expect(
+      screen.getByText("Next: waiting for the provider to deliver · 1 change request so far"),
+    ).toBeTruthy();
+  });
+
   it("skips to the end of the review on the test chain, then lets the provider claim", async () => {
     const delivered = withFirst({ deliveredAt: NOW - 3 * DAY });
     const advance = vi
@@ -177,10 +187,10 @@ describe("review period (v2) payment actions", () => {
     fireEvent.click(claim);
     await screen.findByRole("button", { name: "Confirm claim and payment" });
     expect(screen.getByLabelText("Payment confirmation details")).toHaveTextContent(
-      "Claims milestone #1 “Logo”: its review ended with no change request. This cannot be undone.",
+      "Claims milestone #1 “Logo”: its review ended without an answer from the client. This cannot be undone.",
     );
     expect(screen.getByLabelText("Payment confirmation details")).toHaveTextContent(
-      "After it, 1 more milestone (0.007 test ETH) stays in escrow",
+      "After it, 1 more milestone (0.007 test ETH) stays in escrow until approved or claimed.",
     );
     fireEvent.click(screen.getByRole("button", { name: "Confirm claim and payment" }));
     await screen.findByText("Paid after the review period");
