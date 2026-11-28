@@ -99,6 +99,41 @@ class Agent2Tests(unittest.TestCase):
         self.assertNotIn('test-key',str(error.exception))
         self.assertNotIn('sensitive-provider',str(error.exception))
 
+    def call_with(self, replies):
+        calls, sleeps = [], []
+        def handler(request):
+            calls.append(request)
+            item = replies[min(len(calls), len(replies)) - 1]
+            if isinstance(item, Exception):
+                raise item
+            return item
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        with patch('agent2.model.load_dotenv'), patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}), \
+                patch('agent2.model.httpx.Client', return_value=client), patch('agent2.model.time.sleep', sleeps.append):
+            try:
+                return call_model('system', 'user', DEFAULT_MODEL), calls, sleeps
+            except ModelError as error:
+                return error, calls, sleeps
+
+    def test_requests_turned_away_before_generation_are_resent_and_counted(self):
+        result, calls, sleeps = self.call_with([
+            httpx.Response(503), httpx.Response(429, headers={'retry-after': '1'}, json={'error': {'code': 'rate_limit_exceeded'}}),
+            httpx.Response(200, json=response_body())])
+        self.assertEqual(result['source'], GOOD_SOURCE)
+        self.assertEqual((len(calls), sleeps, result['metadata']['apiCalls']), (3, [2, 1.0], 3))
+        result, calls, _ = self.call_with([httpx.ConnectError('down'), httpx.Response(200, json=response_body())])
+        self.assertEqual((result['source'], len(calls), result['metadata']['apiCalls']), (GOOD_SOURCE, 2, 2))
+
+    def test_exhausted_quota_timeouts_and_a_third_refusal_are_not_resent(self):
+        quota = httpx.Response(429, json={'error': {'code': 'insufficient_quota'}})
+        for replies, count, code in [([quota], 1, 'MODEL_HTTP_429'), ([httpx.Response(503)], 3, 'MODEL_HTTP_503'),
+                                     ([httpx.ReadTimeout('slow')], 1, 'MODEL_NETWORK')]:
+            with self.subTest(code=code):
+                error, calls, _ = self.call_with(replies)
+                self.assertIsInstance(error, ModelError)
+                self.assertIn(code, str(error))
+                self.assertEqual(len(calls), count)
+
     def test_responses_request_and_usage(self):
         def handler(request):
             data=json.loads(request.content)

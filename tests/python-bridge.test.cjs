@@ -139,8 +139,8 @@ test('live timeout accounts for validation and bounded repair rounds', () => {
     assert.equal(defaultTimeout({}), 10000);
     process.env.AGENT2_MODE = 'live';
     assert.equal(defaultTimeout({}), 210000);
-    assert.equal(defaultTimeout({operation:'generate',payload:{runConfig:{validationMode:'development',maxRepairs:1}}}), 1800000);
-    assert.equal(defaultTimeout({operation:'generate',payload:{runConfig:{validationMode:'development',maxRepairs:999}}}), 5400000);
+    assert.equal(defaultTimeout({operation:'generate',payload:{runConfig:{validationMode:'development',maxRepairs:1}}}), 660000);
+    assert.equal(defaultTimeout({operation:'generate',payload:{runConfig:{validationMode:'development',maxRepairs:999}}}), 1860000);
   } finally {
     if (previous === undefined) delete process.env.AGENT2_MODE;
     else process.env.AGENT2_MODE = previous;

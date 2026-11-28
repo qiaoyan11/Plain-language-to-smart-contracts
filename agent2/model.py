@@ -1,5 +1,10 @@
 """One bounded model call: the hosted Responses API, or an OpenAI-compatible server set by
-AGENT2_BASE_URL (for a locally served fine-tuned model). No SDK retries or model-chosen destinations."""
+AGENT2_BASE_URL (for a locally served fine-tuned model). No SDK retries or model-chosen destinations.
+
+A request the provider turned away before generating anything (rate limit, overload, gateway
+error, no connection) is sent again, at most twice, and every request is counted in apiCalls. A
+read timeout or an incomplete response is never resent: the model may already have produced and
+billed an answer, and one call must stay one generation attempt."""
 import json
 import os
 import time
@@ -20,7 +25,7 @@ class ModelError(RuntimeError):
 
 def read_output(data):
     if data.get('status') != 'completed':
-        raise ModelError('MODEL_INCOMPLETE: response did not finish; no automatic retry.')
+        raise ModelError('MODEL_INCOMPLETE: response did not finish (not resent).')
     parts = [part for item in data.get('output', []) if item.get('type') == 'message'
              for part in item.get('content', [])]
     if any(part.get('type') == 'refusal' for part in parts):
@@ -55,6 +60,25 @@ def model_allowed(model):
 # Reasoning tokens count against this budget. Contracts with several milestones used up to ~8.9k
 # tokens in one call, so 8192 cut realistic agreements off before any source was returned.
 MAX_OUTPUT_TOKENS = 16384
+# Statuses that mean the request was not served; seconds to wait before each new request.
+RETRY_STATUS = {429, 500, 502, 503, 504}
+RETRY_DELAYS = (2, 6)
+MAX_RETRY_AFTER = 20
+
+
+def retry_delay(response, default):
+    """Seconds to wait before resending, or None when resending cannot help (exhausted quota)."""
+    if response.status_code == 429:
+        try:
+            if b'insufficient_quota' in response.read():
+                return None
+        except httpx.HTTPError:
+            pass
+    try:
+        after = float(response.headers.get('retry-after', ''))
+    except ValueError:
+        return default
+    return min(max(after, 0), MAX_RETRY_AFTER)
 
 
 def call_model(system, user, model):
@@ -77,23 +101,40 @@ def call_model(system, user, model):
                                     'strict': True, 'schema': OUTPUT_SCHEMA}}}
     headers = {'Authorization': 'Bearer ' + key} if key else {}
     start = time.monotonic()
-    # No automatic retry: one invocation must mean one generation attempt.
+    requests = 0
     try:
         with httpx.Client(timeout=httpx.Timeout(150, connect=15), follow_redirects=False,
                           trust_env=not (server and server['loopback'])) as client:
-            with client.stream('POST', url, headers=headers, json=body) as response:
-                if response.status_code != 200:
-                    raise ModelError(f'MODEL_HTTP_{response.status_code}: check API credentials, quota, and model access; no automatic retry.')
-                chunks = bytearray()
-                for chunk in response.iter_bytes():
-                    chunks.extend(chunk)
-                    if len(chunks) > 1024 * 1024:
-                        raise ModelError('MODEL_SIZE: response exceeds 1 MiB.')
+            for default_delay in (*RETRY_DELAYS, None):
+                requests += 1
+                try:
+                    with client.stream('POST', url, headers=headers, json=body) as response:
+                        if response.status_code != 200:
+                            delay = (retry_delay(response, default_delay)
+                                     if response.status_code in RETRY_STATUS and default_delay is not None else None)
+                            if delay is None:
+                                raise ModelError(f'MODEL_HTTP_{response.status_code}: check API credentials, quota, '
+                                                 f'and model access ({requests} request{"s" if requests > 1 else ""}).')
+                            time.sleep(delay)
+                            continue
+                        chunks = bytearray()
+                        for chunk in response.iter_bytes():
+                            chunks.extend(chunk)
+                            if len(chunks) > 1024 * 1024:
+                                raise ModelError('MODEL_SIZE: response exceeds 1 MiB.')
+                except (httpx.ConnectError, httpx.ConnectTimeout):
+                    # Nothing reached the provider, so nothing was generated or billed.
+                    if default_delay is None:
+                        raise
+                    time.sleep(default_delay)
+                    continue
                 data = json.loads(chunks)
                 if server:
                     data = as_responses(data)
+                break
     except httpx.HTTPError:
-        raise ModelError('MODEL_NETWORK: request failed or timed out; no automatic retry.') from None
+        raise ModelError(f'MODEL_NETWORK: request failed or timed out ({requests} request'
+                         f'{"s" if requests > 1 else ""}).') from None
     except (ValueError, TypeError):
         raise ModelError('MODEL_FORMAT: provider returned invalid JSON.') from None
     # Explicit allowlist: never persist HTTP headers or credentials.
@@ -101,7 +142,7 @@ def call_model(system, user, model):
                 'requestedModel': model, 'returnedModel': data.get('model'),
                 'responseId': data.get('id'), 'usage': data.get('usage'),
                 'elapsedSeconds': round(time.monotonic() - start, 3),
-                'reasoningEffort': None if server else 'medium', 'maxOutputTokens': MAX_OUTPUT_TOKENS, 'apiCalls': 1}
+                'reasoningEffort': None if server else 'medium', 'maxOutputTokens': MAX_OUTPUT_TOKENS, 'apiCalls': requests}
     try:
         source = read_output(data)
     except ModelError as error:

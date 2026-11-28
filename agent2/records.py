@@ -72,7 +72,9 @@ def run_and_save(request, *, initial_bundle=None, resumed_from=None, on_progress
     if result['sourceBundle']:
         bundle = result['sourceBundle']
         (directory / 'GeneratedMilestoneEscrow.sol').write_text(bundle['sources'][bundle['entryFile']])
-        (directory / 'IMilestoneEscrow.sol').write_text(bundle['sources']['IMilestoneEscrow.sol'])
+        for name in ('IMilestoneEscrow.sol', 'IMilestoneReviewEscrow.sol'):
+            if name in bundle['sources']:
+                (directory / name).write_text(bundle['sources'][name])
     summary = {'runDirectory': str(directory), 'status': result['status'],
                'compilation': (run['compilation'] or {}).get('status'), 'error': run['error'],
                'model': run['metadata'].get('returnedModel'), 'usage': run['metadata']['usage'],

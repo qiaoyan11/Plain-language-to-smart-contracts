@@ -1,6 +1,7 @@
 """OpenAI-compatible chat transport. Configure the endpoint on the server."""
 import json
 import os
+import time
 from urllib.parse import urlsplit
 
 import httpx
@@ -30,7 +31,21 @@ def extract(instructions, payload):
         'response_format': {'type': 'json_object'}}
     headers = {'Authorization': f'Bearer {key}'} if key else {}
     with httpx.Client(timeout=45, follow_redirects=False, trust_env=not local) as client:
-        response = client.post(endpoint + '/chat/completions', headers=headers, json=body)
+        # One quick resend when the provider turns the request away before answering (rate limit,
+        # overload, no connection); a slow answer is never resent.
+        for last in (False, True):
+            try:
+                response = client.post(endpoint + '/chat/completions', headers=headers, json=body)
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                if last:
+                    raise
+                time.sleep(2)
+                continue
+            if response.status_code in (429, 500, 502, 503, 504) and not last \
+                    and b'insufficient_quota' not in response.content:
+                time.sleep(2)
+                continue
+            break
         if response.status_code != 200:
             raise RuntimeError(f'Agent 1 model returned HTTP {response.status_code}')
         choice = response.json()['choices'][0]

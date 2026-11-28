@@ -4,6 +4,6 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const local = path.join(root, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 const python = process.env.PYTHON_BIN || (fs.existsSync(local) ? local : 'python3');
-const result = spawnSync(python, ['-m', 'unittest', 'agent1.test_service', 'agent1.test_currency', 'agent1.test_review', '-v'], { cwd: root, stdio: 'inherit' });
+const result = spawnSync(python, ['-m', 'unittest', 'agent1.test_service', 'agent1.test_currency', 'agent1.test_review', 'agent1.test_model', '-v'], { cwd: root, stdio: 'inherit' });
 if (result.error) console.error(result.error.message);
 process.exit(result.status ?? 1);
