@@ -83,6 +83,15 @@ interface IMilestoneEscrow {
 
 ## 日志（最新在上）
 
+### 2026-11-28 · Jiahao Zhang · 按上线标准整理，准备线上部署
+
+- 评估见 [LAUNCH_READINESS.md](LAUNCH_READINESS.md)：主流程可以上线给受邀的人用；必须补的五项已补（访问控制、按密钥分隔数据、每日调用上限、对外访问、容器重启卡锁）。
+- 去掉页面上的 local demo 横幅、页脚说明和开发者入口，右上角改为“Test network”标识，页脚一句话说明测试网和未审计。
+- 线上模式：`backend/gateway.cjs` 访问密钥封面和登录 Cookie，每个密钥一个工作区，模型调用每天有上限；`scripts/serve.cjs`、`Dockerfile`、`railway.json`；部署步骤见 [DEPLOY.md](DEPLOY.md)，推荐 Railway（预计每月 $5–10，用两个月）。
+- 网页风格：做了三种 web3 风格样稿（Electric Blue、Midnight、Vault）放在设计画布里，本地也可以用 `?theme=` 在真实页面上粗看；等老板选定后再正式改。
+- 测试：HTTP 67（新增线上模式 7 项），合约 26，v2 全套，前端 122，tsc 通过。
+- 需要老板决定：网页风格选哪一个；部署平台是否用 Railway。
+
 ### 2026-11-27 · Jiahao Zhang · 验收期（v2）上线，Agent 2 小修
 
 - 合约与验证：新接口 IMilestoneReviewEscrow（服务方标记交付 → 客户在验收期内批准或要求修改 → 到期无回应服务方领取），手写参考合约，12 条条款测试和故意写错的合约全部被抓到；v1 验证不改，v2 测试在 `tests/v2/`。
