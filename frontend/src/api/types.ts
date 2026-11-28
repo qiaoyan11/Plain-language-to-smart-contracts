@@ -24,8 +24,17 @@ export interface Project extends Omit<ProjectDraft, "milestones"> {
     MilestoneDraft & {
       id: number;
       paid: boolean;
+      /** v2 only: chain time of the current delivery, 0 when not delivered. */
+      deliveredAt?: number;
+      /** v2 only: change requests made for this milestone so far. */
+      changeRequests?: number;
     }
   >;
+  /** v2 agreed terms, present before deployment too. */
+  reviewPeriodSeconds?: number;
+  changeRequestLimit?: number;
+  /** v2 only, read from the deployed contract. */
+  review?: ReviewState;
   transactions: Array<{
     action: string;
     milestoneId?: number;
@@ -37,6 +46,17 @@ export interface Project extends Omit<ProjectDraft, "milestones"> {
 
 export type ProjectAction =
   { action: "deploy" } | { action: "deposit" } | { action: "acceptMilestone"; milestoneId: number };
+
+/** v2 review rules as the deployed contract reports them, with the chain time of the snapshot. */
+export interface ReviewState {
+  periodSeconds: number;
+  changeRequestLimit: number;
+  chainTime: number;
+}
+export type MilestoneAction =
+  "acceptMilestone" | "submitDelivery" | "requestChanges" | "claimMilestone";
+/** Operations the payment buttons can prepare; amounts and recipients always come from the backend. */
+export type KnownAction = { action: "deposit" } | { action: MilestoneAction; milestoneId: number };
 
 export interface ConfirmedSpec {
   schemaVersion: 1;
@@ -54,6 +74,10 @@ export interface ConfirmedSpec {
   approvalRole: "client";
   refundPolicy: "none";
   deadline: null;
+  /** v2: seconds the client has to review each delivery; absent or null means approval only. */
+  reviewPeriodSeconds?: number | null;
+  /** v2: change requests allowed per milestone during review; 0 means no limit. */
+  changeRequestLimit?: number;
 }
 
 export type DraftSpec = Omit<
@@ -230,7 +254,7 @@ export interface PlanResult {
     projectId: string;
     chainId: number;
     contractAddress: string;
-    action: "query" | "deposit" | "acceptMilestone";
+    action: "query" | "deposit" | MilestoneAction;
     milestoneId: number | null;
   } | null;
   summary: string;

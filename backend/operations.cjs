@@ -72,12 +72,15 @@ function createOperations({ runner = runPython, enabled = process.env.AGENT3_MOD
     recheck(p, { intent }, deployment.chainId, snapshot);
     const payment = paymentDetails(intent, snapshot);
     const title = snapshot.milestones.find(m => m.id === intent.milestoneId)?.title;
-    const days = Math.round((snapshot.review?.periodSeconds ?? 0) / 86400 * 10) / 10;
+    const period = snapshot.review?.periodSeconds ?? 0;
+    const unit = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+    const days = period >= 86400 ? unit(Math.round(period / 86400 * 10) / 10, 'day')
+      : period >= 3600 ? unit(Math.round(period / 3600 * 10) / 10, 'hour') : unit(Math.round(period / 60), 'minute');
     const summary = {
       deposit: () => `Review a deposit of ${formatEther(payment.amountWei)} test ETH into escrow.`,
       acceptMilestone: () => `Confirm acceptance of milestone #${intent.milestoneId} "${title}" and payment of ${formatEther(payment.amountWei)} test ETH.`,
       claimMilestone: () => `Claim milestone #${intent.milestoneId} "${title}": its review period ended without a change request, so ${formatEther(payment.amountWei)} test ETH goes to the provider.`,
-      submitDelivery: () => `Mark milestone #${intent.milestoneId} "${title}" as delivered. The client then has ${days} days to approve it or ask for changes; after that the provider can claim the payment.`,
+      submitDelivery: () => `Mark milestone #${intent.milestoneId} "${title}" as delivered. The client then has ${days} to approve it or ask for changes; after that the provider can claim the payment.`,
       requestChanges: () => `Ask for changes to milestone #${intent.milestoneId} "${title}". The delivery is withdrawn and the review starts again when the provider delivers again.`,
     }[intent.action]() + ' No transaction has been sent.';
     return savePlan(p, { status: 'readyForConfirmation', question: null, summary, intent }, snapshot);

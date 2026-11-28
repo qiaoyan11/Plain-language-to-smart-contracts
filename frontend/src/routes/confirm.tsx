@@ -83,6 +83,7 @@ export function ConfirmPage() {
               />
               <ScopeAcknowledgement
                 notEnforced={Boolean(session.settledTerms?.length)}
+                review={Boolean(ready && session.result?.draftSpec?.reviewPeriodSeconds)}
                 checked={ackRevision === session.revision}
                 onChange={(checked) => setAckRevision(checked ? session.revision : null)}
               />

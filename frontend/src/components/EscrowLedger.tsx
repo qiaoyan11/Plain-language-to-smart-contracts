@@ -4,6 +4,7 @@ import { formatWei, type Project } from "@/api/client";
 import type { ExchangeRate } from "@/api/types";
 import { amountText } from "@/lib/money";
 import { shortAddress } from "@/lib/address";
+import { durationText, reviewStage, useChainNow } from "@/lib/review";
 
 const UNIT = "test ETH";
 type Transaction = Project["transactions"][number];
@@ -22,6 +23,9 @@ function transactionLabel(tx: Transaction) {
   if (tx.action === "deploy") return "Contract deployed";
   if (tx.action === "deposit") return "Deposit";
   if (tx.action === "acceptMilestone") return `Milestone ${tx.milestoneId} paid`;
+  if (tx.action === "submitDelivery") return `Milestone ${tx.milestoneId} delivered`;
+  if (tx.action === "requestChanges") return `Changes requested for milestone ${tx.milestoneId}`;
+  if (tx.action === "claimMilestone") return `Milestone ${tx.milestoneId} claimed after review`;
   return tx.action;
 }
 
@@ -33,14 +37,24 @@ function Receipt({ tx }: { tx: Transaction }) {
   );
 }
 
-function milestoneStatus(project: Project, milestone: Project["milestones"][number]) {
-  if (milestone.paid) return "Paid";
+function milestoneStatus(project: Project, milestone: Project["milestones"][number], now: number) {
+  if (milestone.paid)
+    return receiptFor(project, "claimMilestone", milestone.id)
+      ? "Paid after the review period"
+      : "Paid";
   if (!project.contractAddress) return "Not deployed yet";
   if (!project.funded) return "Waiting for the deposit";
   const next = project.milestones.find((m) => !m.paid);
-  return next?.id === milestone.id
-    ? "Next: waiting for the client's approval"
-    : `Waiting for milestone ${milestone.id - 1}`;
+  if (next?.id !== milestone.id) return `Waiting for milestone ${milestone.id - 1}`;
+  const stage = reviewStage(project, milestone, now);
+  const changes = milestone.changeRequests
+    ? ` · ${milestone.changeRequests} change request${milestone.changeRequests === 1 ? "" : "s"} so far`
+    : "";
+  if (!stage) return "Next: waiting for the client's approval";
+  if (stage.kind === "notDelivered") return `Next: waiting for the provider to deliver${changes}`;
+  if (stage.kind === "inReview")
+    return `Delivered · ${durationText(stage.remaining)} left to review${changes}`;
+  return "Review ended · the provider can claim the payment";
 }
 
 /** Deposit and milestones as the chain reports them: amount, recipient, paid state and receipt. */
@@ -54,6 +68,7 @@ export function MilestoneLedger({
   /** The agreement's original currency, to show "≈ 500 USD" beside each amount. */
   rate?: ExchangeRate | undefined;
 }) {
+  const now = useChainNow(project);
   const deposit = receiptFor(project, "deposit");
   const paid = project.milestones.filter((m) => m.paid).length;
   return (
@@ -83,7 +98,10 @@ export function MilestoneLedger({
           {deposit && <Receipt tx={deposit} />}
         </li>
         {project.milestones.map((m) => {
-          const receipt = m.paid ? receiptFor(project, "acceptMilestone", m.id) : undefined;
+          const receipt = m.paid
+            ? (receiptFor(project, "acceptMilestone", m.id) ??
+              receiptFor(project, "claimMilestone", m.id))
+            : undefined;
           return (
             <li key={m.id} className="border-b border-border py-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -93,7 +111,7 @@ export function MilestoneLedger({
                 <span className="text-sm font-medium">{amountText(m.amountWei, rate)}</span>
               </div>
               <p className={`mt-1 text-sm ${m.paid ? "font-medium text-success" : ""}`}>
-                {milestoneStatus(project, m)}
+                {milestoneStatus(project, m, now)}
               </p>
               <p className="mt-1 break-all text-xs text-muted-foreground">
                 <span title={project.developerWallet}>
@@ -130,7 +148,7 @@ export function TransactionHistory({ project }: { project: Project }) {
 }
 
 /** What the local demo does and does not do, folded beside the payment controls. */
-export function DemoLimits() {
+export function DemoLimits({ review = false }: { review?: boolean }) {
   return (
     <details
       className="mt-6 rounded-md border border-border p-4 text-sm leading-relaxed"
@@ -143,10 +161,14 @@ export function DemoLimits() {
           transaction automatically: there is no wallet prompt and no real money.
         </li>
         <li>
-          A confirmed deposit or payment is final. This version has no refund, cancellation,
-          deadline or dispute resolution.
+          A confirmed deposit or payment is final. This version has no refund, cancellation or
+          dispute resolution{review ? "" : ", and no deadlines"}.
         </li>
-        <li>The client alone decides whether each delivery is acceptable.</li>
+        <li>
+          {review
+            ? "The client approves each delivery or asks for changes during the review. If the client does neither, the provider can claim the payment."
+            : "The client alone decides whether each delivery is acceptable."}
+        </li>
       </ul>
     </details>
   );

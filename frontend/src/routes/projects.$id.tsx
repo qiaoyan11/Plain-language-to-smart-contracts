@@ -250,7 +250,9 @@ export function DetailPage({ id }: { id: string }) {
           ? "All milestones are paid and the escrow is empty. This agreement is complete."
           : generated
             ? project.funded
-              ? "Approve each milestone once it has been delivered."
+              ? project.review
+                ? "The provider marks each milestone delivered; the client approves it or asks for changes during the review."
+                : "Approve each milestone once it has been delivered."
               : `Your contract is ready. Deposit ${amountText(project.totalAmountWei, rate)} to start.`
             : reference
               ? "This project uses the handwritten reference contract."
@@ -350,7 +352,7 @@ export function DetailPage({ id }: { id: string }) {
                 rate={rate}
                 naturalLanguageEnabled={Boolean(context.operationsEnabled)}
               />
-              <DemoLimits />
+              <DemoLimits review={Boolean(project.review)} />
               <TransactionHistory project={project} />
               <details className="mt-4">
                 <summary>Deployment details</summary>
@@ -403,8 +405,12 @@ export function DetailPage({ id }: { id: string }) {
               )}
               {!context.confirmation && (
                 <div className="mb-7">
-                  <PaymentRules />
-                  <ScopeAcknowledgement checked={ack} onChange={setAck} />
+                  <PaymentRules spec={spec} />
+                  <ScopeAcknowledgement
+                    checked={ack}
+                    onChange={setAck}
+                    review={Boolean(spec.reviewPeriodSeconds)}
+                  />
                   <Button
                     className="mt-5"
                     disabled={!ack || busy}

@@ -5,9 +5,12 @@ import type {
   DraftContext,
   DraftSession,
   GenerationRun,
+  KnownAction,
+  MilestoneAction,
+  ReviewState,
 } from "./types";
 import { workspaceStorage } from "./workspace";
-export type { AgreementContext, GenerationRun } from "./types";
+export type { AgreementContext, GenerationRun, KnownAction, ReviewState } from "./types";
 export const MOCK_MODE = import.meta.env["VITE_API_MODE"] === "mock";
 const ACTIVE_DRAFT_KEY = "active-agreement-draft-v1";
 const API_BASE = import.meta.env["VITE_API_BASE"] || "/api";
@@ -51,7 +54,19 @@ export interface Project extends Omit<ProjectDraft, "milestones"> {
   schemaVersion: 2;
   id: string;
   totalAmountWei: string;
-  milestones: (MilestoneDraft & { id: number; paid: boolean })[];
+  milestones: (MilestoneDraft & {
+    id: number;
+    paid: boolean;
+    /** v2 only: chain time of the current delivery, 0 when not delivered. */
+    deliveredAt?: number;
+    /** v2 only: change requests made for this milestone so far. */
+    changeRequests?: number;
+  })[];
+  /** v2 agreed terms, present before deployment too. */
+  reviewPeriodSeconds?: number;
+  changeRequestLimit?: number;
+  /** v2 only, read from the deployed contract. */
+  review?: ReviewState;
   contractAddress: string | null;
   escrowBalanceWei: string;
   funded: boolean;
@@ -76,7 +91,7 @@ export interface OperationPlan {
     projectId: string;
     chainId: number;
     contractAddress: string;
-    action: "query" | "deposit" | "acceptMilestone";
+    action: "query" | "deposit" | MilestoneAction;
     milestoneId: number | null;
   } | null;
   payment?: { amountWei: string; from: string; to: string; milestoneTitle: string | null } | null;
@@ -416,16 +431,18 @@ export const api = {
     if (MOCK_MODE) throw new Error(AGENT3_LOCAL_ONLY);
     return request(`/projects/${encodeURIComponent(id)}/plans`, { message });
   },
-  async planKnownOperation(
-    id: string,
-    action: { action: "deposit" } | { action: "acceptMilestone"; milestoneId: number },
-  ): Promise<OperationPlan> {
+  async planKnownOperation(id: string, action: KnownAction): Promise<OperationPlan> {
     if (MOCK_MODE) throw new Error("Payment controls need local API mode.");
     const body =
       action.action === "deposit"
         ? { action: action.action }
         : { action: action.action, milestoneId: action.milestoneId };
     return request(`/projects/${encodeURIComponent(id)}/action-plans`, body);
+  },
+  /** Local test chain only: move chain time forward so a review period can end during a demo. */
+  async advanceClock(id: string, advanceSeconds: number): Promise<Project> {
+    if (MOCK_MODE) throw new Error("The test chain clock needs local API mode.");
+    return request(`/projects/${encodeURIComponent(id)}/clock`, { advanceSeconds });
   },
   async confirmOperation(
     id: string,
