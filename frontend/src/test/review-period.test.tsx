@@ -280,8 +280,8 @@ describe("review period on the review page", () => {
       .mockResolvedValue(session({ reviewPeriodSeconds: 14 * DAY, changeRequestLimit: 0 }));
     render(<Option initial={session({})} />);
     expect(screen.queryByText("Review after each delivery")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /release a payment automatically/ }));
-    await screen.findByRole("button", { name: "Turn this off" });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("button", { name: "Remove" });
     expect(send).toHaveBeenCalledWith("d1", ADD_REVIEW_MESSAGE, 3, expect.any(String));
     expect(screen.getByText("Review after each delivery")).toBeTruthy();
     expect(screen.getByText("14 days")).toBeTruthy();
@@ -290,8 +290,8 @@ describe("review period on the review page", () => {
     const send = vi.spyOn(api, "sendDraftMessage").mockResolvedValue(session({}));
     render(<Option initial={session({ reviewPeriodSeconds: 10 * DAY, changeRequestLimit: 2 })} />);
     expect(screen.getByText("10 days, up to 2 change requests")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Turn this off" }));
-    await screen.findByRole("button", { name: /release a payment automatically/ });
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await screen.findByRole("button", { name: "Add" });
     expect(send).toHaveBeenCalledWith("d1", REMOVE_REVIEW_MESSAGE, 3, expect.any(String));
   });
 });

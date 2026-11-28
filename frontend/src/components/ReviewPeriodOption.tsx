@@ -41,37 +41,25 @@ export function ReviewPeriodOption({
     }
   }
   return (
-    <div className="-mt-3 mb-6 text-sm text-muted-foreground" data-testid="review-option">
-      {on ? (
-        <p>
-          A payment the client does not answer is released after the review.{" "}
-          <button
-            className="underline underline-offset-2 disabled:opacity-50"
-            disabled={busy || disabled}
-            onClick={() => void send(REMOVE_REVIEW_MESSAGE)}
-          >
-            Turn this off
-          </button>
+    <div
+      className="-mt-3 mb-6 rounded-md border border-border p-3 text-sm"
+      data-testid="review-option"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="min-w-0 flex-1">
+          {on
+            ? "A payment the client does not answer is released when the review ends."
+            : "Optional: release a payment automatically if the client does not answer within 14 days of a delivery."}
         </p>
-      ) : (
-        <p>
-          Optional:{" "}
-          <button
-            className="text-left underline underline-offset-2 disabled:opacity-50"
-            disabled={busy || disabled}
-            onClick={() => void send(ADD_REVIEW_MESSAGE)}
-          >
-            release a payment automatically if the client does not answer within 14 days of a
-            delivery
-          </button>
-        </p>
-      )}
-      {busy && (
-        <p className="mt-1" aria-live="polite">
-          Updating the agreement…
-        </p>
-      )}
-      {error && <p className="mt-1 text-destructive">{error}</p>}
+        <button
+          className="btn btn-outline shrink-0"
+          disabled={busy || disabled}
+          onClick={() => void send(on ? REMOVE_REVIEW_MESSAGE : ADD_REVIEW_MESSAGE)}
+        >
+          {busy ? "Updating…" : on ? "Remove" : "Add"}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-destructive">{error}</p>}
     </div>
   );
 }
