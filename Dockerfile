@@ -24,7 +24,7 @@ RUN cd frontend && npm run build && rm -rf node_modules/.cache
 
 ENV NODE_ENV=production PORT=8080 ACCORD_DATA_DIR=/data
 EXPOSE 8080
-# The data volume keeps projects, drafts, the test chain's history and generation records.
-VOLUME ["/data"]
+# Mount a persistent volume at /data (on Railway: a Railway Volume); it keeps projects, drafts,
+# the test chain's history and generation records across deploys.
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "scripts/serve.cjs"]
