@@ -215,7 +215,7 @@ describe("generated project operations", () => {
     expect(deploy).toHaveBeenCalledWith("p", "r", context.confirmation);
     // The deposit step sits above the deploy button, so focus moves to the escrow section.
     await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByRole("region", { name: "Local escrow" })),
+      expect(document.activeElement).toBe(screen.getByRole("region", { name: "Escrow" })),
     );
     first.unmount();
     openPage();
@@ -315,9 +315,9 @@ describe("generated project operations", () => {
     const deploy = vi.spyOn(api, "deployGeneration");
     const regenerate = vi.spyOn(api, "startGeneration");
     openPage();
-    await screen.findByText(/deploy it on this fresh local chain without generating it again/i);
+    await screen.findByText(/set it up again on the test network without generating it again/i);
     expect(
-      screen.getByText(/transactions from an earlier local test chain are not shown/i),
+      screen.getByText(/transactions from before the test network was reset are not shown/i),
     ).toBeVisible();
     expect(screen.queryByText("Add or change agreement details")).toBeNull();
     expect(screen.queryByText("Original description & additional terms")).toBeNull();
@@ -331,7 +331,7 @@ describe("generated project operations", () => {
     openPage();
     await screen.findByText(/^Your contract is ready\. Deposit .* to start\.$/);
     expect(
-      screen.queryByText(/transactions from an earlier local test chain are not shown/i),
+      screen.queryByText(/transactions from before the test network was reset are not shown/i),
     ).toBeNull();
   });
   it("automatically reconnects to a passed run after a lost deployment response without resending it", async () => {
@@ -345,7 +345,7 @@ describe("generated project operations", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Set up the escrow" }));
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Reconnecting to the local server to check deployment status automatically",
+        "Reconnecting to the server to check deployment status automatically",
       ),
     );
     expect(screen.getByText("Automatic checks passed")).toBeVisible();
@@ -389,9 +389,7 @@ describe("generated project operations", () => {
         <ReferenceProject id="p" />
       </QueryClientProvider>,
     );
-    await screen.findByText(
-      "Reconnecting to the local server to check project status automatically.",
-    );
+    await screen.findByText("Reconnecting to the server to check project status automatically.");
     expect(
       await screen.findByRole("heading", { name: project.name }, { timeout: 4500 }),
     ).toBeVisible();

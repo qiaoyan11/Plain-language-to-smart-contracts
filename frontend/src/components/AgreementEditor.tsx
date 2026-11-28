@@ -88,7 +88,7 @@ export function AgreementEditor({
               }
             }}
           >
-            Use local test accounts
+            Use test accounts
           </Button>
         </section>
       )}

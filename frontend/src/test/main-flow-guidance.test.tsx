@@ -122,7 +122,7 @@ describe("main flow guidance", () => {
     expect(send).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });
-  it("points a wallet question to the local test accounts", async () => {
+  it("points a wallet question to the test accounts", async () => {
     const session: DraftSession = {
       id: "d",
       revision: 1,
@@ -148,7 +148,7 @@ describe("main flow guidance", () => {
     api.setActiveDraftId("d");
     vi.spyOn(api, "getDraft").mockResolvedValue(session);
     openPage(<CreatePage />);
-    expect(await screen.findByText(/This demo uses two built-in test wallets/)).toBeVisible();
+    expect(await screen.findByText(/two built-in test accounts sign for the client/)).toBeVisible();
     expect(screen.queryByText(/Fill in an example/)).toBeNull();
   });
 });

@@ -149,7 +149,7 @@ describe("finding a project again", () => {
     vi.spyOn(api, "listDrafts").mockRejectedValue(new Error("Endpoint not found"));
     withQuery(<ProjectsPage />);
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      /Restart the local demo .* Your saved projects are kept/,
+      /cannot list projects right now\. Reload this page in a moment; your saved projects are kept/,
     );
   });
   it("copies the project link and offers a manual fallback", async () => {

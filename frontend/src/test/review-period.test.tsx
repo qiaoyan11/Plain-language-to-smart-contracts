@@ -179,7 +179,7 @@ describe("review period (v2) payment actions", () => {
     render(<Panel initial={delivered} />);
     expect(screen.queryByRole("button", { name: /claim/ })).toBeNull();
     fireEvent.click(
-      screen.getByRole("button", { name: "Test chain only: skip to the end of the review" }),
+      screen.getByRole("button", { name: "Test network: skip to the end of the review" }),
     );
     const claim = await screen.findByRole("button", { name: "Provider: claim 0.003 test ETH" });
     expect(advance).toHaveBeenCalledWith("p1", 7 * DAY + 5);

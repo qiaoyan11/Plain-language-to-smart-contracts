@@ -173,8 +173,8 @@ export function ProjectsPage() {
     <Shell step="Your projects">
       <h1>Your projects</h1>
       <p className="intro">
-        Agreements and reference projects saved by the local demo on this computer. Opening one only
-        reads its status. It never sends a payment.
+        Your agreements and their payments. Opening one only reads its status; it never sends a
+        payment.
       </p>
       <Button asChild>
         <Link to="/">Describe a new agreement</Link>
@@ -217,17 +217,15 @@ export function ProjectsPage() {
               ))}
             </ul>
           ) : (
-            <p className="mt-3 text-sm">
-              No saved projects yet. Confirmed agreements and reference projects appear here.
-            </p>
+            <p className="mt-3 text-sm">No saved projects yet. Confirmed agreements appear here.</p>
           )
         ) : projects.isError ? (
           <div role="alert" className="mt-3 text-sm">
             <p>
               {outdated
-                ? "The running local server cannot list projects yet. Restart the local demo (stop it, then run npm run demo:web) and reload this page. Your saved projects are kept."
+                ? "The server cannot list projects right now. Reload this page in a moment; your saved projects are kept."
                 : reconnectDelay(projects.error)
-                  ? "Reconnecting to the local server…"
+                  ? "Reconnecting to the server…"
                   : projects.error.message}
             </p>
             {!reconnectDelay(projects.error) && (

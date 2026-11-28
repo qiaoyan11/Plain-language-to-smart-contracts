@@ -9,7 +9,7 @@ import { GenerationResultView } from "@/components/GenerationResultView";
 import { OperationAssistant } from "@/components/OperationAssistant";
 import { DraftSource } from "@/components/DraftSummary";
 import {
-  DemoLimits,
+  PaymentLimits,
   MilestoneLedger,
   ProjectLink,
   RefreshHelp,
@@ -145,7 +145,7 @@ export function DetailPage({ id }: { id: string }) {
             <h1>We couldn't load this agreement</h1>
             <p role="alert" className="intro">
               {reconnectDelay(query.error)
-                ? "Reconnecting to the local server. Keep this page open to resume your project."
+                ? "Reconnecting to the server. Keep this page open to resume your project."
                 : query.error.message}
             </p>
             <Button onClick={() => query.refetch()}>Try again</Button>
@@ -192,8 +192,8 @@ export function DetailPage({ id }: { id: string }) {
     error ||
     (reconnecting
       ? source
-        ? "Your contract passed its checks. Reconnecting to the local server to check deployment status automatically. You can also choose Refresh status."
-        : "Reconnecting to the local server to check project status automatically."
+        ? "Your contract passed its checks. Reconnecting to the server to check deployment status automatically. You can also choose Refresh status."
+        : "Reconnecting to the server to check project status automatically."
       : query.error?.message ||
         (deploymentUnconfirmed && !generated && !busy && !hasDeployment
           ? "The server is reachable. No deployment is recorded for this checked contract. You can retry deploying this version."
@@ -235,7 +235,7 @@ export function DetailPage({ id }: { id: string }) {
     : "Writes the contract with AI, then compiles it, runs static analysis and tests every payment rule. It usually takes a few minutes and may incur model costs.";
   return (
     <Shell
-      step={editing ? "Revise agreement" : generated ? "Local escrow" : "Set up contract"}
+      step={editing ? "Revise agreement" : generated ? "Escrow" : "Set up contract"}
       progress={editing || !context.confirmation ? 2 : generated || reference ? 4 : 3}
       complete={Boolean(generated && allPaid)}
     >
@@ -258,14 +258,14 @@ export function DetailPage({ id }: { id: string }) {
               ? "This project uses the handwritten reference contract."
               : hasDeployment
                 ? busy
-                  ? "Checking local deployment details…"
+                  ? "Checking deployment details…"
                   : "Deployment details could not be matched to this project. Refresh its status to check again."
                 : canDeploy && context.recoveredOnFreshChain
-                  ? "Your checked contract was recovered. You can deploy it on this fresh local chain without generating it again."
+                  ? "Your checked contract was recovered. You can set it up again on the test network without generating it again."
                   : canDeploy
                     ? busy
-                      ? "Your contract passed its checks. Setting up the escrow on the local test chain…"
-                      : "Your contract passed its checks. Set up the escrow on the local test chain to start the deposit and payments."
+                      ? "Your contract passed its checks. Setting up the escrow…"
+                      : "Your contract passed its checks. Set up the escrow to start the deposit and payments."
                     : context.confirmation
                       ? running
                         ? "Preparing your contract. This usually takes a minute or two."
@@ -274,7 +274,7 @@ export function DetailPage({ id }: { id: string }) {
       </p>
       {context.recoveredOnFreshChain && !hasDeployment && (
         <p className="-mt-5 mb-5 text-sm text-muted-foreground">
-          Transactions from an earlier local test chain are not shown here.
+          Transactions from before the test network was reset are not shown here.
         </p>
       )}
       <ProjectLink />
@@ -325,7 +325,7 @@ export function DetailPage({ id }: { id: string }) {
           {generated ? (
             <section
               className="mt-8 scroll-mt-24 outline-none"
-              aria-label="Local escrow"
+              aria-label="Escrow"
               tabIndex={-1}
               ref={(element) => {
                 // The deploy button sat lower on the page; bring the deposit step into view.
@@ -335,7 +335,7 @@ export function DetailPage({ id }: { id: string }) {
                 element.focus({ preventScroll: true });
               }}
             >
-              <h2>Local escrow</h2>
+              <h2>Escrow</h2>
               <Row label="In escrow now" value={amountText(project.escrowBalanceWei, rate)} />
               <MilestoneLedger project={project} rate={rate} />
               {rate && <p className="-mt-4 mb-6 text-xs text-muted-foreground">{rateText(rate)}</p>}
@@ -352,12 +352,12 @@ export function DetailPage({ id }: { id: string }) {
                 rate={rate}
                 naturalLanguageEnabled={Boolean(context.operationsEnabled)}
               />
-              <DemoLimits review={Boolean(project.review)} />
+              <PaymentLimits review={Boolean(project.review)} />
               <TransactionHistory project={project} />
               <details className="mt-4">
                 <summary>Deployment details</summary>
                 <Row label="Contract address" value={deployment.contractAddress} mono />
-                <Row label="Local chain ID" value={deployment.chainId} />
+                <Row label="Network (chain ID)" value={`Test network (${deployment.chainId})`} />
                 <Row label="Generation run" value={deployment.runId} mono />
                 <Row label="Source hash" value={deployment.sourceHash} mono />
               </details>
@@ -424,8 +424,8 @@ export function DetailPage({ id }: { id: string }) {
                 <section className="panel mb-7" aria-label="Next step">
                   <h2>Next step: set up the escrow</h2>
                   <p className="mt-2 text-sm leading-relaxed">
-                    Puts this checked contract, with your confirmed payment rules, on the local test
-                    chain. It makes no model request and moves no money.
+                    Puts this checked contract, with your confirmed payment rules, on the test
+                    network. It makes no model request and moves no money.
                   </p>
                   <Button
                     className="mt-4"
@@ -475,7 +475,7 @@ export function DetailPage({ id }: { id: string }) {
           {run && <GenerationResultView run={run} currentVersion={spec.specVersion} />}
           {!hasDeployment && source && !canDeploy && (
             <p className="mt-4 text-sm text-muted-foreground">
-              Local deployment is unavailable for this run.
+              Setting up this contract is unavailable for this run.
             </p>
           )}
         </>

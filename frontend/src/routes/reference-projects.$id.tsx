@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shell } from "@/components/ReferenceShell";
 import { OperationAssistant } from "@/components/OperationAssistant";
-import { DemoLimits, MilestoneLedger, ProjectLink, TransactionHistory } from "@/components/EscrowLedger";
+import { PaymentLimits, MilestoneLedger, ProjectLink, TransactionHistory } from "@/components/EscrowLedger";
 import { actionBlockReason, api, MOCK_MODE, formatWei, reconnectDelay, type ProjectAction, type Project } from "@/api/client";
 
 export const Route = createFileRoute("/reference-projects/$id")({
@@ -85,7 +85,7 @@ export function ReferenceProject({ id }: { id: string }) {
     <Shell step="03 / Project">
       {query.isPending && <p className="text-muted-foreground">Loading…</p>}
       {query.isError && <p role="alert">{reconnectDelay(query.error)
-        ? "Reconnecting to the local server to check project status automatically."
+        ? "Reconnecting to the server to check project status automatically."
         : query.error.message}</p>}
       {(project === null || (!project && query.isError && !reconnectDelay(query.error))) && (
         <div className="panel">
@@ -161,7 +161,7 @@ export function ReferenceProject({ id }: { id: string }) {
               if (refreshed.error) throw refreshed.error;
             }}
             onProject={async next => { await setProject(next); setMsg(null); }} />}
-          {!MOCK_MODE && <DemoLimits />}
+          {!MOCK_MODE && <PaymentLimits />}
           <TransactionHistory project={project} />
         </>
       )}

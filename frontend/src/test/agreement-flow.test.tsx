@@ -249,10 +249,10 @@ describe("server-owned agreement conversation", () => {
     expect(screen.getAllByText("What is the provider wallet address?")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Review agreement" })).toBeDisabled();
     expect(api.sendDraftMessage).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Use local test accounts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use test accounts" }));
     await waitFor(() => expect(api.sendDraftMessage).toHaveBeenCalledTimes(1));
     expect(vi.mocked(api.sendDraftMessage).mock.calls[0]![1]).toBe(
-      `For this local test, use ${context.clientWallet} as the client wallet and ${context.developerWallet} as the provider wallet.`,
+      `Use ${context.clientWallet} as the client wallet and ${context.developerWallet} as the provider wallet.`,
     );
   });
   it("loads older sessions without inventing assistant replies for previous messages", async () => {
@@ -330,7 +330,7 @@ describe("server-owned agreement conversation", () => {
     openPage(<CreatePage />);
     type("Build a website for 1 ETH.");
     await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
-    expect(screen.queryByText("Use local test accounts")).toBeNull();
+    expect(screen.queryByText("Use test accounts")).toBeNull();
   });
   it.each(["needsClarification", "unsupported"] as const)(
     "keeps %s drafts out of review and confirmation",
@@ -431,7 +431,7 @@ describe("server-owned agreement conversation", () => {
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
       .mockResolvedValue(ready);
     openPage(<CreatePage />);
-    await screen.findByText("Reconnecting to the local server to check your saved draft.");
+    await screen.findByText("Reconnecting to the server to check your saved draft.");
     expect(await screen.findByRole("button", { name: "Review agreement" })).toBeDisabled();
     await waitFor(
       () => expect(screen.getByRole("button", { name: "Review agreement" })).toBeEnabled(),

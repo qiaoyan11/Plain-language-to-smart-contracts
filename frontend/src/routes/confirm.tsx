@@ -124,7 +124,7 @@ export function ConfirmPage() {
       {(error || query.error || session?.lastError) && (
         <p role="alert" className="mt-4 text-sm text-destructive">
           {reconnectDelay(query.error)
-            ? "Reconnecting to the local server to check your saved draft and confirmation."
+            ? "Reconnecting to the server to check your saved draft and confirmation."
             : error || query.error?.message || session?.lastError}
         </p>
       )}

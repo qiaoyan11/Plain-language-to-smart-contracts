@@ -63,7 +63,7 @@ export function CreatePage() {
     Boolean(session?.confirmedProjectId);
   const reconnecting = Boolean(reconnectDelay(query.error) || reconnectDelay(context.error));
   const failure = reconnecting
-    ? "Reconnecting to the local server to check your saved draft."
+    ? "Reconnecting to the server to check your saved draft."
     : error || query.error?.message || context.error?.message || session?.lastError;
 
   async function refresh() {
@@ -225,8 +225,8 @@ export function CreatePage() {
               </p>
               {context.data?.clarificationEnabled && !session?.pendingMessage && walletQuestion && (
                 <p className="mt-4 text-sm">
-                  This demo uses two built-in test wallets. Choose{" "}
-                  <strong>Use local test accounts</strong> to answer the wallet question.
+                  On the test network, two built-in test accounts sign for the client and the
+                  provider. Choose <strong>Use test accounts</strong> to answer the wallet question.
                 </p>
               )}
               {context.data?.clarificationEnabled && !session?.pendingMessage && walletQuestion && (
@@ -237,11 +237,11 @@ export function CreatePage() {
                   disabled={disabled}
                   onClick={() =>
                     send(
-                      `For this local test, use ${context.data.clientWallet} as the client wallet and ${context.data.developerWallet} as the provider wallet.`,
+                      `Use ${context.data.clientWallet} as the client wallet and ${context.data.developerWallet} as the provider wallet.`,
                     )
                   }
                 >
-                  Use local test accounts
+                  Use test accounts
                 </Button>
               )}
             </form>

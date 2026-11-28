@@ -111,7 +111,7 @@ export function OperationAssistant({
     prepare("button", () =>
       api.planKnownOperation(project.id, { action, milestoneId: nextMilestone.id }),
     );
-  // Local test chain only: jump to the end of the current review so a claim can be shown.
+  // Test network only: jump to the end of the current review so a claim can be shown.
   const skipReview = async () => {
     if (!stage || stage.kind !== "inReview" || active.current || disabled) return;
     active.current = true;
@@ -208,7 +208,7 @@ export function OperationAssistant({
             onClick={confirm}
           >
             {busy === "confirm"
-              ? "Recording on the local test chain…"
+              ? "Recording on the test network…"
               : source === "button"
                 ? (CONFIRM_LABEL[plan.intent?.action ?? ""] ?? "Confirm and send")
                 : "Confirm and send"}
@@ -335,7 +335,7 @@ export function OperationAssistant({
 }
 
 /**
- * v2 buttons for the next milestone. One person plays both sides in this demo, so each button
+ * v2 buttons for the next milestone. One person may play both sides on the test network, so each button
  * says whose step it is: the provider delivers and claims, the client approves or asks for changes.
  */
 function ReviewActions({
@@ -414,8 +414,8 @@ function ReviewActions({
           onClick={onSkip}
         >
           {skipping
-            ? "Moving the test chain clock…"
-            : "Test chain only: skip to the end of the review"}
+            ? "Moving the test network clock…"
+            : "Test network: skip to the end of the review"}
         </button>
       )}
     </div>

@@ -74,8 +74,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Smart Contract Escrow (Local Demo)" },
-      { name: "description", content: "Milestone-based smart contract escrow payments (local development demo)" },
+      { title: "Accord · Escrow payments from plain-language agreements" },
+      { name: "description", content: "Describe an agreement in plain words; Accord turns it into milestone escrow payments on a test network." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],

@@ -47,15 +47,18 @@ export function Shell({
 }) {
   return (
     <div className="min-h-screen">
-      <div className="prototype-label">
-        Local test-chain demo · Built-in test accounts sign automatically · No real wallet or money
-      </div>
       <header className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-4 px-6 py-7">
         <Link to="/" className="flex items-center gap-2 font-display text-lg font-semibold">
           <FileText className="size-5 text-primary" />
           Accord
         </Link>
         <nav aria-label="Main" className="flex items-center gap-5 text-sm">
+          <span
+            className="network-badge"
+            title="Contracts run on a test network. Amounts are test ETH; no real money moves."
+          >
+            Test network
+          </span>
           <Link to="/projects" className="font-medium text-primary underline underline-offset-4">
             Your projects
           </Link>
@@ -73,15 +76,8 @@ export function Shell({
       </main>
       <footer className="mx-auto max-w-3xl space-y-2 border-t border-border px-6 py-5 text-xs leading-relaxed text-muted-foreground">
         <p>
-          This local demo saves drafts, confirmed rules, checks and test-chain receipts on this
-          computer. After a restart, open Your projects or the same project link to continue.
-        </p>
-        <p>
-          For developers:{" "}
-          <Link to="/reference-demo" className="underline underline-offset-4">
-            reference payment demo
-          </Link>{" "}
-          with a handwritten contract and no AI.
+          Accord runs on a test network: amounts are test ETH and no real money moves. Contracts are
+          written by AI and checked automatically; they have not had a professional security audit.
         </p>
       </footer>
     </div>

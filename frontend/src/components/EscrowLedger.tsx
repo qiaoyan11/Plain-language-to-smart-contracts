@@ -132,7 +132,7 @@ export function TransactionHistory({ project }: { project: Project }) {
   if (!project.transactions.length) return null;
   return (
     <details className="mt-4">
-      <summary>All local transactions ({project.transactions.length})</summary>
+      <summary>All transactions ({project.transactions.length})</summary>
       <ol className="mt-2">
         {project.transactions.map((tx) => (
           <li key={tx.hash} className="border-b border-border py-3 text-sm">
@@ -147,18 +147,18 @@ export function TransactionHistory({ project }: { project: Project }) {
   );
 }
 
-/** What the local demo does and does not do, folded beside the payment controls. */
-export function DemoLimits({ review = false }: { review?: boolean }) {
+/** What these payments can and cannot do, folded beside the payment controls. */
+export function PaymentLimits({ review = false }: { review?: boolean }) {
   return (
     <details
       className="mt-6 rounded-md border border-border p-4 text-sm leading-relaxed"
-      aria-label="About this local demo"
+      aria-label="About these payments"
     >
-      <summary className="cursor-pointer font-medium">About this local demo</summary>
+      <summary className="cursor-pointer font-medium">About these payments</summary>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
         <li>
-          Everything runs on a test chain on this computer. Built-in test accounts sign each
-          transaction automatically: there is no wallet prompt and no real money.
+          Payments run on a test network with test ETH. Two built-in test accounts sign for the
+          client and the provider, so there is no wallet prompt and no real money.
         </li>
         <li>
           A confirmed deposit or payment is final. This version has no refund, cancellation or
@@ -193,7 +193,7 @@ export function ProjectLink() {
       </Button>
       <p className="mt-2 text-xs text-muted-foreground" aria-live="polite">
         {state === "copied"
-          ? "Link copied. It opens this project on this computer while the local demo is running."
+          ? "Link copied. Anyone with access to Accord can open this project with it."
           : state === "failed"
             ? "This browser blocked copying. Copy the link below instead."
             : ""}
