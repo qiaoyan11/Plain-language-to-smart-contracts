@@ -32,7 +32,7 @@
 
 | 日期 | 决策 | 原因 |
 | --- | --- | --- |
-| 2026-11-27 | 验收期与超时领取作为 v2 第一项，方案见 [REVIEW_PERIOD_V2.md](REVIEW_PERIOD_V2.md)：合同写了才启用，没写时默认关闭但确认页可选开启；修改次数按合同，没写不限；新验证测试先放 `tests/v2/`。尚未实现。 | 真实合同几乎都有“N 天不提异议视为验收”，当前合约只能靠客户批准，客户不回应时钱会锁住。 |
+| 2026-11-27 | 验收期与超时领取作为 v2 第一项，方案见 [REVIEW_PERIOD_V2.md](REVIEW_PERIOD_V2.md)：合同写了才启用，没写时默认关闭但确认页可选开启；修改次数按合同，没写不限；新验证测试先放 `tests/v2/`。已实现（见 11-27 日志）。 | 真实合同几乎都有“N 天不提异议视为验收”，当前合约只能靠客户批准，客户不回应时钱会锁住。 |
 | 2026-11-27 | GenerationRun gains an optional, advisory `progress` field while running (shared/GENERATION_API_V1.md); the Python worker reports stages on stderr as `ACCORD_PROGRESS {json}`. Confirming an agreement in the browser starts generation, and the same tab then deploys the checked contract to the local chain without another click. | The user's direction: treat users as beginners and remove steps they cannot judge. Generation and deployment are one "Set up contract" stage; only the confirmation made in that tab is deployed automatically, so older projects keep their explicit button. |
 | 2026-11-27 | ClarifyResult gains optional `notEnforced` and `exchangeRates` (shared/schemas, INTERFACES.md). Conditions the contract cannot enforce no longer block confirmation; amounts in other currencies are converted at the live ETH price; local drafts use the built-in test accounts without asking. | The user's direction: a first-time user describes needs in everyday words, so the system should work out currency, wallets and unenforceable conditions instead of asking. Required fields are unchanged. |
 | 2026-11-27 | Add read-only `GET /api/projects` and `GET /api/drafts` to Project API v2 (documented in shared/PROJECT_API_V2.md). Existing endpoints and fields are unchanged. | A first-time user who loses a project URL must be able to find the project or unfinished conversation again. The lists never sign or start model jobs. |
@@ -82,6 +82,15 @@ interface IMilestoneEscrow {
 退款规则暂不加，等基础版跑通后单独决定。
 
 ## 日志（最新在上）
+
+### 2026-11-27 · Jiahao Zhang · 验收期（v2）上线，Agent 2 小修
+
+- 合约与验证：新接口 IMilestoneReviewEscrow（服务方标记交付 → 客户在验收期内批准或要求修改 → 到期无回应服务方领取），手写参考合约，12 条条款测试和故意写错的合约全部被抓到；v1 验证不改，v2 测试在 `tests/v2/`。
+- Agent 1：合同写了“N 天内不提异议视为验收”就直接读出天数和修改轮数（程序换算，工作日只多不少），不再列进“合约不执行”；不追问起算点，默认从标记交付起算并显示在确认页。确认页有一个可选项“客户 14 天不回应自动付款”，一键加上或关掉。
+- Agent 2/3：按验收期生成合约并独立检查；Agent 3 能听懂“标记交付”“要求修改”“领取”。付款页按角色显示按钮（服务方：标记交付、领取；客户：批准、要求修改），显示剩余验收时间，本地测试链可以一键跳到验收期结束。
+- Agent 2 修正：模型服务临时拒绝（限流、过载、网关错误、连不上）时最多重发两次并计入调用次数，超时和未完成的回答不重发；生成超时从每轮 15 分钟改为 1 + 每轮 5 分钟。Agent 1 同样重发一次。
+- 测试：合约 26，HTTP 60，v2 全套通过，Agent 1/2/3 为 77/34/75，前端 121，tsc 通过。
+- 需要老板决定：同样规则的 v1 合约现在每次都重新生成（约 1 分钟、要付费）。是否允许直接复用已通过独立检查的合约？会影响 A/B/C 实验的计数方式，先不改。
 
 ### 2026-11-27 · Jiahao Zhang · 合同上传、真实合同实测和流程简化
 
